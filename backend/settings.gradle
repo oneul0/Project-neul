@@ -1,0 +1,13 @@
+rootProject.name = 'backend'
+
+// 공통 도메인 및 유틸리티 (DTO, Enums 등)
+include 'common'
+
+// 1. 실시간 채팅 수집 및 Kafka Produce 서버
+include 'collector'
+
+// 2. AI 분석 워커 (Kafka Consume -> Vertex AI 연동 -> Kafka Produce)
+include 'analyzer'
+
+// 3. 메인 백엔드 (통계 저장 및 실시간 대시보드 SSE 푸시)
+include 'core-api'

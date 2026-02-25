@@ -1,0 +1,14 @@
+dependencies {
+	implementation project(':common')
+
+	// 클라이언트와 SSE 통신을 위한 WebFlux
+	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+	// 논블로킹 RDB 통신을 위한 R2DBC (PostgreSQL)
+	implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
+	implementation 'org.postgresql:r2dbc-postgresql'
+	runtimeOnly 'org.postgresql:postgresql' // Flyway나 기존 JDBC 호환용
+
+	// 논블로킹 Redis 통신을 위한 Reactive Redis
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis-reactive'
+}

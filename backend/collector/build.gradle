@@ -1,0 +1,18 @@
+dependencies {
+	// 공통 DTO 모듈 참조
+	implementation project(':common')
+
+	// 논블로킹 통신을 위한 WebFlux
+	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+	// 비동기 스트림 파이프라인을 위한 Reactor Kafka
+	implementation 'org.springframework.boot:spring-boot-starter-kafka'
+
+	// Source: https://mvnrepository.com/artifact/tools.jackson.core/jackson-databind
+//	implementation("tools.jackson.core:jackson-databind:3.1.0")
+	// JSON 직렬화/역직렬화를 위한 Jackson 핵심 모듈
+	implementation 'com.fasterxml.jackson.core:jackson-databind'
+
+	// Java 8 날짜/시간 타입(LocalDateTime 등) 지원 모듈 추가
+	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+}

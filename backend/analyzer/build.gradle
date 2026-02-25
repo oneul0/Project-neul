@@ -1,0 +1,12 @@
+dependencies {
+	implementation project(':common')
+
+	// 외부 AI API 호출을 위한 WebClient용
+	implementation 'org.springframework.boot:spring-boot-starter-kafka'
+
+	// Rate Limit 제어 및 장애 격리를 위한 서킷 브레이커 (Reactive 지원 버전)
+	implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
+	implementation 'io.github.resilience4j:resilience4j-reactor:2.2.0'
+
+	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+}
