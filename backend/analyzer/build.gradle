@@ -9,4 +9,8 @@ dependencies {
 	implementation 'io.github.resilience4j:resilience4j-reactor:2.2.0'
 
 	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+	// JSON 직렬화/역직렬화를 위한 Jackson 핵심 모듈
+	implementation 'com.fasterxml.jackson.core:jackson-databind'
+	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
 }
