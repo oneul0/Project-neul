@@ -1,6 +1,6 @@
 package com.neul.collector.service;
 
-import com.neul.common.dto.ChatMessage;
+import com.neul.collector.dto.RawChatMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -20,7 +20,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class DummyChatGenerator {
 
-	private final KafkaTemplate<String, Object> kafkaTemplate;
+	private final KafkaTemplate<String, RawChatMessage> kafkaTemplate;
 	private final Random random = new Random();
 
 	private final List<String> dummyContents = List.of(
@@ -35,9 +35,8 @@ public class DummyChatGenerator {
 
 	@EventListener(ApplicationReadyEvent.class)
 	public void startGenerating() {
-		// 1초마다 무작위 채팅 생성 및 Kafka 전송
 		Flux.interval(Duration.ofSeconds(1))
-			.map(i -> ChatMessage.builder()
+			.map(i -> RawChatMessage.builder()
 				.messageId(UUID.randomUUID().toString())
 				.roomId("test-room-1")
 				.sender("user-" + random.nextInt(100))
