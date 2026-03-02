@@ -16,7 +16,7 @@ import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
-import org.springframework.kafka.support.serializer.JsonSerializer;
+import org.springframework.kafka.support.serializer.JacksonJsonSerializer;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -59,8 +59,7 @@ public class KafkaConfig {
 
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, String> batchKafkaListenerContainerFactory() {
-        ConcurrentKafkaListenerContainerFactory<String, String> factory =
-                new ConcurrentKafkaListenerContainerFactory<>();
+        ConcurrentKafkaListenerContainerFactory<String, String> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory());
         factory.setBatchListener(true); // 배치 수신 활성화
         return factory;
@@ -71,11 +70,12 @@ public class KafkaConfig {
     public ProducerFactory<String, AnalyzedChatMessage> producerFactory() {
         Map<String, Object> props = new HashMap<>();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
-        // core-api 는 VALUE_DEFAULT_TYPE 으로 타입을 지정하므로 타입 헤더 불필요
-        props.put(JsonSerializer.ADD_TYPE_INFO_HEADERS, false);
-        return new DefaultKafkaProducerFactory<>(props);
+
+        // core-api는 VALUE_DEFAULT_TYPE으로 타입을 지정하므로 타입 헤더 불필요
+        JacksonJsonSerializer<AnalyzedChatMessage> valueSerializer = new JacksonJsonSerializer<>();
+        valueSerializer.setAddTypeInfo(false);
+
+        return new DefaultKafkaProducerFactory<>(props, new StringSerializer(), valueSerializer);
     }
 
     @Bean

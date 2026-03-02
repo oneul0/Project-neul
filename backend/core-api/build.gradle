@@ -11,4 +11,11 @@ dependencies {
 
 	// 논블로킹 Redis 통신을 위한 Reactive Redis
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis-reactive'
+
+	// Kafka Consumer
+	implementation 'org.springframework.boot:spring-boot-starter-kafka'
+
+	// JSON 직렬화/역직렬화를 위한 Jackson 핵심 모듈
+	implementation 'com.fasterxml.jackson.core:jackson-databind'
+	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
 }

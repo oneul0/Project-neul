@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # 1. PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: neul-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: neul_user
+      POSTGRES_PASSWORD: neul_password
+      POSTGRES_DB: neul_db
+      TZ: Asia/Seoul
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - neul-network
+    restart: unless-stopped
+
+  # 2. Redis
+  redis:
+    image: redis:7-alpine
+    container_name: neul-redis
+    ports:
+      - "6379:6379"
+    # 레디스 기본 패스워드 설정 (필요 시 주석 해제하여 사용하거나, 현재는 로컬 개발 편의를 위해 패스워드 없이 사용)
+    # command: redis-server --requirepass neul_redis_pass
+    volumes:
+      - redis-data:/data
+    networks:
+      - neul-network
+    restart: unless-stopped
+
+  # 3. Zookeeper
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: neul-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - neul-network
+    restart: unless-stopped
+
+  # 4. Apache Kafka
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: neul-kafka
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # 로컬 호스트(localhost:9092) 및 도커 내부망(kafka:29092)에서 모두 접속 가능하도록 리스너 설정
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - neul-network
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:
+
+networks:
+  neul-network:
+    driver: bridge

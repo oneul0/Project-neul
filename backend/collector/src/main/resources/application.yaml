@@ -2,7 +2,7 @@ spring:
   application:
     name: collector
   kafka:
-    bootstrap-servers: localhost:9094 # Docker에서 설정한 외부 포트
+    bootstrap-servers: localhost:9092 # Docker에서 설정한 외부 포트
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
