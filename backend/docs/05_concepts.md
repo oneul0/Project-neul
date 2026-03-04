@@ -105,9 +105,9 @@ Reactive는 "결과가 나오면 알려줘" 방식입니다. 스레드는 기다
 
 ```java
 // GeminiAnalyzerService.java
-public Mono<List<AnalyzedChatMessage>> analyzeBatch(List<RawChatMessage> chats) {
+public Mono<List<AnalyzedChatMessage>> analyzeBatch(List<CompressedChat> chats) {
     return Mono.fromCallable(() -> {
-        // 실제 API 호출 (시뮬레이션)
+        // 실제 Gemini API 호출
         Thread.sleep(100);
         return chats.stream().map(this::simulateEmotion).toList();
     });
@@ -116,7 +116,81 @@ public Mono<List<AnalyzedChatMessage>> analyzeBatch(List<RawChatMessage> chats) 
 
 `Mono`는 **미래의 결과 하나**를 담은 컨테이너입니다. 아직 실행되지 않고, 누군가 `subscribe()`나 `block()`을 호출할 때 실행됩니다.
 
-## Flux — 0~N개의 데이터 스트림
+---
+
+### Q. `List<AnalyzedChatMessage>`만 반환하면 되는데 왜 `Mono<List<...>>`로 감싸나요?
+
+"나중에 실행될 작업"을 담은 상자를 반환해서, **호출한 쪽이 블로킹 없이 다른 일을 할 수 있기** 때문입니다.
+
+```java
+// ❌ 동기 방식 — 결과 나올 때까지 스레드가 여기서 멈춤
+public List<AnalyzedChatMessage> analyzeBatch(...) {
+    Thread.sleep(3000); // Gemini 응답 대기... 3초간 스레드 낭비
+    return result;
+}
+
+// ✅ 비동기 방식 — "나중에 실행되는 작업 상자"만 즉시 반환
+public Mono<List<AnalyzedChatMessage>> analyzeBatch(...) {
+    return Mono.fromCallable(() -> {
+        Thread.sleep(3000); // 이 람다는 구독(subscribe)될 때 실행됨
+        return result;
+    });
+    // 이 메서드 자체는 즉시 반환 → 스레드 블로킹 없음
+}
+```
+
+```
+[일반 방식] 스레드 1개가 Gemini 3초 대기 → 그 3초 동안 아무것도 못 함
+
+[Mono 방식] Gemini 요청 보내고 → 스레드가 다른 요청 처리
+            Gemini 응답 오면 → 그때 결과 처리 재개
+            = 스레드 1개로 수백 건 동시 처리 가능
+```
+
+이 프로젝트가 **Spring WebFlux** 기반인 이유가 여기 있습니다. Netty 이벤트 루프 위에서 동작하므로 스레드가 블로킹되면 전체 처리량이 급감합니다.
+
+---
+
+### Q. `Mono<List<...>>`가 어색합니다. Flux가 더 맞지 않나요?
+
+`Flux`는 데이터가 **여러 번에 걸쳐 발행**될 때(스트림) 씁니다.
+
+`Mono<List<...>>`의 의미: **"Gemini API 응답이라는 단일 이벤트(Mono)가 발생하면, 그 결과가 List다."**
+
+| | Mono<List<T>> | Flux<T> |
+|---|---|---|
+| 발행 횟수 | 딱 1번 (리스트를 한 방에) | N번 (아이템을 하나씩 흘려보냄) |
+| 적합한 경우 | API 응답 1건 = 분석 결과 묶음 | Kafka 메시지 스트림, SSE |
+| 오늘 코드 | `GeminiAnalyzerService.analyzeBatch()` | `ChatAnalysisProcessor`의 Kafka 스트림 |
+
+---
+
+### Q. `Mono.fromCallable()`이 하는 일은?
+
+**블로킹 코드를 리액티브 파이프라인에 안전하게 끼워 넣는 브릿지**입니다.
+
+```java
+// Mono.fromCallable()은 "이 람다를 구독될 때 실행하겠다"는 약속을 담은 Mono를 만들어줌
+return Mono.fromCallable(() -> {
+    // ← 지금 이 순간은 실행 안 됨
+    // ← .subscribe() 또는 .block() 이 호출될 때 실행됨
+    return expensiveOperation();
+});
+```
+
+실제 Gemini WebClient 연동 후에는 이렇게 바뀝니다:
+```java
+// fromCallable 없이 WebClient 자체가 Mono를 반환
+return webClient.post()
+    .bodyValue(buildPrompt(chats))
+    .retrieve()
+    .bodyToMono(GeminiResponse.class) // ← 여기서 바로 Mono 반환
+    .map(response -> parseResult(response));
+```
+
+> 현재 `fromCallable` + `Thread.sleep()`은 WebClient 연동 전 임시 시뮬레이션입니다.
+
+
 
 ```java
 // ChatStreamService.java
