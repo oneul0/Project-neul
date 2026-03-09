@@ -17,3 +17,10 @@ spring:
 
 server:
   port: 8083
+
+# Chzzk Open API 설정 (환경변수로 주입)
+chzzk:
+  api:
+    base-url: https://openapi.chzzk.naver.com
+    client-id: ${CHZZK_CLIENT_ID}
+    client-secret: ${CHZZK_CLIENT_SECRET}

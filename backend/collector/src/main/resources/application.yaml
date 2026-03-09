@@ -9,3 +9,20 @@ spring:
 
 server:
   port: 8081
+
+# Chzzk Open API 설정 (환경변수로 주입: 코드/Git에 직접 기재 금지)
+chzzk:
+  api:
+    base-url: https://openapi.chzzk.naver.com
+    client-id: ${CHZZK_CLIENT_ID}
+    client-secret: ${CHZZK_CLIENT_SECRET}
+
+# Resilience4j Retry 설정 (Chzzk Socket.IO 재연결)
+resilience4j:
+  retry:
+    instances:
+      chzzkSession:
+        max-attempts: 5
+        wait-duration: 5s
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2

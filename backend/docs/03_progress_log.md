@@ -182,3 +182,25 @@ JavaChatOptimizerTest — tests=9, failures=0, errors=0 (0.124s)
 1. **Gemini API WebClient 실제 연동** — `ChatAnalysisProcessor` → `CompressedChat` → Gemini 프롬프트 구성 → 응답 파싱.
 2. **유튜브 / 치지직 채팅 수집기** 연동.
 3. **프론트엔드 연동** 전 CORS 설정 및 API 문서 작성.
+
+---
+
+## [2026-03-06] 치지직(Chzzk) 소켓 연동, Live API 구현 및 프론트엔드 스캐폴딩
+
+### 1. 완료된 작업
+
+| 구분 | 내용 |
+|------|------|
+| **`neul-collector`** | Chzzk Open API `ClientAuth` 기반 세션 발급 및 Socket.IO 클라이언트 연동. `CHAT`, `DONATION`, `SUBSCRIPTION` 이벤트 수집 파이프라인 구축 완료. |
+| **`neul-core-api`** | 실시간 라이브 채널 목록 조회 API (`[GET] /api/v1/lives`) 구현 및 감정 통계 통합 제공 서비스 기능 추가. |
+| **`frontend`** | Next.js 16 (React 19) 기반 프론트엔드 프로젝트 신규 생성. UI 구현을 위한 `lucide-react`, `recharts`, Tailwind CSS v4 환경 구성. |
+| **문서화** | `docs/01_ADR.md` 갱신 (Chzzk API 연동 시 클라이언트 인증 도입 및 이벤트 다중 라우팅 파이프라인 설계 추가). |
+
+### 2. 주요 아키텍처 및 구현 포인트
+- **서버 통합 인증(Client Auth) 도입:** 개별 사용자별 OAuth 대신 `neul-collector`가 자체 `client_credentials` 토큰을 캐싱하여 구독, 프론트엔드 연동 복잡성 제거.
+- **이벤트 Passthrough 설계:** 후원(`DONATION`), 구독(`SUBSCRIPTION`) 알림 이벤트는 Gemini AI 분석 처리를 건너뛰고 바로 카프카 토픽으로 발행하여 실시간 방송 지연을 최소화 (자세한 내용은 문서를 참조할 것).
+- **Next.js 대시보드 구조 준비:** 감정 분석된 채팅과 실시간 가격(또는 점수) 지표를 표시할 실시간 차트/리스트 UI를 그리기 위한 기반 프레임워크 스캐폴딩. 
+
+### 3. 다음 단계 (Next Steps)
+1. **Gemini API WebClient 실제 연동** — 임시 목업 코드 제거 및 실제 Vertex AI 통신 구현 마무리.
+2. **프론트엔드 컴포넌트 개발** — 라이브 채널 리스트 뷰 및 실시간 방 통계 차트 연동.
