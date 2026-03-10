@@ -18,6 +18,10 @@ subprojects {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    tasks.withType(JavaCompile) {
+        options.compilerArgs << "-parameters"
+    }
+
     repositories {
         mavenCentral()
     }
@@ -34,5 +38,23 @@ subprojects {
 
     test {
         useJUnitPlatform()
+    }
+
+    // .env 파일 로드 설정 (bootRun 실행 시 환경 변수 주입)
+    tasks.withType(org.springframework.boot.gradle.tasks.run.BootRun).configureEach {
+        doFirst {
+            def envFile = rootProject.file(".env")
+            if (envFile.exists()) {
+                envFile.readLines().each { line ->
+                    line = line.trim()
+                    if (line && !line.startsWith("#")) {
+                        def parts = line.split("=", 2)
+                        if (parts.length == 2) {
+                            environment parts[0].trim(), parts[1].trim()
+                        }
+                    }
+                }
+            }
+        }
     }
 }

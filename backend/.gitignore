@@ -55,3 +55,6 @@ Thumbs.db
 **/src/main/resources/application-local.yaml
 **/src/main/resources/application-secret.yaml
 **/src/main/resources/application-dev.yaml
+
+# Environment Variables
+.env
