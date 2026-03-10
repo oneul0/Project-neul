@@ -21,7 +21,8 @@ interface LiveChannel {
     channelImageUrl: string;
   };
   liveTitle: string;
-  liveImageUrl: string;
+  liveImageUrl?: string;
+  liveThumbnailImageUrl?: string;
   concurrentUserCount: number;
   openDate: string;
   categoryType: string;
@@ -46,7 +47,7 @@ export default function Home() {
       if (!res.ok) throw new Error("Failed to fetch live channels");
 
       const data = await res.json();
-      setLives(data.data || []);
+      setLives(data.content?.data || data.data || []);
       setError(null);
     } catch (err: any) {
       setError(err.message);
@@ -137,7 +138,8 @@ export default function Home() {
             const channelName = live.channel?.channelName || live.channelName || "알 수 없음";
 
             // Generate a thumbnail url replacing {type}
-            const thumbUrl = live.liveImageUrl ? live.liveImageUrl.replace("{type}", "480") : "/placeholder.jpg";
+            const imageUrl = live.liveThumbnailImageUrl || live.liveImageUrl;
+            const thumbUrl = imageUrl ? imageUrl.replace("{type}", "480") : "/placeholder.jpg";
 
             return (
               <Link
