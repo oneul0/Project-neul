@@ -14,7 +14,12 @@ interface SentimentStats {
 
 interface LiveChannel {
   channelId: string;
-  channelName: string;
+  channelName?: string;
+  channel?: {
+    channelId: string;
+    channelName: string;
+    channelImageUrl: string;
+  };
   liveTitle: string;
   liveImageUrl: string;
   concurrentUserCount: number;
@@ -129,6 +134,7 @@ export default function Home() {
             const posPct = total > 0 ? Math.round(((live.sentiment?.POSITIVE || 0) / total) * 100) : 0;
             const negPct = total > 0 ? Math.round(((live.sentiment?.NEGATIVE || 0) / total) * 100) : 0;
             const hasActivity = total > 0;
+            const channelName = live.channel?.channelName || live.channelName || "알 수 없음";
 
             // Generate a thumbnail url replacing {type}
             const thumbUrl = live.liveImageUrl ? live.liveImageUrl.replace("{type}", "480") : "/placeholder.jpg";
@@ -177,9 +183,9 @@ export default function Home() {
                   </h3>
                   <div className="mt-auto flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-white shadow-inner">
-                      {live.channelName.charAt(0)}
+                      {channelName.charAt(0)}
                     </div>
-                    <span className="text-slate-400 text-sm font-medium truncate flex-1">{live.channelName}</span>
+                    <span className="text-slate-400 text-sm font-medium truncate flex-1">{channelName}</span>
                     <span className="text-xs text-slate-500 bg-slate-800 px-2 py-1 rounded-md">{live.liveCategoryValue}</span>
                   </div>
                 </div>
