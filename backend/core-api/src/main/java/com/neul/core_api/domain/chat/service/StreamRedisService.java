@@ -27,6 +27,11 @@ public class StreamRedisService {
 
     public Mono<Map<Object, Object>> getRoomStats(String roomId) {
         String key = "room:" + roomId + ":stats";
-        return redisTemplate.opsForHash().entries(key).collectMap(Map.Entry::getKey, Map.Entry::getValue);
+        return redisTemplate.opsForHash().entries(key)
+                .collectMap(Map.Entry::getKey, Map.Entry::getValue)
+                .onErrorResume(e -> {
+                    log.warn("Redis 접속 실패로 인해 [{}] 감정 통계를 가져올 수 없습니다: {}", roomId, e.getMessage());
+                    return Mono.just(Map.of());
+                });
     }
 }

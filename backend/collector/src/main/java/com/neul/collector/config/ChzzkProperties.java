@@ -3,7 +3,7 @@ package com.neul.collector.config;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
+
 
 /**
  * application.yaml의 chzzk.api.* 설정을 바인딩하는 클래스.
@@ -11,7 +11,6 @@ import org.springframework.stereotype.Component;
  */
 @Getter
 @Setter
-@Component
 @ConfigurationProperties(prefix = "chzzk.api")
 public class ChzzkProperties {
     private String baseUrl;
