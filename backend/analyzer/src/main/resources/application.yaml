@@ -13,3 +13,6 @@ app:
     # 'java': JavaChatOptimizer (현재 운용)
     # 'rust': RustChatOptimizer (JNI — Rust 모듈 완성 후 전환)
     engine: java
+  ollama:
+    api-url: http://localhost:11434/api/chat
+    model: gemma:2b

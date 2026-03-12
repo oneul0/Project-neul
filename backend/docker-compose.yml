@@ -65,9 +65,35 @@ services:
       - neul-network
     restart: unless-stopped
 
+  # 5. Ollama (Local LLM)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: neul-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - neul-network
+    restart: unless-stopped
+
+  # Ollama Model Puller (gemma:2b 자동 다운로드)
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: neul-ollama-init
+    depends_on:
+      - ollama
+    networks:
+      - neul-network
+    environment:
+      - OLLAMA_HOST=ollama:11434
+    entrypoint: /bin/sh
+    command: -c "echo 'Waiting for Ollama to start...'; sleep 10; echo 'Pulling gemma:2b model...'; ollama pull gemma:2b; echo 'Model pulled successfully!'"
+
 volumes:
   postgres-data:
   redis-data:
+  ollama-data:
 
 networks:
   neul-network:

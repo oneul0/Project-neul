@@ -2,16 +2,24 @@ package com.neul.analyzer.service;
 
 import com.neul.analyzer.dto.AnalyzedChatMessage;
 import com.neul.analyzer.dto.Emotion;
+import com.neul.analyzer.dto.ollama.OllamaMessage;
+import com.neul.analyzer.dto.ollama.OllamaRequest;
+import com.neul.analyzer.dto.ollama.OllamaResponse;
 import com.neul.analyzer.optimization.CompressedChat;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Random;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -19,32 +27,119 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class GeminiAnalyzerService {
 
-    private final Random random = new Random();
+    private final WebClient webClient;
+    private final ObjectMapper objectMapper;
 
-    /**
-     * 최적화(필터링+압축)된 채팅 메시지 배치를 분석합니다.
-     *
-     * <p>
-     * 실제 서비스에서는 Vertex AI Gemini API를 호출하며, {@code CompressedChat.count}를
-     * 프롬프트에 포함시켜 ("ㅋㅋㅋ (12건)" 형태) 토큰 효율을 극대화합니다.
-     *
-     * @param chats 최적화된 대표 채팅 메시지 목록
-     * @return 각 메시지에 대한 감정 분석 결과 목록
-     */
+    @Value("${app.ollama.api-url}")
+    private String ollamaApiUrl;
+
+    @Value("${app.ollama.model}")
+    private String ollamaModel;
+
     @CircuitBreaker(name = "geminiApi", fallbackMethod = "fallbackAnalyzeBatch")
     public Mono<List<AnalyzedChatMessage>> analyzeBatch(List<CompressedChat> chats) {
-        log.info("[Gemini] Requesting analysis for {} compressed messages (Gemini API 연동 전 시뮬레이션)", chats.size());
+        if (chats == null || chats.isEmpty()) {
+            return Mono.just(List.of());
+        }
+        
+        log.info("[Ollama] Requesting analysis for {} compressed messages via local LLM.", chats.size());
 
-        // TODO: 실제 Vertex AI 통신 WebClient 로직 구현 및 파싱
-        // - CompressedChat.count를 프롬프트에 포함: "내용 (N건)"
-        // - 현재는 임시로 무작위 감정 분석 결과를 생성합니다.
+        // 1. Build the prompt
+        String promptText = buildPrompt(chats);
 
-        return Mono.fromCallable(() -> {
-            Thread.sleep(100); // API 호출 지연 시뮬레이션
-            return chats.stream()
-                    .map(this::simulateEmotion)
-                    .collect(Collectors.toList());
-        });
+        OllamaRequest requestDto = OllamaRequest.builder()
+                .model(ollamaModel)
+                .messages(List.of(
+                        OllamaMessage.builder().role("system").content(getSystemPrompt()).build(),
+                        OllamaMessage.builder().role("user").content(promptText).build()
+                ))
+                .stream(false)
+                .format("json") // Ask Ollama to output valid JSON (works best on supported models)
+                .build();
+
+        // 2. Call Ollama API
+        return webClient.post()
+                .uri(ollamaApiUrl)
+                .bodyValue(requestDto)
+                .retrieve()
+                .bodyToMono(OllamaResponse.class)
+                .map(response -> parseOllamaResponse(response, chats));
+    }
+
+    private String getSystemPrompt() {
+        return "You are an AI that analyzes the sentiment of a batch of streaming chat messages in Korean. " +
+               "For each message provided by the user, you must determine its overall emotion as either POSITIVE, NEGATIVE, or NEUTRAL. " +
+               "Also provide a confidence score between -1.0 and 1.0 (-1.0 being strongly negative, 1.0 being strongly positive, 0.0 being exactly neutral). " +
+               "You MUST output exactly a JSON array containing objects with the following keys: " +
+               "'messageId' (string), 'type' (string, one of POSITIVE/NEGATIVE/NEUTRAL), 'score' (number). " +
+               "Do not output any markdown formatting, markdown code blocks, or extra text. Output ONLY pure JSON.";
+    }
+
+    private String buildPrompt(List<CompressedChat> chats) {
+        StringBuilder sb = new StringBuilder("Analyze the following messages:\n");
+        for (CompressedChat chat : chats) {
+            sb.append(String.format("- messageId: %s, content: %s (%d occurrences)\n",
+                    chat.getRepresentativeId(), chat.getContent(), chat.getCount()));
+        }
+        return sb.toString();
+    }
+
+    private List<AnalyzedChatMessage> parseOllamaResponse(OllamaResponse response, List<CompressedChat> originalChats) {
+        String jsonContent = response.getMessage() != null ? response.getMessage().getContent() : "[]";
+        
+        try {
+            // Sometimes local LLMs might wrap the output in markdown code blocks despite formatting instructions
+            if (jsonContent.startsWith("```json")) {
+                jsonContent = jsonContent.substring(7);
+            }
+            if (jsonContent.endsWith("```")) {
+                jsonContent = jsonContent.substring(0, jsonContent.length() - 3);
+            }
+            jsonContent = jsonContent.trim();
+
+            List<Map<String, Object>> parsedList = objectMapper.readValue(jsonContent, new TypeReference<List<Map<String, Object>>>() {});
+            
+            Map<String, AnalyzedChatMessage> parsedMap = parsedList.stream()
+                .filter(map -> map.containsKey("messageId") && map.containsKey("type") && map.containsKey("score"))
+                .map(map -> {
+                    String messageId = (String) map.get("messageId");
+                    String type = (String) map.get("type");
+                    double score = ((Number) map.get("score")).doubleValue();
+                    return Map.entry(messageId, Emotion.builder().type(type).score(score).build());
+                })
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> AnalyzedChatMessage.builder()
+                        .messageId(e.getKey())
+                        .emotion(e.getValue())
+                        .analyzedAt(LocalDateTime.now())
+                        .build(), (a, b) -> a)); // handle duplicates
+            
+            // Map the parsed JSON back to the original CompressedChat objects to ensure we don't drop any
+            return originalChats.stream().map(chat -> {
+                AnalyzedChatMessage parsedEmotion = parsedMap.get(chat.getRepresentativeId());
+                if (parsedEmotion != null) {
+                    return AnalyzedChatMessage.builder()
+                            .messageId(chat.getRepresentativeId())
+                            .roomId(chat.getRoomId())
+                            .content(chat.getContent())
+                            .emotion(parsedEmotion.getEmotion())
+                            .analyzedAt(LocalDateTime.now())
+                            .build();
+                } else {
+                    // Fallback to NEUTRAL if the LLM missed this specific ID
+                    return AnalyzedChatMessage.builder()
+                            .messageId(chat.getRepresentativeId())
+                            .roomId(chat.getRoomId())
+                            .content(chat.getContent())
+                            .emotion(Emotion.builder().type("NEUTRAL").score(0.0).build())
+                            .analyzedAt(LocalDateTime.now())
+                            .build();
+                }
+            }).collect(Collectors.toList());
+
+        } catch (JsonProcessingException e) {
+            log.error("[Ollama] Failed to parse JSON response: {}", jsonContent, e);
+            throw new RuntimeException("JSON parsing failed", e);
+        }
     }
 
     /**
@@ -65,30 +160,5 @@ public class GeminiAnalyzerService {
         return Mono.just(fallbackMessages);
     }
 
-    private AnalyzedChatMessage simulateEmotion(CompressedChat chat) {
-        String text = chat.getContent();
-        int r = random.nextInt(10);
-        String type;
-        double score;
 
-        if (text.contains("재밌") || text.contains("ㅋㅋ") || text.contains("화이팅") || text.contains("대박") || r >= 7) {
-            type = "POSITIVE";
-            score = 0.5 + (random.nextDouble() * 0.5);
-        } else if (text.contains("아쉽") || text.contains("별로") || r <= 1) {
-            type = "NEGATIVE";
-            score = -0.5 - (random.nextDouble() * 0.5);
-        } else {
-            type = "NEUTRAL";
-            score = (random.nextDouble() * 0.4) - 0.2;
-        }
-
-        Emotion emotion = Emotion.builder().type(type).score(score).build();
-        return AnalyzedChatMessage.builder()
-                .messageId(chat.getRepresentativeId())
-                .roomId(chat.getRoomId())
-                .content(chat.getContent())
-                .emotion(emotion)
-                .analyzedAt(LocalDateTime.now())
-                .build();
-    }
 }
