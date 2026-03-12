@@ -58,7 +58,7 @@ public class ChzzkSocketClient {
             return Mono.empty();
         }
 
-        return apiClient.createClientSession()
+        return apiClient.createUserSession()
                 .flatMap(socketUrl -> connectSocket(channelId, socketUrl))
                 .onErrorMap(e -> {
                     log.error("[Chzzk] Failed to subscribe channel {}: {}", channelId, e.getMessage());
@@ -103,33 +103,49 @@ public class ChzzkSocketClient {
     private Mono<Void> connectSocket(String channelId, String socketUrl) {
         return Mono.create(sink -> {
             try {
-                IO.Options opts = IO.Options.builder()
-                        .setTransports(new String[] { "websocket" })
-                        .setReconnection(true)
-                        .setReconnectionAttempts(5)
-                        .setReconnectionDelay(5000)
-                        .build();
+                IO.Options opts = new IO.Options();
+                opts.transports = new String[] { "websocket" };
+                opts.reconnection = true;
+                opts.reconnectionAttempts = 5;
+                opts.reconnectionDelay = 5000;
 
                 Socket socket = IO.socket(URI.create(socketUrl), opts);
                 activeSockets.put(channelId, socket);
 
-                // ── "connected" 시스템 메시지 수신 ──
-                socket.on("message", args -> {
+                // ── 시스템 및 채팅 이벤트 수신 ──
+                socket.on("SYSTEM", args -> {
                     try {
-                        JSONObject msg = (JSONObject) args[0];
-                        String event = msg.optString("event", "");
-                        String msgType = msg.optString("type", "");
-
-                        // Socket.IO 이벤트 타입 분기
-                        switch (event) {
-                            case "SYSTEM" -> handleSystemMessage(channelId, msg, sink);
-                            case "CHAT" -> handleChatMessage(channelId, msg);
-                            case "DONATION" -> handleDonationMessage(channelId, msg);
-                            case "SUBSCRIPTION" -> handleSubscriptionMessage(channelId, msg);
-                            default -> log.debug("[Chzzk][{}] Unknown event type: {}", channelId, event);
-                        }
+                        JSONObject msg = parseArgs(args);
+                        handleSystemMessage(channelId, msg, sink);
                     } catch (Exception e) {
-                        log.error("[Chzzk][{}] Error parsing message: {}", channelId, e.getMessage());
+                        log.error("[Chzzk][{}] Error parsing SYSTEM message: {}", channelId, e.getMessage());
+                    }
+                });
+
+                socket.on("CHAT", args -> {
+                    try {
+                        JSONObject msg = parseArgs(args);
+                        handleChatMessage(channelId, msg);
+                    } catch (Exception e) {
+                        log.error("[Chzzk][{}] Error parsing CHAT message: {}", channelId, e.getMessage());
+                    }
+                });
+
+                socket.on("DONATION", args -> {
+                    try {
+                        JSONObject msg = parseArgs(args);
+                        handleDonationMessage(channelId, msg);
+                    } catch (Exception e) {
+                        log.error("[Chzzk][{}] Error parsing DONATION message: {}", channelId, e.getMessage());
+                    }
+                });
+
+                socket.on("SUBSCRIPTION", args -> {
+                    try {
+                        JSONObject msg = parseArgs(args);
+                        handleSubscriptionMessage(channelId, msg);
+                    } catch (Exception e) {
+                        log.error("[Chzzk][{}] Error parsing SUBSCRIPTION message: {}", channelId, e.getMessage());
                     }
                 });
 
@@ -154,6 +170,20 @@ public class ChzzkSocketClient {
         });
     }
 
+    private JSONObject parseArgs(Object[] args) {
+        if (args == null || args.length == 0) return new JSONObject();
+        Object arg = args[0];
+        try {
+            if (arg instanceof String raw) {
+                return new JSONObject(raw);
+            }
+            return (JSONObject) arg;
+        } catch (org.json.JSONException e) {
+            log.error("Failed to parse args into JSONObject", e);
+            return new JSONObject();
+        }
+    }
+
     // ─── 시스템 메시지 처리 ────────────────────────────────────────────────────
 
     private void handleSystemMessage(String channelId, JSONObject msg, reactor.core.publisher.MonoSink<Void> sink) {
@@ -166,13 +196,22 @@ public class ChzzkSocketClient {
                 sessionKeys.put(channelId, sessionKey);
                 log.info("[Chzzk][{}] Session connected. sessionKey: {}", channelId, sessionKey);
 
-                // 이벤트 구독 API 호출 (비동기)
-                Mono.when(
-                        apiClient.subscribeChatEvent(sessionKey),
-                        apiClient.subscribeDonationEvent(sessionKey),
-                        apiClient.subscribeSubscriptionEvent(sessionKey)).subscribe(
+                // 이벤트 구독 API 호출 (각각 독립적으로 처리, 일부 실패해도 계속)
+                Mono<Void> chatSub = apiClient.subscribeChatEvent(sessionKey)
+                        .doOnSuccess(v -> log.info("[Chzzk][{}] Chat event subscribed.", channelId))
+                        .onErrorResume(e -> { log.warn("[Chzzk][{}] Chat subscribe failed (권한 부족?): {}", channelId, e.getMessage()); return Mono.empty(); });
+
+                Mono<Void> donationSub = apiClient.subscribeDonationEvent(sessionKey)
+                        .doOnSuccess(v -> log.info("[Chzzk][{}] Donation event subscribed.", channelId))
+                        .onErrorResume(e -> { log.warn("[Chzzk][{}] Donation subscribe failed (권한 부족?): {}", channelId, e.getMessage()); return Mono.empty(); });
+
+                Mono<Void> subscriptionSub = apiClient.subscribeSubscriptionEvent(sessionKey)
+                        .doOnSuccess(v -> log.info("[Chzzk][{}] Subscription event subscribed.", channelId))
+                        .onErrorResume(e -> { log.warn("[Chzzk][{}] Subscription subscribe failed (권한 부족?): {}", channelId, e.getMessage()); return Mono.empty(); });
+
+                Mono.when(chatSub, donationSub, subscriptionSub).subscribe(
                                 v -> {
-                                    log.info("[Chzzk][{}] All events subscribed successfully.", channelId);
+                                    log.info("[Chzzk][{}] Event subscription process completed.", channelId);
                                     sink.success();
                                 },
                                 e -> {

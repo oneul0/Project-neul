@@ -14,6 +14,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "chzzk.api")
 public class ChzzkProperties {
     private String baseUrl;
+    private String authUrl;
     private String clientId;
     private String clientSecret;
+    private String redirectUri;
 }

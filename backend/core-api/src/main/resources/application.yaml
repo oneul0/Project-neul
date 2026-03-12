@@ -17,6 +17,9 @@ spring:
 
 server:
   port: 8083
+  error:
+    include-message: always
+    include-stacktrace: always
 
 # Chzzk Open API 설정 (환경변수로 주입)
 chzzk:

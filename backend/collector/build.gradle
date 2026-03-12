@@ -14,8 +14,8 @@ dependencies {
 	// Java 8 날짜/시간 타입(LocalDateTime 등) 지원 모듈 추가
 	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
 
-	// Chzzk Open API Socket.IO 클라이언트 (공식 지원 최대 버전: 2.0.3)
-	implementation 'io.socket:socket.io-client:2.0.1'
+	// Chzzk Open API Socket.IO 클라이언트 (공식 지원 최대 버전: 2.0.3 -> Java client 1.0.2가 Engine.IO 3 호환)
+	implementation 'io.socket:socket.io-client:1.0.2'
 
 	// 재연결 로직용 Resilience4j (Circuit Breaker / Retry)
 	implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
