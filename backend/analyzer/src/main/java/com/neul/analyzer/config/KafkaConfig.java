@@ -1,6 +1,6 @@
 package com.neul.analyzer.config;
 
-import com.neul.analyzer.dto.AnalyzedChatMessage;
+import com.neul.common.dto.AnalyzedChatMessage;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;

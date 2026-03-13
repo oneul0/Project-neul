@@ -1,6 +1,6 @@
 package com.neul.analyzer.optimization;
 
-import com.neul.analyzer.dto.RawChatMessage;
+import com.neul.common.dto.RawChatMessage;
 
 import java.util.List;
 

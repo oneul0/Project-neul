@@ -1,14 +1,13 @@
 package com.neul.analyzer.service;
 
-import com.neul.analyzer.dto.AnalyzedChatMessage;
-import com.neul.analyzer.dto.Emotion;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.neul.common.dto.AnalyzedChatMessage;
+import com.neul.common.dto.Emotion;
 import com.neul.analyzer.dto.ollama.OllamaMessage;
 import com.neul.analyzer.dto.ollama.OllamaRequest;
 import com.neul.analyzer.dto.ollama.OllamaResponse;
 import com.neul.analyzer.optimization.CompressedChat;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +24,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class GeminiAnalyzerService {
+public class OllamaAnalyzerService {
 
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
@@ -85,61 +84,67 @@ public class GeminiAnalyzerService {
     }
 
     private List<AnalyzedChatMessage> parseOllamaResponse(OllamaResponse response, List<CompressedChat> originalChats) {
-        String jsonContent = response.getMessage() != null ? response.getMessage().getContent() : "[]";
-        
-        try {
-            // Sometimes local LLMs might wrap the output in markdown code blocks despite formatting instructions
-            if (jsonContent.startsWith("```json")) {
-                jsonContent = jsonContent.substring(7);
-            }
-            if (jsonContent.endsWith("```")) {
-                jsonContent = jsonContent.substring(0, jsonContent.length() - 3);
-            }
-            jsonContent = jsonContent.trim();
+        String content = response.getMessage() != null ? response.getMessage().getContent() : "";
+        if (content == null || content.isBlank()) {
+            log.warn("[Ollama] Empty content received from LLM.");
+            return createFallbackList(originalChats);
+        }
 
-            List<Map<String, Object>> parsedList = objectMapper.readValue(jsonContent, new TypeReference<List<Map<String, Object>>>() {});
+        try {
+            String jsonArray = extractJsonArray(content);
+            List<Map<String, Object>> parsedList = objectMapper.readValue(jsonArray, new TypeReference<List<Map<String, Object>>>() {});
             
-            Map<String, AnalyzedChatMessage> parsedMap = parsedList.stream()
+            Map<String, Emotion> emotionMap = parsedList.stream()
                 .filter(map -> map.containsKey("messageId") && map.containsKey("type") && map.containsKey("score"))
-                .map(map -> {
-                    String messageId = (String) map.get("messageId");
-                    String type = (String) map.get("type");
-                    double score = ((Number) map.get("score")).doubleValue();
-                    return Map.entry(messageId, Emotion.builder().type(type).score(score).build());
-                })
-                .collect(Collectors.toMap(Map.Entry::getKey, e -> AnalyzedChatMessage.builder()
-                        .messageId(e.getKey())
-                        .emotion(e.getValue())
-                        .analyzedAt(LocalDateTime.now())
-                        .build(), (a, b) -> a)); // handle duplicates
-            
-            // Map the parsed JSON back to the original CompressedChat objects to ensure we don't drop any
+                .collect(Collectors.toMap(
+                    map -> (String) map.get("messageId"),
+                    map -> Emotion.builder()
+                            .type((String) map.get("type"))
+                            .score(((Number) map.get("score")).doubleValue())
+                            .build(),
+                    (a, b) -> a // 중복 시 첫 번째 사용
+                ));
+
             return originalChats.stream().map(chat -> {
-                AnalyzedChatMessage parsedEmotion = parsedMap.get(chat.getRepresentativeId());
-                if (parsedEmotion != null) {
-                    return AnalyzedChatMessage.builder()
-                            .messageId(chat.getRepresentativeId())
-                            .roomId(chat.getRoomId())
-                            .content(chat.getContent())
-                            .emotion(parsedEmotion.getEmotion())
-                            .analyzedAt(LocalDateTime.now())
-                            .build();
-                } else {
-                    // Fallback to NEUTRAL if the LLM missed this specific ID
-                    return AnalyzedChatMessage.builder()
-                            .messageId(chat.getRepresentativeId())
-                            .roomId(chat.getRoomId())
-                            .content(chat.getContent())
-                            .emotion(Emotion.builder().type("NEUTRAL").score(0.0).build())
-                            .analyzedAt(LocalDateTime.now())
-                            .build();
-                }
+                Emotion emotion = emotionMap.get(chat.getRepresentativeId());
+                return AnalyzedChatMessage.builder()
+                        .messageId(chat.getRepresentativeId())
+                        .roomId(chat.getRoomId())
+                        .content(chat.getContent())
+                        .emotion(emotion != null ? emotion : Emotion.builder().type("NEUTRAL").score(0.0).build())
+                        .analyzedAt(LocalDateTime.now())
+                        .build();
             }).collect(Collectors.toList());
 
-        } catch (JsonProcessingException e) {
-            log.error("[Ollama] Failed to parse JSON response: {}", jsonContent, e);
-            throw new RuntimeException("JSON parsing failed", e);
+        } catch (Exception e) {
+            log.error("[Ollama] Failed to parse LLM response: {}. Error: {}", content, e.getMessage());
+            return createFallbackList(originalChats);
         }
+    }
+
+    private String extractJsonArray(String text) {
+        // Find the first '[' and last ']'
+        int start = text.indexOf('[');
+        int end = text.lastIndexOf(']');
+        
+        if (start != -1 && end != -1 && start < end) {
+            return text.substring(start, end + 1);
+        }
+        
+        // If no brackets found, return as is (readValue will handle errors)
+        return text.trim();
+    }
+
+    private List<AnalyzedChatMessage> createFallbackList(List<CompressedChat> chats) {
+        return chats.stream()
+                .map(chat -> AnalyzedChatMessage.builder()
+                        .messageId(chat.getRepresentativeId())
+                        .roomId(chat.getRoomId())
+                        .content(chat.getContent())
+                        .emotion(Emotion.builder().type("NEUTRAL").score(0.0).build())
+                        .analyzedAt(LocalDateTime.now())
+                        .build())
+                .collect(Collectors.toList());
     }
 
     /**

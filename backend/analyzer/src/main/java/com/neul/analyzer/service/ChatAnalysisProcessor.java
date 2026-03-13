@@ -2,8 +2,9 @@ package com.neul.analyzer.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.neul.analyzer.dto.AnalyzedChatMessage;
-import com.neul.analyzer.dto.RawChatMessage;
+import com.neul.common.dto.AnalyzedChatMessage;
+import com.neul.common.dto.RawChatBatch;
+import com.neul.common.dto.RawChatMessage;
 import com.neul.analyzer.optimization.ChatOptimizer;
 import com.neul.analyzer.optimization.OptimizedBatch;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +23,7 @@ import java.util.stream.Collectors;
 public class ChatAnalysisProcessor {
 
     private final KafkaTemplate<String, AnalyzedChatMessage> kafkaTemplate;
-    private final GeminiAnalyzerService geminiAnalyzerService;
+    private final OllamaAnalyzerService analyzerService;
     private final ObjectMapper objectMapper;
     private final ChatOptimizer chatOptimizer;
 
@@ -35,28 +36,29 @@ public class ChatAnalysisProcessor {
      * - DONATION 타입 → 분석 없이 패스스루 → analyzed-chat-topic
      * - SUBSCRIPTION 타입 → 분석 없이 패스스루 → analyzed-chat-topic
      */
-    @KafkaListener(topics = "raw-chat-topic", groupId = "neul-analyzer-group", containerFactory = "batchKafkaListenerContainerFactory")
-    public void processBatch(List<String> rawMessages) {
-        if (rawMessages.isEmpty())
+    @KafkaListener(topics = "raw-chat-batch-topic", groupId = "neul-analyzer-group", containerFactory = "batchKafkaListenerContainerFactory")
+    public void processBatch(List<String> rawBatchJsons) {
+        if (rawBatchJsons.isEmpty())
             return;
 
-        log.debug("[Processor] Received batch of {} raw messages", rawMessages.size());
+        log.debug("[Processor] Received {} batch messages", rawBatchJsons.size());
 
-        // Step 1: JSON 파싱
-        List<RawChatMessage> parsed = rawMessages.stream()
-                .map(json -> {
-                    try {
-                        return objectMapper.readValue(json, RawChatMessage.class);
-                    } catch (JsonProcessingException e) {
-                        log.error("[Processor] Failed to parse RawChatMessage: {}", json, e);
-                        return null;
-                    }
-                })
-                .filter(msg -> msg != null)
-                .collect(Collectors.toList());
+        for (String json : rawBatchJsons) {
+            try {
+                RawChatBatch batch = objectMapper.readValue(json, RawChatBatch.class);
+                processSingleBatch(batch);
+            } catch (JsonProcessingException e) {
+                log.error("[Processor] Failed to parse RawChatBatch: {}", json, e);
+            }
+        }
+    }
 
-        if (parsed.isEmpty())
+    private void processSingleBatch(RawChatBatch batch) {
+        List<RawChatMessage> parsed = batch.getMessages();
+        if (parsed == null || parsed.isEmpty())
             return;
+
+        log.debug("[Processor] Processing batch from channel {} with {} messages", batch.getRoomId(), parsed.size());
 
         // Step 2: 메시지 타입별 분기
         List<RawChatMessage> chatMessages = parsed.stream()
@@ -123,7 +125,7 @@ public class ChatAnalysisProcessor {
         }
 
         // Gemini 감정 분석
-        geminiAnalyzerService.analyzeBatch(optimized.getCompressedChats())
+        analyzerService.analyzeBatch(optimized.getCompressedChats())
                 .subscribe(
                         analyzed -> analyzed.forEach(msg -> {
                             kafkaTemplate.send(OUTPUT_TOPIC, msg.getRoomId(), msg);

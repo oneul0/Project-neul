@@ -2,7 +2,8 @@ package com.neul.analyzer.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.neul.analyzer.dto.AnalyzedChatMessage;
+import com.neul.common.dto.AnalyzedChatMessage;
+import com.neul.common.dto.Emotion;
 import com.neul.analyzer.dto.ollama.OllamaMessage;
 import com.neul.analyzer.dto.ollama.OllamaRequest;
 import com.neul.analyzer.dto.ollama.OllamaResponse;
@@ -26,9 +27,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-class GeminiAnalyzerServiceTest {
+class OllamaAnalyzerServiceTest {
 
-    private GeminiAnalyzerService geminiAnalyzerService;
+    private OllamaAnalyzerService geminiAnalyzerService;
 
     @Mock
     private WebClient webClient;
@@ -52,7 +53,7 @@ class GeminiAnalyzerServiceTest {
     void setUp() {
         objectMapper = new ObjectMapper();
         objectMapper.registerModule(new JavaTimeModule());
-        geminiAnalyzerService = new GeminiAnalyzerService(webClient, objectMapper);
+        geminiAnalyzerService = new OllamaAnalyzerService(webClient, objectMapper);
         
         ReflectionTestUtils.setField(geminiAnalyzerService, "ollamaApiUrl", "http://localhost:11434/api/chat");
         ReflectionTestUtils.setField(geminiAnalyzerService, "ollamaModel", "gemma:2b");
@@ -169,6 +170,68 @@ class GeminiAnalyzerServiceTest {
         StepVerifier.create(geminiAnalyzerService.analyzeBatch(chats))
                 .assertNext(results -> {
                     assertThat(results.get(0).getEmotion().getType()).isEqualTo("NEUTRAL");
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    @DisplayName("응답에 JSON 외에 불필요한 텍스트가 섞여 있어도 대괄호를 기준으로 JSON만 추출하여 파싱한다")
+    void analyzeBatch_WithExtraText() {
+        // given
+        List<CompressedChat> chats = List.of(
+                CompressedChat.builder().representativeId("msg-1").roomId("room-1").content("테스트").count(1).build()
+        );
+
+        String mockResponseContent = "Here is your analysis result:\n" +
+                "[{\"messageId\": \"msg-1\", \"type\": \"POSITIVE\", \"score\": 0.9}]\n" +
+                "I hope this helps!";
+
+        OllamaResponse mockResponse = OllamaResponse.builder()
+                .message(OllamaMessage.builder().content(mockResponseContent).build())
+                .build();
+
+        when(webClient.post()).thenReturn(requestBodyUriSpec);
+        when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
+        when(requestBodySpec.bodyValue(any())).thenReturn(requestHeadersSpec);
+        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.bodyToMono(OllamaResponse.class)).thenReturn(Mono.just(mockResponse));
+
+        // when & then
+        StepVerifier.create(geminiAnalyzerService.analyzeBatch(chats))
+                .assertNext(results -> {
+                    assertThat(results).hasSize(1);
+                    assertThat(results.get(0).getEmotion().getType()).isEqualTo("POSITIVE");
+                    assertThat(results.get(0).getEmotion().getScore()).isEqualTo(0.9);
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    @DisplayName("응답 JSON이 완전히 깨진 경우 전체를 NEUTRAL로 폴백 처리한다")
+    void analyzeBatch_MalformedJson_Fallback() {
+        // given
+        List<CompressedChat> chats = List.of(
+                CompressedChat.builder().representativeId("msg-1").roomId("room-1").content("테스트").count(1).build()
+        );
+
+        String malformedJson = "[{\"messageId\": \"msg-1\", \"type\": \"POSITIVE\" ... (broken) ]";
+
+        OllamaResponse mockResponse = OllamaResponse.builder()
+                .message(OllamaMessage.builder().content(malformedJson).build())
+                .build();
+
+        when(webClient.post()).thenReturn(requestBodyUriSpec);
+        when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
+        when(requestBodySpec.bodyValue(any())).thenReturn(requestHeadersSpec);
+        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.bodyToMono(OllamaResponse.class)).thenReturn(Mono.just(mockResponse));
+
+        // when & then
+        StepVerifier.create(geminiAnalyzerService.analyzeBatch(chats))
+                .assertNext(results -> {
+                    assertThat(results).hasSize(1);
+                    assertThat(results.get(0).getEmotion().getType()).isEqualTo("NEUTRAL");
+                    assertThat(results.get(0).getEmotion().getScore()).isEqualTo(0.0);
                 })
                 .verifyComplete();
     }

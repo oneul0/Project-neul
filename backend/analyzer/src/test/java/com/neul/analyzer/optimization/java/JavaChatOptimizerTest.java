@@ -1,6 +1,6 @@
 package com.neul.analyzer.optimization.java;
 
-import com.neul.analyzer.dto.RawChatMessage;
+import com.neul.common.dto.RawChatMessage;
 import com.neul.analyzer.optimization.OptimizedBatch;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;

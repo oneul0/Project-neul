@@ -36,13 +36,11 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"viewers" | "positive" | "negative">("viewers");
+  const [searchId, setSearchId] = useState("");
 
   const fetchLives = async () => {
     try {
       setLoading(true);
-      // Calls the core-api via a proxy or directly if CORS is enabled
-      // Assuming Next.js runs on 3000 and core-api on 8083. 
-      // For cross-origin in dev, we should hit the absolute URL or use Next.js rewrites.
       const res = await fetch("http://localhost:8083/api/v1/lives?size=20");
       if (!res.ok) throw new Error("Failed to fetch live channels");
 
@@ -62,7 +60,24 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  const sortedLives = [...lives].sort((a, b) => {
+  // Demo Room constant
+  const demoRoom: LiveChannel = {
+    channelId: "test-room-1",
+    channelName: "데모 채널 (AI 분석 테스트)",
+    liveTitle: "실시간 감정 분석 AI 데모 방송입니다 (더미 데이터)",
+    concurrentUserCount: 999,
+    openDate: new Date().toISOString(),
+    categoryType: "ETC",
+    liveCategory: "DEMO",
+    liveCategoryValue: "AI 분석 데모",
+    sentiment: { TOTAL_COUNT: 0 }
+  };
+
+  const sortedLives = [demoRoom, ...lives].sort((a, b) => {
+    // Keep demo room at the top
+    if (a.channelId === "test-room-1") return -1;
+    if (b.channelId === "test-room-1") return 1;
+
     if (sortBy === "viewers") {
       return b.concurrentUserCount - a.concurrentUserCount;
     }
@@ -111,6 +126,27 @@ export default function Home() {
             <div className="flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> 혼돈의 도가니</div>
           </button>
         </div>
+      </div>
+
+      {/* Manual Search / Jump to Channel */}
+      <div className="glass-panel p-4 rounded-2xl border-slate-700/50 bg-slate-900/40 flex flex-col md:flex-row gap-4 items-center">
+        <div className="relative flex-1 w-full">
+          <input
+            type="text"
+            placeholder="직접 채널 ID 입력 (예: test-room-1 또는 치지직 채널 UID)"
+            value={searchId}
+            onChange={(e) => setSearchId(e.target.value)}
+            className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all pl-11"
+          />
+          <Sparkles className="absolute left-4 top-3 w-5 h-5 text-slate-500" />
+        </div>
+        <Link 
+          href={`/channels/${searchId}`}
+          className={`w-full md:w-auto px-6 py-2.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${searchId.trim() ? "bg-primary text-white hover:bg-primary/80 shadow-lg shadow-primary/20" : "bg-slate-800 text-slate-500 cursor-not-allowed"}`}
+          onClick={(e) => !searchId.trim() && e.preventDefault()}
+        >
+          분석 시작
+        </Link>
       </div>
 
       {error && (

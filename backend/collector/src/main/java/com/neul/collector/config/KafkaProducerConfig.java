@@ -1,6 +1,6 @@
 package com.neul.collector.config;
 
-import com.neul.collector.dto.RawChatMessage;
+import com.neul.common.dto.RawChatBatch;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -23,15 +23,15 @@ public class KafkaProducerConfig {
     private String bootstrapServers;
 
     @Bean
-    public NewTopic rawChatTopic() {
-        return TopicBuilder.name("raw-chat-topic")
+    public NewTopic rawChatBatchTopic() {
+        return TopicBuilder.name("raw-chat-batch-topic")
                 .partitions(3)
                 .replicas(1)
                 .build();
     }
 
     @Bean
-    public ProducerFactory<String, RawChatMessage> producerFactory() {
+    public ProducerFactory<String, RawChatBatch> producerFactory() {
         Map<String, Object> configProps = new HashMap<>();
         configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
@@ -40,7 +40,7 @@ public class KafkaProducerConfig {
     }
 
     @Bean
-    public KafkaTemplate<String, RawChatMessage> kafkaTemplate() {
+    public KafkaTemplate<String, RawChatBatch> kafkaTemplate() {
         return new KafkaTemplate<>(producerFactory());
     }
 }

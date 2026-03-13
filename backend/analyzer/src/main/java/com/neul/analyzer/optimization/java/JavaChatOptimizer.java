@@ -1,6 +1,6 @@
 package com.neul.analyzer.optimization.java;
 
-import com.neul.analyzer.dto.RawChatMessage;
+import com.neul.common.dto.RawChatMessage;
 import com.neul.analyzer.optimization.ChatOptimizer;
 import com.neul.analyzer.optimization.CompressedChat;
 import com.neul.analyzer.optimization.OptimizedBatch;

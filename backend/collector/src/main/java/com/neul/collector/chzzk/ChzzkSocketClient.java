@@ -2,12 +2,14 @@ package com.neul.collector.chzzk;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.neul.collector.dto.RawChatMessage;
+import com.neul.collector.service.ChatCollector;
 import com.neul.collector.service.ChatProducer;
 import io.socket.client.IO;
 import io.socket.client.Socket;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
@@ -31,9 +33,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * 지원 Chzzk Socket.IO 버전: 1.0.0 ~ 2.0.3
  */
 @Slf4j
+@Primary
 @Component
 @RequiredArgsConstructor
-public class ChzzkSocketClient {
+public class ChzzkSocketClient implements ChatCollector {
 
     private final ChzzkApiClient apiClient;
     private final ChatProducer chatProducer;

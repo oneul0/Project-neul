@@ -1,6 +1,6 @@
 package com.neul.core_api.domain.chat.service;
 
-import com.neul.core_api.domain.chat.dto.AnalyzedChatMessage;
+import com.neul.common.dto.AnalyzedChatMessage;
 import com.neul.core_api.domain.chat.entity.AnalyzedChat;
 import com.neul.core_api.domain.chat.repository.AnalyzedChatRepository;
 import lombok.RequiredArgsConstructor;

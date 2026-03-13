@@ -1,6 +1,6 @@
 package com.neul.collector.controller;
 
-import com.neul.collector.chzzk.ChzzkSocketClient;
+import com.neul.collector.service.ChatCollector;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import reactor.core.publisher.Mono;
 
 import java.util.HashMap;
@@ -23,18 +24,19 @@ import java.util.Map;
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/channels")
+@CrossOrigin(origins = "http://localhost:3000", allowCredentials = "true")
 @RequiredArgsConstructor
 public class ChzzkChannelController {
 
-        private final ChzzkSocketClient socketClient;
+        private final ChatCollector chatCollector;
 
         @PostMapping("/{channelId}/subscribe")
         public Mono<ResponseEntity<Map<String, Object>>> subscribe(@PathVariable String channelId) {
-                if (socketClient.isSubscribed(channelId)) {
+                if (chatCollector.isSubscribed(channelId)) {
                         return Mono.just(ResponseEntity.ok(buildResponse(channelId, "already_subscribed", null)));
                 }
 
-                return socketClient.subscribe(channelId)
+                return chatCollector.subscribe(channelId)
                                 .thenReturn(ResponseEntity.ok(buildResponse(channelId, "subscribed", null)))
                                 .onErrorResume(e -> {
                                         log.error("[Chzzk] Subscribe failed for channel {}: {}", channelId,
@@ -47,7 +49,7 @@ public class ChzzkChannelController {
 
         @DeleteMapping("/{channelId}/subscribe")
         public Mono<ResponseEntity<Map<String, Object>>> unsubscribe(@PathVariable String channelId) {
-                return socketClient.unsubscribe(channelId)
+                return chatCollector.unsubscribe(channelId)
                                 .thenReturn(ResponseEntity.ok(buildResponse(channelId, "unsubscribed", null)))
                                 .onErrorResume(e -> {
                                         log.error("[Chzzk] Unsubscribe failed for channel {}: {}", channelId,
