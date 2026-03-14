@@ -93,18 +93,25 @@ public class OllamaAnalyzerService {
         }
 
         try {
-            String jsonArray = extractJsonArray(content);
-            List<Map<String, Object>> parsedList = objectMapper.readValue(jsonArray, new TypeReference<List<Map<String, Object>>>() {});
+            String jsonStr = extractJsonArray(content);
+            List<Map<String, Object>> parsedList;
+            
+            if (jsonStr.startsWith("{")) {
+                Map<String, Object> singleObject = objectMapper.readValue(jsonStr, new TypeReference<Map<String, Object>>() {});
+                parsedList = List.of(singleObject);
+            } else {
+                parsedList = objectMapper.readValue(jsonStr, new TypeReference<List<Map<String, Object>>>() {});
+            }
             
             Map<String, Emotion> emotionMap = parsedList.stream()
-                .filter(map -> map.containsKey("messageId") && map.containsKey("type") && map.containsKey("score"))
+                .filter(map -> map != null && map.containsKey("messageId") && map.containsKey("type") && map.containsKey("score"))
                 .collect(Collectors.toMap(
                     map -> (String) map.get("messageId"),
                     map -> Emotion.builder()
                             .type((String) map.get("type"))
                             .score(((Number) map.get("score")).doubleValue())
                             .build(),
-                    (a, b) -> a // 중복 시 첫 번째 사용
+                    (a, b) -> a
                 ));
 
             return originalChats.stream().map(chat -> {
