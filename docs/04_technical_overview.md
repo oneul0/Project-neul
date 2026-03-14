@@ -8,16 +8,17 @@
 
 ### [Collector Module]
 - **`NidChatCollector`**: 치지직 채팅 채널 ID 및 엑세스 토큰을 조회한 후, `wss://kr-ss1.chat.naver.com/chat`에 연결하여 실시간 데이터를 수집합니다.
-- **Batching Scheme**: `Sinks.Many`를 통해 들어온 메시지를 `window(Duration.ofMinutes(1))`로 묶어 `RawChatBatch` 객체로 Kafka에 발행합니다.
-- **Topic Migration**: `raw-chat-topic`에서 `raw-chat-batch-topic`으로 전환하여 네트워크 오버헤드를 감소시켰습니다.
+### [Collector Module]
+- **`NidChatCollector`**: 치지직 채팅 채널 ID 및 엑세스 토큰을 조회한 후, `wss://kr-ss1.chat.naver.com/chat`에 연결하여 실시간 데이터를 수집합니다.
+- **Batching Scheme**: `window(Duration.ofSeconds(2))`로 묶어 **2초 단위**의 고속 마이크로배칭을 수행하여 실시간성을 극대화했습니다.
 
 ### [Analyzer Module]
-- **`ChatAnalysisProcessor`**: Kafka에서 전달받은 JSON 리스트를 Java 리스트로 역직렬화한 후, 벌크 분석을 수행합니다.
-- **Ollama Integration**: 프롬프트를 튜닝하여 여러 채팅 메시지의 감정을 일괄적으로 추출할 수 있도록 최적화되었습니다.
+- **`ChatAnalysisProcessor`**: Kafka에서 전달받은 JSON 리스트를 Java 리스트로 역직렬화한 후, 일괄 분석을 수행합니다.
+- **7-Emotion Analysis**: Ollama를 통해 기쁨, 희망, 슬픔, 분노 등 총 7가지 상세 감정을 분석하도록 프롬프트가 고도화되었습니다.
 
 ### [Core API Module]
 - **`ChatStreamService`**: `analyzed-chat-topic`의 메시지를 소비하여 SSE(Server-Sent Events)를 통해 프런트엔드로 실시간 푸시합니다.
-- **Storage Strategy**: CHAT 타입은 PostgreSQL에 영구 저장하고, DONATION/SUBSCRIPTION은 SSE 이벤트로만 전달하여 DB 부하를 관리합니다.
+- **Highlight Engine**: 0.8 이상의 감정 스파이크를 감지하여 타임라인 이벤트를 발생시키고, 치지직 실시간 썸네일 URL을 함께 제공합니다.
 
 ---
 
