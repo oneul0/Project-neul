@@ -121,9 +121,9 @@ public class NidChatCollector implements ChatCollector {
         // 메시지 수집을 위한 Sink (1분 배칭용)
         Sinks.Many<RawChatMessage> chatSink = Sinks.many().multicast().onBackpressureBuffer();
 
-        // 1. 1분 단위 배칭 파이프라인
+        // 1. 2초 단위 배칭 파이프라인 (실시간성 강화)
         Disposable batchJob = chatSink.asFlux()
-                .window(Duration.ofMinutes(1))
+                .window(Duration.ofSeconds(2))
                 .flatMap(window -> window.collectList())
                 .filter(list -> !list.isEmpty())
                 .subscribe(batchList -> {

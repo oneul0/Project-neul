@@ -67,10 +67,12 @@ public class OllamaAnalyzerService {
 
     private String getSystemPrompt() {
         return "You are an AI that analyzes the sentiment of a batch of streaming chat messages in Korean. " +
-               "For each message provided by the user, you must determine its overall emotion as either POSITIVE, NEGATIVE, or NEUTRAL. " +
-               "Also provide a confidence score between -1.0 and 1.0 (-1.0 being strongly negative, 1.0 being strongly positive, 0.0 being exactly neutral). " +
+               "For each message provided by the user, you must determine its overall emotion as one of: " +
+               "JOY (happiness, laughter), HOPE (cheering, support, curiosity), NEUTRAL (facts, normal talk), " +
+               "SADNESS (sorrow, pity), ANGER (frustration, toxicity), WONDER (surprise, amazement), DISGUST (hate, dislike). " +
+               "Also provide a confidence score between 0.0 and 1.0. " +
                "You MUST output exactly a JSON array containing objects with the following keys: " +
-               "'messageId' (string), 'type' (string, one of POSITIVE/NEGATIVE/NEUTRAL), 'score' (number). " +
+               "'messageId' (string), 'type' (string, one of JOY/HOPE/NEUTRAL/SADNESS/ANGER/WONDER/DISGUST), 'score' (number). " +
                "Do not output any markdown formatting, markdown code blocks, or extra text. Output ONLY pure JSON.";
     }
 
