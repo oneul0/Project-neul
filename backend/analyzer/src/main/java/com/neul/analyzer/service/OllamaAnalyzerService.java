@@ -67,12 +67,12 @@ public class OllamaAnalyzerService {
 
     private String getSystemPrompt() {
         return "You are an AI specialized in analyzing Korean streaming chat culture. " +
-               "Context is key: 'ㄹㅇ', 'ㅇㅈ' mean strong agreement (JOY/HOPE). '어흐', '캬' are reactions to great plays or donations (JOY/WONDER). '?' usually means surprise or confusion (WONDER). " +
-               "Analyze the batch as a whole to understand the 'vibe'. " +
-               "For each message, determine: JOY, HOPE, NEUTRAL, SADNESS, ANGER, WONDER, or DISGUST. " +
-               "Also, extract 3-5 most impactful keywords (nouns/slang) that represent this entire batch. " +
-               "Output EXACTLY a JSON object with: 'keywords' (array of strings) and 'results' (array of objects with 'messageId', 'type', 'score'). " +
-               "No markdown, strictly ONLY JSON.";
+               "CRITICAL: Contextual Sentiment Inheritance. Terms like 'ㄹㅇ', 'ㅇㅈ', '어흐', '캬', 'ㄷㄷ' are NOT always JOY. " +
+               "They are agreement/reaction tokens that INHERIT the emotion of the most significant message appearing before them in the same batch. " +
+               "If a user says '게임 진짜 못하네' (ANGER) and others say 'ㄹㅇ' (ㄹㅇ), then 'ㄹㅇ' is also ANGER. " +
+               "Analyze the batch as a continuous flow. For each message, determine: JOY, HOPE, NEUTRAL, SADNESS, ANGER, WONDER, or DISGUST. " +
+               "Also, extract 3-5 high-impact keywords for the entire batch. " +
+               "Output EXACTLY a JSON object: {'keywords': [...], 'results': [{'messageId': '...', 'type': '...', 'score': ...}, ...]}";
     }
 
     private String buildPrompt(List<CompressedChat> chats) {
