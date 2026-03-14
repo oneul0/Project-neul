@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.ReactiveRedisTemplate;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.Map;
@@ -15,12 +16,12 @@ public class StreamRedisService {
 
     private final ReactiveRedisTemplate<String, Object> redisTemplate;
 
-    public Mono<Void> incrementEmotionStats(String roomId, String emotionType) {
+    public Mono<Void> updateMultiEmotionStats(String roomId, Map<String, Double> scores) {
         String key = "room:" + roomId + ":stats";
         
-        // 1. 해당 감정 타입 카운트 증가
-        // 2. 전체 카운트 증가
-        return redisTemplate.opsForHash().increment(key, emotionType, 1)
+        return Flux.fromIterable(scores.entrySet())
+                .filter(entry -> entry.getValue() > 0)
+                .flatMap(entry -> redisTemplate.opsForHash().increment(key, entry.getKey(), entry.getValue()))
                 .then(redisTemplate.opsForHash().increment(key, "TOTAL_COUNT", 1))
                 .then();
     }
@@ -33,5 +34,49 @@ public class StreamRedisService {
                     log.warn("Redis 접속 실패로 인해 [{}] 감정 통계를 가져올 수 없습니다: {}", roomId, e.getMessage());
                     return Mono.just(Map.of());
                 });
+    }
+
+    // ─── Voting & Session Control (Phase 23) ─────────────────────────────────
+
+    public Mono<Boolean> recordVote(String roomId, String userId, String option) {
+        String key = "poll:" + roomId + ":votes";
+        // Latest-Vote-Only: overwrites previous field value for the same userId
+        return redisTemplate.opsForHash().put(key, userId, option);
+    }
+
+    public Mono<Map<Object, Object>> getPollResults(String roomId) {
+        String key = "poll:" + roomId + ":votes";
+        return redisTemplate.opsForHash().entries(key)
+                .collectMap(Map.Entry::getKey, Map.Entry::getValue);
+    }
+
+    public Mono<Void> clearPoll(String roomId) {
+        return redisTemplate.delete("poll:" + roomId + ":votes").then();
+    }
+
+    public Mono<Boolean> setCollectionActive(String roomId, boolean active) {
+        String key = "room:" + roomId + ":session";
+        return redisTemplate.opsForValue().set(key, active);
+    }
+
+    public Mono<Boolean> isCollectionActive(String roomId) {
+        String key = "room:" + roomId + ":session";
+        return redisTemplate.opsForValue().get(key)
+                .map(val -> (Boolean) val)
+                .defaultIfEmpty(false);
+    }
+
+    public Mono<Boolean> setPollItems(String roomId, java.util.List<String> items) {
+        String key = "poll:" + roomId + ":items";
+        return redisTemplate.delete(key)
+                .then(redisTemplate.opsForList().rightPushAll(key, items.toArray()))
+                .map(res -> true);
+    }
+
+    public Mono<java.util.List<String>> getPollItems(String roomId) {
+        String key = "poll:" + roomId + ":items";
+        return redisTemplate.opsForList().range(key, 0, -1)
+                .map(Object::toString)
+                .collectList();
     }
 }

@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useRef, use } from "react";
 import { 
-    Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, 
     ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis 
 } from "recharts";
 import { 
@@ -26,10 +25,7 @@ interface AnalyzedChatMessage {
     messageType: "CHAT" | "DONATION" | "SUBSCRIPTION";
     content?: string;
     sender?: string;
-    emotion?: {
-        type: string;
-        score: number;
-    };
+    emotionScores?: Record<string, number>;
     keywords?: string[];
     analyzedAt?: string;
 }
@@ -44,6 +40,7 @@ const EMOTION_MAP: Record<string, { color: string; label: string; icon: string }
     ANGER: { color: "#f87171", label: "분노", icon: "💢" },
     WONDER: { color: "#c084fc", label: "놀람", icon: "😲" },
     DISGUST: { color: "#fb7185", label: "혐오", icon: "🤮" },
+    VOTE: { color: "#6366f1", label: "투표", icon: "🗳️" },
 };
 
 export default function ChannelDashboard({ params }: { params: Promise<{ channelId: string }> }) {
@@ -55,8 +52,16 @@ export default function ChannelDashboard({ params }: { params: Promise<{ channel
     const [highlights, setHighlights] = useState<Highlight[]>([]);
     const [trendData, setTrendData] = useState<{ time: string; score: number }[]>([]);
     const [keywords, setKeywords] = useState<string[]>([]);
-    const [latestVibe, setLatestVibe] = useState<{ emotion: string; content: string } | null>(null);
     const [isConnected, setIsConnected] = useState(false);
+    const [latestVibe, setLatestVibe] = useState<{ emotion: string; content: string } | null>(null);
+    const [isSessionActive, setIsSessionActive] = useState(false);
+    const [pollResults, setPollResults] = useState<Record<string, number>>({});
+    const [voters, setVoters] = useState<Record<string, string>>({});
+    const [selectedVoter, setSelectedVoter] = useState<string | null>(null);
+    const [voterHistory, setVoterHistory] = useState<AnalyzedChatMessage[]>([]);
+    const [pollItems, setPollItems] = useState<string[]>([]); // Phase 24
+    const [showPollCreator, setShowPollCreator] = useState(false); // Phase 24
+    const [newPollItems, setNewPollItems] = useState<string[]>(["", ""]); // Phase 24
 
     const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -92,7 +97,11 @@ export default function ChannelDashboard({ params }: { params: Promise<{ channel
             es.addEventListener("chat_analyzed", (e) => {
                 try {
                     const data: AnalyzedChatMessage = JSON.parse(e.data);
-                    const emotionType = data.emotion?.type || "NEUTRAL";
+                    
+                    const scores = data.emotionScores || { NEUTRAL: 1.0 };
+                    const topEmotionEntry = Object.entries(scores).reduce((a, b) => a[1] > b[1] ? a : b);
+                    const emotionType = topEmotionEntry[0];
+                    const emotionScore = topEmotionEntry[1];
                     
                     if (data.keywords && data.keywords.length > 0) {
                         setKeywords(data.keywords);
@@ -104,8 +113,8 @@ export default function ChannelDashboard({ params }: { params: Promise<{ channel
 
                     setTrendData(prev => {
                         const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                        const score = (emotionType === "JOY" || emotionType === "HOPE") ? 1 : 
-                                      (emotionType === "ANGER" || emotionType === "DISGUST") ? -1 : 0;
+                        const score = (emotionType === "JOY" || emotionType === "HOPE") ? emotionScore : 
+                                      (emotionType === "ANGER" || emotionType === "DISGUST") ? -emotionScore : 0;
                         return [...prev, { time: now, score }].slice(-30);
                     });
                 } catch (err) { }
@@ -127,16 +136,42 @@ export default function ChannelDashboard({ params }: { params: Promise<{ channel
 
         connectSSE();
 
+        const fetchInitialState = async () => {
+            try {
+                const res = await fetch(`http://localhost:8083/api/v1/poll/${channelId}/session`);
+                const active = await res.json();
+                setIsSessionActive(active);
+
+                const pollRes = await fetch(`http://localhost:8083/api/v1/poll/${channelId}/results`);
+                const results = await pollRes.json();
+                setPollResults(results);
+
+                const itemsRes = await fetch(`http://localhost:8083/api/v1/poll/${channelId}/items`);
+                const items = await itemsRes.json();
+                setPollItems(items);
+            } catch (err) {}
+        };
+        fetchInitialState();
+
+        const pollInterval = setInterval(async () => {
+            try {
+                const res = await fetch(`http://localhost:8083/api/v1/poll/${channelId}/results`);
+                const results = await res.json();
+                setPollResults(results);
+
+                const voterRes = await fetch(`http://localhost:8083/api/v1/poll/${channelId}/voters`);
+                const voterData = await voterRes.json();
+                setVoters(voterData);
+            } catch (err) {}
+        }, 3000);
+
         return () => {
             if (eventSourceRef.current) eventSourceRef.current.close();
+            clearInterval(pollInterval);
         };
     }, [channelId]);
 
-    const radarData = EMOTIONS.map(e => ({
-        subject: EMOTION_MAP[e].label,
-        value: stats[e] || 0,
-        fullMark: Math.max(...EMOTIONS.map(em => stats[em] || 1)) + 1,
-    }));
+    const radarData = []; // Removed for Phase 24
 
     const handleDownload = async (imageUrl: string, timestamp: string) => {
         try {
@@ -156,8 +191,67 @@ export default function ChannelDashboard({ params }: { params: Promise<{ channel
         }
     };
 
+    const handleToggleSession = async () => {
+        try {
+            const nextState = !isSessionActive;
+            await fetch(`http://localhost:8083/api/v1/poll/${channelId}/session?active=${nextState}`, {
+                method: 'POST'
+            });
+            setIsSessionActive(nextState);
+        } catch (err) {
+            console.error("Failed to toggle session:", err);
+        }
+    };
+
+    const handleClearPoll = async () => {
+        if (!confirm("투표를 초기화하시겠습니까?")) return;
+        try {
+            await fetch(`http://localhost:8083/api/v1/poll/${channelId}`, {
+                method: 'DELETE'
+            });
+            setPollResults({});
+            setVoters({});
+        } catch (err) {
+            console.error("Failed to clear poll:", err);
+        }
+    };
+
+    const handleVoterClick = async (userId: string) => {
+        setSelectedVoter(userId);
+        try {
+            const res = await fetch(`http://localhost:8083/api/v1/poll/${channelId}/voters/${userId}/history`);
+            const history = await res.json();
+            setVoterHistory(history);
+        } catch (err) {
+            console.error("Failed to fetch voter history:", err);
+        }
+    };
+
+    const handleCreatePoll = async () => {
+        const items = newPollItems.filter(i => i.trim() !== "");
+        if (items.length < 2) {
+            alert("최소 2개 이상의 항목을 입력해 주세요.");
+            return;
+        }
+        try {
+            await fetch(`http://localhost:8083/api/v1/poll/${channelId}/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(items)
+            });
+            setPollItems(items);
+            setShowPollCreator(false);
+            // Also reset results when a new poll is created
+            await fetch(`http://localhost:8083/api/v1/poll/${channelId}`, { method: 'DELETE' });
+            setPollResults({});
+            setVoters({});
+        } catch (err) {
+            console.error("Failed to create poll:", err);
+        }
+    };
+
     return (
-        <div className="flex flex-col h-[calc(100vh-120px)] space-y-6">
+        <div className="flex flex-col h-full space-y-6">
             {/* Header Section */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 glass-panel p-6 rounded-2xl border-slate-700/50">
                 <div className="flex items-center gap-4">
@@ -166,84 +260,47 @@ export default function ChannelDashboard({ params }: { params: Promise<{ channel
                     </div>
                     <div>
                         <div className="flex items-center gap-2">
-                            <h1 className="text-2xl font-bold text-white tracking-tight">Vibe Analytics</h1>
+                            <h1 className="text-2xl font-bold text-white tracking-tight">Streamer Dashboard</h1>
                             <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${isConnected ? "bg-emerald-500/20 text-emerald-400" : "bg-red-500/20 text-red-400 animate-pulse"}`}>
                                 <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? "bg-emerald-500" : "bg-red-500"}`} />
-                                {isConnected ? "Optimized Analysis" : "Connecting"}
+                                {isConnected ? "Live Analytics" : "Connecting"}
                             </span>
                         </div>
                         <p className="text-slate-400 text-sm flex items-center gap-1.5 mt-0.5">
                             <Activity className="w-4 h-4 text-primary" />
-                            실시간 문맥 데이터 분석 중... (ID: {channelId})
+                            실시간 민심 분석 중... (ID: {channelId})
                         </p>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-6">
-                    <div className="hidden lg:flex gap-4">
-                         <div className="flex flex-col items-center p-2 rounded-xl bg-slate-800/40 border border-slate-700/30">
-                            <span className="text-[10px] text-slate-500 uppercase font-black">Mode</span>
-                            <span className="text-sm font-mono font-bold text-emerald-400">Context-Aware</span>
-                         </div>
-                    </div>
+                    <button 
+                        onClick={handleToggleSession}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all font-bold ${isSessionActive ? "bg-rose-500/20 text-rose-400 border-rose-500/50 hover:bg-rose-500/30" : "bg-emerald-500/20 text-emerald-400 border-emerald-500/50 hover:bg-emerald-500/30"}`}
+                    >
+                        <Flame className={`w-4 h-4 ${isSessionActive ? "animate-pulse" : ""}`} />
+                        {isSessionActive ? "수집 중지 (Live)" : "수집 시작"}
+                    </button>
+                    <div className="h-10 w-px bg-slate-700 mx-1 hidden md:block" />
                     <div className="flex flex-col items-end">
                         <span className="text-xs text-slate-500 uppercase font-bold tracking-widest">Total Chats</span>
                         <span className="text-2xl font-mono font-bold text-white">{stats.TOTAL_COUNT.toLocaleString()}</span>
                     </div>
-                    <div className="h-10 w-px bg-slate-700 mx-1 hidden md:block" />
-                    <button className="p-2.5 rounded-xl bg-slate-800/80 text-slate-400 hover:text-white hover:bg-slate-700 transition-all border border-slate-700/50">
-                        <Settings2 className="w-5 h-5" />
-                    </button>
                 </div>
             </div>
 
             {/* Main Content Grid */}
             <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
-                {/* Left Column: Analytics */}
+                {/* Left Column: Emotion Analytics Simplified */}
                 <div className="lg:col-span-4 flex flex-col gap-6 min-h-0">
-                    {/* Emotion Radar Chart */}
-                    <div className="flex-1 glass-panel p-6 rounded-3xl flex flex-col relative overflow-hidden group min-h-[350px]">
+                    {/* Min-sim Graph (Expanded) */}
+                    <div className="flex-1 glass-panel p-6 rounded-3xl flex flex-col border-slate-700/50">
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-2">
-                                <Activity className="w-5 h-5 text-indigo-400" />
-                                <h3 className="font-bold text-slate-200">Emotion Profile</h3>
+                                <Zap className="w-5 h-5 text-amber-400" />
+                                <h3 className="font-bold text-slate-200">실시간 민심 그래프</h3>
                             </div>
-                            <Info className="w-4 h-4 text-slate-500 cursor-help" />
-                        </div>
-                        
-                        <div className="flex-1 flex items-center justify-center">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
-                                    <PolarGrid stroke="#334155" />
-                                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 10 }} />
-                                    <PolarRadiusAxis angle={30} domain={[0, 'auto']} tick={false} axisLine={false} />
-                                    <Radar
-                                        name="Emotion"
-                                        dataKey="value"
-                                        stroke="#6366f1"
-                                        fill="#6366f1"
-                                        fillOpacity={0.6}
-                                        animationDuration={500}
-                                    />
-                                </RadarChart>
-                            </ResponsiveContainer>
-                        </div>
-
-                        <div className="grid grid-cols-4 gap-2 mt-4">
-                            {radarData.map((d, i) => (
-                                <div key={i} className="flex flex-col items-center">
-                                    <span className="text-[8px] text-slate-500 font-bold uppercase">{d.subject}</span>
-                                    <span className="text-xs font-mono font-bold text-slate-300">{d.value}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Sentiment Pulse Trend */}
-                    <div className="h-[180px] glass-panel p-4 rounded-3xl flex flex-col">
-                        <div className="flex items-center gap-2 mb-2">
-                            <Zap className="w-4 h-4 text-amber-400" />
-                            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Atmosphere Pulse</h3>
+                            <span className="text-[10px] font-mono text-slate-500">SENTIMENT PULSE</span>
                         </div>
                         <div className="flex-1">
                             <ResponsiveContainer width="100%" height="100%">
@@ -254,111 +311,225 @@ export default function ChannelDashboard({ params }: { params: Promise<{ channel
                                             <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
                                         </linearGradient>
                                     </defs>
-                                    <Area type="monotone" dataKey="score" stroke="#6366f1" fillOpacity={1} fill="url(#colorPulse)" isAnimationActive={false} />
-                                    <YAxis hide domain={[-1, 1]} />
-                                    <XAxis hide dataKey="time" />
+                                    <XAxis dataKey="time" hide />
+                                    <YAxis domain={[-1.2, 1.2]} hide />
+                                    <Tooltip content={({ active, payload }) => {
+                                        if (active && payload && payload.length) {
+                                            return (
+                                                <div className="bg-slate-900 border border-slate-700 p-2 rounded shadow-xl text-xs text-white">
+                                                    {payload[0].value > 0 ? "매우 긍정" : payload[0].value < 0 ? "매우 부정" : "중립"}
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    }} />
+                                    <Area type="monotone" dataKey="score" stroke="#6366f1" strokeWidth={3} fill="url(#colorPulse)" isAnimationActive={false} />
                                 </AreaChart>
                             </ResponsiveContainer>
                         </div>
                     </div>
+
+                    {/* Quick Emotion Summary (Moved here, kept simple) */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="glass-panel p-4 rounded-2xl flex flex-col justify-center items-center">
+                            <span className="text-[10px] text-emerald-400 font-bold uppercase">Positive</span>
+                            <span className="text-2xl font-mono text-white">{(stats.JOY + stats.HOPE).toLocaleString()}</span>
+                        </div>
+                        <div className="glass-panel p-4 rounded-2xl flex flex-col justify-center items-center">
+                            <span className="text-[10px] text-rose-400 font-bold uppercase">Negative</span>
+                            <span className="text-2xl font-mono text-white">{(stats.ANGER + stats.DISGUST).toLocaleString()}</span>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Right Column: Key Indicators */}
+                {/* Right Column: Interaction */}
                 <div className="lg:col-span-8 flex flex-col gap-6 min-h-0">
-                    <div className="flex-1 grid grid-rows-2 gap-6 min-h-0">
-                        {/* Keyword Section */}
+                    <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6 min-h-0">
+                        {/* Poll Statistics */}
                         <div className="glass-panel p-6 rounded-3xl flex flex-col border-slate-700/50">
-                            <div className="flex items-center gap-2 mb-6">
-                                <Hash className="w-5 h-5 text-primary" />
-                                <h3 className="font-bold text-slate-200">Current Hot Keywords</h3>
-                                <span className="ml-auto text-[10px] font-bold text-slate-500 uppercase tracking-widest">Extracted by AI</span>
+                            <div className="flex items-center justify-between mb-6">
+                                <div className="flex items-center gap-2">
+                                    <Target className="w-5 h-5 text-indigo-400" />
+                                    <h3 className="font-bold text-slate-200">실시간 투표 현황</h3>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <button onClick={() => setShowPollCreator(true)} className="text-[10px] font-bold text-indigo-400 hover:text-white transition-colors">투표 생성</button>
+                                    <button onClick={handleClearPoll} className="text-[10px] font-bold text-slate-500 hover:text-rose-400 transition-colors">초기화</button>
+                                </div>
                             </div>
-                            <div className="flex-1 flex flex-wrap content-start gap-4">
-                                {keywords.length > 0 ? keywords.map((word, i) => (
-                                    <div key={i} className="px-6 py-3 bg-slate-800/60 border border-slate-700/50 rounded-2xl flex items-center gap-2 shadow-lg transition-all hover:scale-105 hover:bg-slate-700/80 group">
-                                        <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                                        <span className="text-lg font-bold text-white group-hover:text-primary transition-colors">{word}</span>
-                                    </div>
-                                )) : (
-                                    <div className="w-full h-full flex items-center justify-center border-2 border-dashed border-slate-800 rounded-3xl">
-                                        <p className="text-slate-600 font-bold uppercase tracking-widest">Waiting for batch analysis...</p>
+                            <div className="flex-1 overflow-y-auto space-y-4">
+                                {pollItems.length > 0 ? pollItems.map((item, index) => {
+                                    const option = (index + 1).toString();
+                                    const count = pollResults[option] || 0;
+                                    const maxCount = Math.max(...Object.values(pollResults), 1);
+                                    return (
+                                        <div key={option} className="p-4 bg-slate-800/40 rounded-2xl border border-slate-700/30">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="px-2 py-0.5 rounded-md bg-indigo-500 text-white text-[10px] font-black">!{option}</span>
+                                                    <span className="text-sm font-bold text-slate-200">{item}</span>
+                                                </div>
+                                                <span className="text-xl font-mono font-bold text-white">{count}표</span>
+                                            </div>
+                                            <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
+                                                <div className="h-full bg-indigo-500 transition-all duration-500" style={{ width: `${(count / maxCount) * 100}%` }} />
+                                            </div>
+                                        </div>
+                                    );
+                                }) : (
+                                    <div className="flex-1 flex flex-col items-center justify-center py-10">
+                                        <Info className="w-8 h-8 text-slate-700 mb-2" />
+                                        <p className="text-slate-600 text-xs font-bold uppercase tracking-widest text-center">투표 항목을<br/>생성해 주세요.</p>
                                     </div>
                                 )}
                             </div>
                         </div>
 
-                        {/* Slang / Context Vibe Section */}
-                        <div className="glass-panel p-6 rounded-3xl flex flex-col border-slate-700/50 relative overflow-hidden">
+                        {/* Voter List */}
+                        <div className="glass-panel p-6 rounded-3xl flex flex-col border-slate-700/50">
                             <div className="flex items-center gap-2 mb-4">
-                                <Smile className="w-5 h-5 text-amber-400" />
-                                <h3 className="font-bold text-slate-200">Latest Pulse Representative</h3>
+                                <MessageSquare className="w-5 h-5 text-emerald-400" />
+                                <h3 className="font-bold text-slate-200">투표 참여 명단</h3>
                             </div>
-                            {latestVibe ? (
-                                <div className="flex-1 flex items-center gap-6 p-4 rounded-2xl bg-slate-800/30 border border-slate-700/30">
-                                    <div className="text-6xl">{EMOTION_MAP[latestVibe.emotion]?.icon}</div>
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider" style={{ backgroundColor: EMOTION_MAP[latestVibe.emotion]?.color + '20', color: EMOTION_MAP[latestVibe.emotion]?.color }}>
-                                                {latestVibe.emotion}
-                                            </span>
-                                            <span className="text-xs text-slate-500 font-medium">Representative Chat Catch</span>
-                                        </div>
-                                        <p className="text-2xl font-bold text-white leading-tight italic">"{latestVibe.content}"</p>
-                                    </div>
+                            <div className="flex-1 overflow-y-auto pr-2">
+                                <div className="grid grid-cols-1 gap-2">
+                                    {Object.entries(voters).map(([userId, option]) => (
+                                        <button 
+                                            key={userId} 
+                                            onClick={() => handleVoterClick(userId)}
+                                            className={`flex items-center justify-between p-3 rounded-xl border transition-all ${selectedVoter === userId ? "bg-indigo-500/20 border-indigo-500/50 shadow-inner" : "bg-slate-800/20 border-slate-700/30 hover:bg-slate-800/40"}`}
+                                        >
+                                            <span className="text-xs font-medium text-slate-300">User_{userId.slice(0,6)}</span>
+                                            <span className="px-2 py-0.5 rounded-md bg-slate-700 text-indigo-300 text-[10px] font-bold">!{option}</span>
+                                        </button>
+                                    ))}
+                                    {Object.keys(voters).length === 0 && (
+                                        <p className="text-center text-slate-600 text-[10px] py-10 uppercase tracking-widest">no participants yet</p>
+                                    )}
                                 </div>
-                            ) : (
-                                <div className="flex-1 flex items-center justify-center">
-                                    <p className="text-slate-600 font-bold uppercase tracking-widest">Monitoring stream context...</p>
-                                </div>
-                            )}
+                            </div>
                         </div>
                     </div>
 
-                    {/* Highlights Timeline */}
-                    <div className="h-[140px] glass-panel p-4 rounded-3xl border-slate-700/50 flex flex-col">
-                        <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                                <Target className="w-4 h-4 text-rose-500" />
-                                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Highlight Timeline</h3>
+                    {/* Voter History Sidebar/Panel */}
+                    {selectedVoter && (
+                        <div className="glass-panel p-6 rounded-3xl border-indigo-500/30 bg-indigo-500/5 flex flex-col min-h-[200px]">
+                            <div className="flex items-center justify-between mb-4">
+                                <h4 className="font-bold text-slate-200">
+                                    <span className="text-indigo-400">User_{selectedVoter.slice(0,6)}</span> 님의 수집 채팅
+                                </h4>
+                                <button onClick={() => setSelectedVoter(null)} className="text-slate-500 hover:text-white">닫기</button>
                             </div>
-                            <span className="text-[10px] text-slate-500 font-bold">{highlights.length} Moments Found</span>
-                        </div>
-                        
-                        <div className="flex-1 relative flex items-center px-4">
-                            <div className="absolute left-4 right-4 h-1 bg-slate-800 rounded-full" />
-                            <div className="relative w-full flex justify-start items-center gap-2 overflow-x-auto no-scrollbar py-4">
-                                {highlights.map((h, i) => (
-                                    <div key={i} className="group relative flex-shrink-0">
-                                        <div 
-                                            className="w-8 h-8 rounded-full border-2 border-slate-900 shadow-xl flex items-center justify-center cursor-pointer transition-transform hover:scale-125 hover:z-20 ring-2 ring-white/10"
-                                            style={{ backgroundColor: EMOTION_MAP[h.emotionType]?.color }}
-                                        >
-                                            <span className="text-xs">{EMOTION_MAP[h.emotionType]?.icon}</span>
+                            <div className="flex-1 overflow-y-auto pr-2 space-y-2 max-h-[150px]">
+                                {voterHistory.map((msg, i) => (
+                                    <div key={i} className="p-3 bg-slate-800/40 rounded-xl border border-slate-700/30 text-xs">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-[10px] font-black uppercase text-indigo-400">CHAT</span>
+                                            <span className="text-[10px] text-slate-500">{new Date(msg.analyzedAt || '').toLocaleTimeString()}</span>
                                         </div>
-                                        
-                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-48 p-3 glass-panel rounded-xl opacity-0 group-hover:opacity-100 transition-all pointer-events-none group-hover:pointer-events-auto z-50 shadow-2xl scale-90 group-hover:scale-100">
-                                            <div className="flex items-center justify-between mb-2">
-                                                <span className="text-[10px] font-black uppercase text-white tracking-widest">{h.emotionType} SPIKE</span>
-                                                <button 
-                                                    onClick={() => handleDownload(h.liveImageUrl, h.timestamp)}
-                                                    className="p-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white transition-colors"
-                                                >
-                                                    <Download className="w-3 h-3" />
-                                                </button>
-                                            </div>
-                                            <p className="text-[10px] text-slate-300 italic line-clamp-2 mb-1">"{h.topMessage}"</p>
-                                            <span className="text-[9px] text-slate-500 font-mono">{new Date(h.timestamp).toLocaleTimeString()}</span>
-                                        </div>
+                                        <p className="text-slate-200">{msg.content}</p>
                                     </div>
                                 ))}
-                                {highlights.length === 0 && (
-                                    <div className="w-full text-center text-[10px] text-slate-600 font-bold uppercase tracking-widest">Wating for emotional spikes...</div>
-                                )}
+                                {voterHistory.length === 0 && <p className="text-center text-slate-600 text-[10px] py-4">기록이 없습니다.</p>}
                             </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Timeline Bar */}
+            <div className="h-[120px] glass-panel p-4 rounded-3xl border-slate-700/50 flex flex-col">
+                <div className="flex items-center gap-2 mb-3">
+                    <Target className="w-4 h-4 text-rose-500" />
+                    <h3 className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">Highlight Moments</h3>
+                </div>
+                <div className="flex-1 flex items-center gap-3 overflow-x-auto no-scrollbar scroll-smooth">
+                    {highlights.map((h, i) => (
+                        <div key={i} className="flex-shrink-0 group relative">
+                            <div 
+                                className="w-10 h-10 rounded-full border-2 border-slate-900 shadow-xl flex items-center justify-center cursor-pointer transition-all hover:scale-110"
+                                style={{ backgroundColor: EMOTION_MAP[h.emotionType]?.color }}
+                            >
+                                <span className="text-sm">{EMOTION_MAP[h.emotionType]?.icon}</span>
+                            </div>
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 glass-panel rounded-xl opacity-0 group-hover:opacity-100 transition-all pointer-events-none z-50">
+                                <p className="text-[10px] text-white font-bold mb-1 italic">"{h.topMessage}"</p>
+                                <button 
+                                    onClick={() => handleDownload(h.liveImageUrl, h.timestamp)}
+                                    className="text-[9px] text-indigo-400 hover:text-white flex items-center gap-1"
+                                >
+                                    <Download className="w-2 h-2" /> Download Image
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                    {highlights.length === 0 && <p className="text-slate-600 text-[10px] font-bold w-full text-center uppercase tracking-widest">Waiting for spikes...</p>}
+                </div>
+            </div>
+
+            {/* Poll Creator Modal */}
+            {showPollCreator && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="w-full max-w-md glass-panel p-6 rounded-3xl border-slate-700/50 shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className="text-xl font-bold text-white">새 투표 생성</h3>
+                            <button onClick={() => setShowPollCreator(false)} className="text-slate-500 hover:text-white transition-colors">
+                                <AlertCircle className="w-6 h-6 rotate-45" />
+                            </button>
+                        </div>
+                        <div className="space-y-4 mb-8">
+                            {newPollItems.map((item, index) => (
+                                <div key={index} className="flex gap-2">
+                                    <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 text-indigo-400 font-bold">
+                                        {index + 1}
+                                    </div>
+                                    <input 
+                                        type="text"
+                                        placeholder={`항목 ${index + 1} 입력...`}
+                                        className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
+                                        value={item}
+                                        onChange={(e) => {
+                                            const updated = [...newPollItems];
+                                            updated[index] = e.target.value;
+                                            setNewPollItems(updated);
+                                        }}
+                                    />
+                                    {newPollItems.length > 2 && (
+                                        <button 
+                                            onClick={() => setNewPollItems(newPollItems.filter((_, i) => i !== index))}
+                                            className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all"
+                                        >
+                                            <AlertCircle className="w-5 h-5" />
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                            {newPollItems.length < 5 && (
+                                <button 
+                                    onClick={() => setNewPollItems([...newPollItems, ""])}
+                                    className="w-full py-3 bg-slate-800/50 border border-dashed border-slate-700 rounded-2xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all font-bold text-sm"
+                                >
+                                    + 항목 추가
+                                </button>
+                            )}
+                        </div>
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={() => setShowPollCreator(false)}
+                                className="flex-1 py-3 px-6 rounded-2xl bg-slate-800 text-slate-300 font-bold hover:bg-slate-700 transition-all"
+                            >
+                                취소
+                            </button>
+                            <button 
+                                onClick={handleCreatePoll}
+                                className="flex-2 py-3 px-8 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-500 shadow-lg shadow-indigo-600/20 transition-all active:scale-95"
+                            >
+                                투표 시작하기
+                            </button>
                         </div>
                     </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 }
