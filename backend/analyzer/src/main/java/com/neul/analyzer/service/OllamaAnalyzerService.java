@@ -17,8 +17,10 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -35,13 +37,21 @@ public class OllamaAnalyzerService {
     @Value("${app.ollama.model}")
     private String ollamaModel;
 
+    private final AtomicBoolean isProcessing = new AtomicBoolean(false);
+
     @CircuitBreaker(name = "geminiApi", fallbackMethod = "fallbackAnalyzeBatch")
     public Mono<List<AnalyzedChatMessage>> analyzeBatch(List<CompressedChat> chats) {
         if (chats == null || chats.isEmpty()) {
             return Mono.just(List.of());
         }
+
+        if (isProcessing.get()) {
+            log.warn("[Ollama] Still processing previous batch. Skipping current batch of {} messages to prevent queue buildup.", chats.size());
+            return Mono.just(List.of());
+        }
         
         log.info("[Ollama] Requesting analysis for {} compressed messages via local LLM.", chats.size());
+        isProcessing.set(true);
 
         // 1. Build the prompt
         String promptText = buildPrompt(chats);
@@ -53,26 +63,25 @@ public class OllamaAnalyzerService {
                         OllamaMessage.builder().role("user").content(promptText).build()
                 ))
                 .stream(false)
-                .format("json") // Ask Ollama to output valid JSON (works best on supported models)
+                .format("json") 
                 .build();
 
-        // 2. Call Ollama API
+        // 2. Call Ollama API with timeout
         return webClient.post()
                 .uri(ollamaApiUrl)
                 .bodyValue(requestDto)
                 .retrieve()
                 .bodyToMono(OllamaResponse.class)
-                .map(response -> parseOllamaResponse(response, chats));
+                .timeout(Duration.ofSeconds(15)) // 15초 타임아웃
+                .map(response -> parseOllamaResponse(response, chats))
+                .doFinally(signalType -> isProcessing.set(false));
     }
 
     private String getSystemPrompt() {
-        return "You are an AI specialized in analyzing Korean streaming chat culture. " +
-               "CRITICAL: Contextual Sentiment Inheritance. Terms like 'ㄹㅇ', 'ㅇㅈ', '어흐', '캬', 'ㄷㄷ' are NOT always JOY. " +
-               "They are agreement/reaction tokens that INHERIT the emotion of the most significant message appearing before them in the same batch. " +
-               "If a user says '게임 진짜 못하네' (ANGER) and others say 'ㄹㅇ' (ㄹㅇ), then 'ㄹㅇ' is also ANGER. " +
-               "Analyze the batch as a continuous flow. For each message, determine: JOY, HOPE, NEUTRAL, SADNESS, ANGER, WONDER, or DISGUST. " +
-               "Also, extract 3-5 high-impact keywords for the entire batch. " +
-               "Output EXACTLY a JSON object: {'keywords': [...], 'results': [{'messageId': '...', 'type': '...', 'score': ...}, ...]}";
+        return "You are a Korean chat sentiment analyzer. " +
+               "Analyze the vibe: JOY, HOPE, NEUTRAL, SADNESS, ANGER, WONDER, DISGUST. " +
+               "Agreement (ㄹㅇ, ㅇㅈ) and reactions (어흐, 캬) should match the previous context's emotion. " +
+               "Output ONLY JSON: {\"keywords\": [], \"results\": [{\"messageId\": \"...\", \"type\": \"...\", \"score\": 1.0}]}";
     }
 
     private String buildPrompt(List<CompressedChat> chats) {
@@ -91,8 +100,11 @@ public class OllamaAnalyzerService {
             return createFallbackList(originalChats);
         }
 
+        log.info("[Ollama] Raw LLM Response: {}", content);
+
         try {
-            String jsonStr = extractJsonArray(content);
+            String jsonStr = extractJsonText(content);
+            log.info("[Ollama] Extracted JSON: {}", jsonStr);
             List<Map<String, Object>> resultList;
             List<String> keywords = List.of();
             
@@ -146,20 +158,30 @@ public class OllamaAnalyzerService {
         }
     }
 
-    private String extractJsonArray(String text) {
-        // Find the first '[' and last ']'
-        int start = text.indexOf('[');
-        int end = text.lastIndexOf(']');
+    private String extractJsonText(String text) {
+        int firstBrace = text.indexOf('{');
+        int firstBracket = text.indexOf('[');
+        
+        int start;
+        if (firstBrace != -1 && firstBracket != -1) start = Math.min(firstBrace, firstBracket);
+        else if (firstBrace != -1) start = firstBrace;
+        else if (firstBracket != -1) start = firstBracket;
+        else return text.trim();
+
+        int lastBrace = text.lastIndexOf('}');
+        int lastBracket = text.lastIndexOf(']');
+        
+        int end = Math.max(lastBrace, lastBracket);
         
         if (start != -1 && end != -1 && start < end) {
             return text.substring(start, end + 1);
         }
         
-        // If no brackets found, return as is (readValue will handle errors)
         return text.trim();
     }
 
     private List<AnalyzedChatMessage> createFallbackList(List<CompressedChat> chats) {
+        log.error("[Ollama] Triggering fallback analysis (all NEUTRAL) for {} messages.", chats.size());
         return chats.stream()
                 .map(chat -> AnalyzedChatMessage.builder()
                         .messageId(chat.getRepresentativeId())
