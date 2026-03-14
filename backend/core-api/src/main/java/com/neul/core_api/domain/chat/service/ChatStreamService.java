@@ -14,7 +14,6 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
 
@@ -187,8 +186,21 @@ public class ChatStreamService {
                                 .doFinally(signalType -> {
                                         if (sink.currentSubscriberCount() == 0) {
                                                 roomSinks.remove(roomId);
-                                                log.info("Removed unused sink for room: {}", roomId);
+                                                log.info("Removed unused sink for room: {}. Notifying collector to stop.", roomId);
+                                                stopCollector(roomId);
                                         }
                                 });
+        }
+
+        private void stopCollector(String roomId) {
+                // collector 모듈의 DELETE /api/v1/channels/{roomId}/subscribe 호출
+                chzzkWebClient.delete()
+                                .uri("http://localhost:8081/api/v1/channels/" + roomId + "/subscribe")
+                                .retrieve()
+                                .toBodilessEntity()
+                                .subscribeOn(Schedulers.boundedElastic())
+                                .subscribe(
+                                                res -> log.info("[Lifecycle] Successfully unsubscribed roomId={} from collector", roomId),
+                                                err -> log.error("[Lifecycle] Failed to unsubscribe roomId={} from collector: {}", roomId, err.getMessage()));
         }
 }

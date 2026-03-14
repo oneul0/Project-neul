@@ -7,17 +7,8 @@ import {
 } from "recharts";
 import { 
     MessageSquare, Heart, AlertCircle, Settings2, Activity, 
-    Zap, Flame, Download, Info, Smile, Frown, Target
+    Zap, Flame, Download, Info, Smile, Frown, Target, Hash
 } from "lucide-react";
-
-interface ChatMessage {
-    id: string;
-    content: string;
-    sender: string;
-    emotion: string;
-    confidence: number;
-    messageTime: string;
-}
 
 interface Highlight {
     id: number;
@@ -39,6 +30,7 @@ interface AnalyzedChatMessage {
         type: string;
         score: number;
     };
+    keywords?: string[];
     analyzedAt?: string;
 }
 
@@ -60,20 +52,14 @@ export default function ChannelDashboard({ params }: { params: Promise<{ channel
     const [stats, setStats] = useState<Record<string, number>>({ 
         JOY: 0, HOPE: 0, NEUTRAL: 0, SADNESS: 0, ANGER: 0, WONDER: 0, DISGUST: 0, TOTAL_COUNT: 0 
     });
-    const [chats, setChats] = useState<ChatMessage[]>([]);
     const [highlights, setHighlights] = useState<Highlight[]>([]);
     const [trendData, setTrendData] = useState<{ time: string; score: number }[]>([]);
+    const [keywords, setKeywords] = useState<string[]>([]);
+    const [latestVibe, setLatestVibe] = useState<{ emotion: string; content: string } | null>(null);
     const [isConnected, setIsConnected] = useState(false);
 
-    const chatEndRef = useRef<HTMLDivElement>(null);
     const eventSourceRef = useRef<EventSource | null>(null);
 
-    // Auto-scroll chat
-    useEffect(() => {
-        chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [chats]);
-
-    // Handle SSE Connection & Auto-Subscribe
     useEffect(() => {
         if (!channelId) return;
 
@@ -107,17 +93,15 @@ export default function ChannelDashboard({ params }: { params: Promise<{ channel
                 try {
                     const data: AnalyzedChatMessage = JSON.parse(e.data);
                     const emotionType = data.emotion?.type || "NEUTRAL";
-                    const newChat: ChatMessage = {
-                        id: data.messageId || Math.random().toString(36).substr(2, 9),
-                        content: data.content || "",
-                        sender: data.sender || "Anonymous",
-                        emotion: emotionType,
-                        confidence: data.emotion?.score || 0,
-                        messageTime: data.analyzedAt || new Date().toISOString(),
-                    };
-                    setChats((prev) => [...prev, newChat].slice(-100));
+                    
+                    if (data.keywords && data.keywords.length > 0) {
+                        setKeywords(data.keywords);
+                    }
 
-                    // Update trend data (moving average-ish)
+                    if (data.content) {
+                        setLatestVibe({ emotion: emotionType, content: data.content });
+                    }
+
                     setTrendData(prev => {
                         const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                         const score = (emotionType === "JOY" || emotionType === "HOPE") ? 1 : 
@@ -168,7 +152,6 @@ export default function ChannelDashboard({ params }: { params: Promise<{ channel
             document.body.removeChild(a);
         } catch (err) {
             console.error("Download failed:", err);
-            // Fallback: Open in new tab
             window.open(imageUrl, '_blank');
         }
     };
@@ -183,15 +166,15 @@ export default function ChannelDashboard({ params }: { params: Promise<{ channel
                     </div>
                     <div>
                         <div className="flex items-center gap-2">
-                            <h1 className="text-2xl font-bold text-white tracking-tight">Real-time Stream Analysis</h1>
+                            <h1 className="text-2xl font-bold text-white tracking-tight">Vibe Analytics</h1>
                             <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${isConnected ? "bg-emerald-500/20 text-emerald-400" : "bg-red-500/20 text-red-400 animate-pulse"}`}>
                                 <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? "bg-emerald-500" : "bg-red-500"}`} />
-                                {isConnected ? "Live Analyzing" : "Connecting"}
+                                {isConnected ? "Optimized Analysis" : "Connecting"}
                             </span>
                         </div>
                         <p className="text-slate-400 text-sm flex items-center gap-1.5 mt-0.5">
                             <Activity className="w-4 h-4 text-primary" />
-                            실시간 감정 데이터 수동 스냅샷 지원 중... (ID: {channelId})
+                            실시간 문맥 데이터 분석 중... (ID: {channelId})
                         </p>
                     </div>
                 </div>
@@ -199,12 +182,12 @@ export default function ChannelDashboard({ params }: { params: Promise<{ channel
                 <div className="flex items-center gap-6">
                     <div className="hidden lg:flex gap-4">
                          <div className="flex flex-col items-center p-2 rounded-xl bg-slate-800/40 border border-slate-700/30">
-                            <span className="text-[10px] text-slate-500 uppercase font-black">Speed</span>
-                            <span className="text-sm font-mono font-bold text-emerald-400">2.0s / B</span>
+                            <span className="text-[10px] text-slate-500 uppercase font-black">Mode</span>
+                            <span className="text-sm font-mono font-bold text-emerald-400">Context-Aware</span>
                          </div>
                     </div>
                     <div className="flex flex-col items-end">
-                        <span className="text-xs text-slate-500 uppercase font-bold tracking-widest">Total Volume</span>
+                        <span className="text-xs text-slate-500 uppercase font-bold tracking-widest">Total Chats</span>
                         <span className="text-2xl font-mono font-bold text-white">{stats.TOTAL_COUNT.toLocaleString()}</span>
                     </div>
                     <div className="h-10 w-px bg-slate-700 mx-1 hidden md:block" />
@@ -246,7 +229,6 @@ export default function ChannelDashboard({ params }: { params: Promise<{ channel
                             </ResponsiveContainer>
                         </div>
 
-                        {/* Summary Legend */}
                         <div className="grid grid-cols-4 gap-2 mt-4">
                             {radarData.map((d, i) => (
                                 <div key={i} className="flex flex-col items-center">
@@ -261,7 +243,7 @@ export default function ChannelDashboard({ params }: { params: Promise<{ channel
                     <div className="h-[180px] glass-panel p-4 rounded-3xl flex flex-col">
                         <div className="flex items-center gap-2 mb-2">
                             <Zap className="w-4 h-4 text-amber-400" />
-                            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Sentiment Pulse (Real-time)</h3>
+                            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Atmosphere Pulse</h3>
                         </div>
                         <div className="flex-1">
                             <ResponsiveContainer width="100%" height="100%">
@@ -281,41 +263,54 @@ export default function ChannelDashboard({ params }: { params: Promise<{ channel
                     </div>
                 </div>
 
-                {/* Right Column: Chat & Highlights */}
+                {/* Right Column: Key Indicators */}
                 <div className="lg:col-span-8 flex flex-col gap-6 min-h-0">
-                    {/* Chat Feed */}
-                    <div className="flex-1 flex flex-col glass-panel rounded-3xl border-slate-700/50 overflow-hidden min-h-0">
-                        <div className="p-4 border-b border-slate-700/50 flex items-center justify-between bg-slate-800/30">
-                            <div className="flex items-center gap-2">
-                                <MessageSquare className="w-5 h-5 text-primary" />
-                                <h3 className="font-bold text-slate-200">Analysis Feed (2.0s Refresh)</h3>
+                    <div className="flex-1 grid grid-rows-2 gap-6 min-h-0">
+                        {/* Keyword Section */}
+                        <div className="glass-panel p-6 rounded-3xl flex flex-col border-slate-700/50">
+                            <div className="flex items-center gap-2 mb-6">
+                                <Hash className="w-5 h-5 text-primary" />
+                                <h3 className="font-bold text-slate-200">Current Hot Keywords</h3>
+                                <span className="ml-auto text-[10px] font-bold text-slate-500 uppercase tracking-widest">Extracted by AI</span>
                             </div>
-                            <div className="flex items-center gap-3">
-                                <span className="flex items-center gap-1 text-[10px] font-bold text-slate-500">
-                                    <Flame className="w-3 h-3 text-rose-500" /> HOT
-                                </span>
+                            <div className="flex-1 flex flex-wrap content-start gap-4">
+                                {keywords.length > 0 ? keywords.map((word, i) => (
+                                    <div key={i} className="px-6 py-3 bg-slate-800/60 border border-slate-700/50 rounded-2xl flex items-center gap-2 shadow-lg transition-all hover:scale-105 hover:bg-slate-700/80 group">
+                                        <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                                        <span className="text-lg font-bold text-white group-hover:text-primary transition-colors">{word}</span>
+                                    </div>
+                                )) : (
+                                    <div className="w-full h-full flex items-center justify-center border-2 border-dashed border-slate-800 rounded-3xl">
+                                        <p className="text-slate-600 font-bold uppercase tracking-widest">Waiting for batch analysis...</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar" id="chat-container">
-                            {chats.map((chat) => (
-                                <div key={chat.id} className="group relative flex gap-3 p-2 rounded-xl transition-all hover:bg-slate-800/40 border border-transparent hover:border-slate-700/30">
-                                    <div className="flex-shrink-0 w-1 pt-1.5 self-stretch rounded-full" style={{ backgroundColor: EMOTION_MAP[chat.emotion]?.color }} />
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-0.5">
-                                            <span className="font-bold text-xs text-slate-100 truncate">{chat.sender}</span>
-                                            <span className="text-[9px] font-black uppercase tracking-widest opacity-60" style={{ color: EMOTION_MAP[chat.emotion]?.color }}>
-                                                {EMOTION_MAP[chat.emotion]?.icon} {chat.emotion} • {Math.round(chat.confidence * 100)}%
+                        {/* Slang / Context Vibe Section */}
+                        <div className="glass-panel p-6 rounded-3xl flex flex-col border-slate-700/50 relative overflow-hidden">
+                            <div className="flex items-center gap-2 mb-4">
+                                <Smile className="w-5 h-5 text-amber-400" />
+                                <h3 className="font-bold text-slate-200">Latest Pulse Representative</h3>
+                            </div>
+                            {latestVibe ? (
+                                <div className="flex-1 flex items-center gap-6 p-4 rounded-2xl bg-slate-800/30 border border-slate-700/30">
+                                    <div className="text-6xl">{EMOTION_MAP[latestVibe.emotion]?.icon}</div>
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider" style={{ backgroundColor: EMOTION_MAP[latestVibe.emotion]?.color + '20', color: EMOTION_MAP[latestVibe.emotion]?.color }}>
+                                                {latestVibe.emotion}
                                             </span>
-                                            <span className="ml-auto text-[9px] text-slate-600 font-mono">
-                                                {new Date(chat.messageTime).toLocaleTimeString([], { hour12: false })}
-                                            </span>
+                                            <span className="text-xs text-slate-500 font-medium">Representative Chat Catch</span>
                                         </div>
-                                        <p className="text-sm text-slate-300 leading-snug break-words">{chat.content}</p>
+                                        <p className="text-2xl font-bold text-white leading-tight italic">"{latestVibe.content}"</p>
                                     </div>
                                 </div>
-                            ))}
-                            <div ref={chatEndRef} />
+                            ) : (
+                                <div className="flex-1 flex items-center justify-center">
+                                    <p className="text-slate-600 font-bold uppercase tracking-widest">Monitoring stream context...</p>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -341,14 +336,12 @@ export default function ChannelDashboard({ params }: { params: Promise<{ channel
                                             <span className="text-xs">{EMOTION_MAP[h.emotionType]?.icon}</span>
                                         </div>
                                         
-                                        {/* Tooltip */}
                                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-48 p-3 glass-panel rounded-xl opacity-0 group-hover:opacity-100 transition-all pointer-events-none group-hover:pointer-events-auto z-50 shadow-2xl scale-90 group-hover:scale-100">
                                             <div className="flex items-center justify-between mb-2">
                                                 <span className="text-[10px] font-black uppercase text-white tracking-widest">{h.emotionType} SPIKE</span>
                                                 <button 
                                                     onClick={() => handleDownload(h.liveImageUrl, h.timestamp)}
                                                     className="p-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white transition-colors"
-                                                    title="Save Image"
                                                 >
                                                     <Download className="w-3 h-3" />
                                                 </button>

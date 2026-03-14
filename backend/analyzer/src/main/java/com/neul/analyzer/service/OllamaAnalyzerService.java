@@ -66,14 +66,13 @@ public class OllamaAnalyzerService {
     }
 
     private String getSystemPrompt() {
-        return "You are an AI that analyzes the sentiment of a batch of streaming chat messages in Korean. " +
-               "For each message provided by the user, you must determine its overall emotion as one of: " +
-               "JOY (happiness, laughter), HOPE (cheering, support, curiosity), NEUTRAL (facts, normal talk), " +
-               "SADNESS (sorrow, pity), ANGER (frustration, toxicity), WONDER (surprise, amazement), DISGUST (hate, dislike). " +
-               "Also provide a confidence score between 0.0 and 1.0. " +
-               "You MUST output exactly a JSON array containing objects with the following keys: " +
-               "'messageId' (string), 'type' (string, one of JOY/HOPE/NEUTRAL/SADNESS/ANGER/WONDER/DISGUST), 'score' (number). " +
-               "Do not output any markdown formatting, markdown code blocks, or extra text. Output ONLY pure JSON.";
+        return "You are an AI specialized in analyzing Korean streaming chat culture. " +
+               "Context is key: 'ㄹㅇ', 'ㅇㅈ' mean strong agreement (JOY/HOPE). '어흐', '캬' are reactions to great plays or donations (JOY/WONDER). '?' usually means surprise or confusion (WONDER). " +
+               "Analyze the batch as a whole to understand the 'vibe'. " +
+               "For each message, determine: JOY, HOPE, NEUTRAL, SADNESS, ANGER, WONDER, or DISGUST. " +
+               "Also, extract 3-5 most impactful keywords (nouns/slang) that represent this entire batch. " +
+               "Output EXACTLY a JSON object with: 'keywords' (array of strings) and 'results' (array of objects with 'messageId', 'type', 'score'). " +
+               "No markdown, strictly ONLY JSON.";
     }
 
     private String buildPrompt(List<CompressedChat> chats) {
@@ -94,16 +93,31 @@ public class OllamaAnalyzerService {
 
         try {
             String jsonStr = extractJsonArray(content);
-            List<Map<String, Object>> parsedList;
+            List<Map<String, Object>> resultList;
+            List<String> keywords = List.of();
             
             if (jsonStr.startsWith("{")) {
-                Map<String, Object> singleObject = objectMapper.readValue(jsonStr, new TypeReference<Map<String, Object>>() {});
-                parsedList = List.of(singleObject);
+                Map<String, Object> root = objectMapper.readValue(jsonStr, new TypeReference<Map<String, Object>>() {});
+                if (root.containsKey("results")) {
+                    Object resultsObj = root.get("results");
+                    if (resultsObj instanceof List) {
+                        resultList = (List<Map<String, Object>>) resultsObj;
+                    } else {
+                        resultList = List.of((Map<String, Object>) resultsObj);
+                    }
+                    if (root.get("keywords") instanceof List) {
+                        keywords = (List<String>) root.get("keywords");
+                    }
+                } else {
+                    // Fallback to previous single-object result logic if 'results' key missing
+                    resultList = List.of(root);
+                }
             } else {
-                parsedList = objectMapper.readValue(jsonStr, new TypeReference<List<Map<String, Object>>>() {});
+                resultList = objectMapper.readValue(jsonStr, new TypeReference<List<Map<String, Object>>>() {});
             }
             
-            Map<String, Emotion> emotionMap = parsedList.stream()
+            final List<String> finalKeywords = keywords;
+            Map<String, Emotion> emotionMap = resultList.stream()
                 .filter(map -> map != null && map.containsKey("messageId") && map.containsKey("type") && map.containsKey("score"))
                 .collect(Collectors.toMap(
                     map -> (String) map.get("messageId"),
@@ -121,6 +135,7 @@ public class OllamaAnalyzerService {
                         .roomId(chat.getRoomId())
                         .content(chat.getContent())
                         .emotion(emotion != null ? emotion : Emotion.builder().type("NEUTRAL").score(0.0).build())
+                        .keywords(finalKeywords)
                         .analyzedAt(LocalDateTime.now())
                         .build();
             }).collect(Collectors.toList());

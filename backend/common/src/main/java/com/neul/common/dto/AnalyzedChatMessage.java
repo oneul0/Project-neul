@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 감정 분석 완료 메시지.
@@ -26,6 +27,7 @@ public class AnalyzedChatMessage {
     private String content;
     private String sender;
     private Emotion emotion;
+    private List<String> keywords;
     private LocalDateTime analyzedAt;
 
     private String donationType;
