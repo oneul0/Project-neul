@@ -24,6 +24,7 @@ public class RawChatMessage {
     private String messageType = "CHAT";
 
     private String sender;
+    private String senderId; // Added for Phase 23
     private String content;
     private LocalDateTime timestamp;
     private String userRoleCode;

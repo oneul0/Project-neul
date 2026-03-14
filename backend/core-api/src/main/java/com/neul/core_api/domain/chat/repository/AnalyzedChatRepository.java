@@ -6,4 +6,5 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface AnalyzedChatRepository extends ReactiveCrudRepository<AnalyzedChat, Long> {
+    reactor.core.publisher.Flux<AnalyzedChat> findByRoomIdAndSenderId(String roomId, String senderId);
 }

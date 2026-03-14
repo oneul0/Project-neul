@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS analyzed_chats (
     room_id       VARCHAR(255) NOT NULL,  -- Chzzk channelId
     content       TEXT,
     sender        VARCHAR(255),           -- 채팅 작성자 닉네임
+    sender_id     VARCHAR(255),           -- 채팅 작성자 고유 ID (Phase 23)
     emotion_type  VARCHAR(50),
     emotion_score DOUBLE PRECISION,
     analyzed_at   TIMESTAMP NOT NULL

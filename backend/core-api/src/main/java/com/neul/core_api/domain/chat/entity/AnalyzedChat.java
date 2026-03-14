@@ -36,6 +36,8 @@ public class AnalyzedChat {
 
     @Column("sender")
     private String sender;
+    @Column("sender_id")
+    private String senderId; // Added for Phase 23
 
     @Column("emotion_type")
     private String emotionType;

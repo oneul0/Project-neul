@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 감정 분석 완료 메시지.
@@ -26,7 +27,8 @@ public class AnalyzedChatMessage {
 
     private String content;
     private String sender;
-    private Emotion emotion;
+    private String senderId; // Added for Phase 23
+    private Map<String, Double> emotionScores;
     private List<String> keywords;
     private LocalDateTime analyzedAt;
 
