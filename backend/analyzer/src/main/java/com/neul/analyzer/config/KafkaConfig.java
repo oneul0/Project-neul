@@ -1,6 +1,5 @@
 package com.neul.analyzer.config;
 
-import com.neul.common.dto.AnalyzedChatMessage;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -16,7 +15,6 @@ import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
-import org.springframework.kafka.support.serializer.JacksonJsonSerializer;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -65,21 +63,19 @@ public class KafkaConfig {
         return factory;
     }
 
-    // ── Producer (AnalyzedChatMessage → JSON) ────────────────────────────
+    // ── Producer (String Value, AnalyzedChatMessage → JSON) ──────────────────
     @Bean
-    public ProducerFactory<String, AnalyzedChatMessage> producerFactory() {
+    public ProducerFactory<String, String> producerFactory() {
         Map<String, Object> props = new HashMap<>();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
 
-        // core-api는 VALUE_DEFAULT_TYPE으로 타입을 지정하므로 타입 헤더 불필요
-        JacksonJsonSerializer<AnalyzedChatMessage> valueSerializer = new JacksonJsonSerializer<>();
-        valueSerializer.setAddTypeInfo(false);
-
-        return new DefaultKafkaProducerFactory<>(props, new StringSerializer(), valueSerializer);
+        return new DefaultKafkaProducerFactory<>(props);
     }
 
     @Bean
-    public KafkaTemplate<String, AnalyzedChatMessage> kafkaTemplate() {
+    public KafkaTemplate<String, String> kafkaTemplate() {
         return new KafkaTemplate<>(producerFactory());
     }
 }

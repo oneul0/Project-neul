@@ -3,7 +3,7 @@ spring:
     name: analyzer
 
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: 127.0.0.1:9092
 
 server:
   port: 8082
@@ -14,5 +14,5 @@ app:
     # 'rust': RustChatOptimizer (JNI — Rust 모듈 완성 후 전환)
     engine: java
   ollama:
-    api-url: http://localhost:11434/api/chat
+    api-url: http://127.0.0.1:11434/api/chat
     model: gemma:2b

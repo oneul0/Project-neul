@@ -3,17 +3,17 @@ spring:
     name: core-api
 
   r2dbc:
-    url: r2dbc:postgresql://localhost:5432/neul_db
+    url: r2dbc:postgresql://127.0.0.1:5432/neul_db
     username: neul_user
     password: neul_password
 
   data:
     redis:
-      host: localhost
+      host: 127.0.0.1
       port: 6379
 
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: 127.0.0.1:9092
 
 server:
   port: 8083

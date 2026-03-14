@@ -2,7 +2,7 @@ spring:
   application:
     name: collector
   kafka:
-    bootstrap-servers: localhost:9092 # Docker에서 설정한 외부 포트
+    bootstrap-servers: 127.0.0.1:9092 # Docker에서 설정한 외부 포트
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -17,7 +17,7 @@ chzzk:
     auth-url: https://chzzk.naver.com
     client-id: ${CHZZK_CLIENT_ID}
     client-secret: ${CHZZK_CLIENT_SECRET}
-    redirect-uri: http://localhost:8081/api/v1/chzzk/callback
+    redirect-uri: http://127.0.0.1:8081/api/v1/chzzk/callback
 
 # Resilience4j Retry 설정 (Chzzk Socket.IO 재연결)
 resilience4j:

@@ -1,5 +1,7 @@
 package com.neul.core_api.domain.chat.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.neul.common.dto.AnalyzedChatMessage;
 import com.neul.core_api.domain.chat.entity.AnalyzedChat;
 import com.neul.core_api.domain.chat.repository.AnalyzedChatRepository;
@@ -21,6 +23,7 @@ public class ChatStreamService {
 
         private final AnalyzedChatRepository analyzedChatRepository;
         private final StreamRedisService streamRedisService;
+        private final ObjectMapper objectMapper;
 
         // Room(channelId)별 SSE Sink 맵 (replay 최근 100개 버퍼)
         private final Map<String, Sinks.Many<Object>> roomSinks = new ConcurrentHashMap<>();
@@ -31,15 +34,20 @@ public class ChatStreamService {
          * DONATION / SUBSCRIPTION → SSE 패스스루만 (DB·Redis 저장 없음)
          */
         @KafkaListener(topics = "analyzed-chat-topic", groupId = "neul-core-api-group", containerFactory = "kafkaListenerContainerFactory")
-        public void consumeAnalyzedChat(AnalyzedChatMessage message) {
-                String roomId = message.getRoomId();
-                String type = message.getMessageType() != null ? message.getMessageType() : "CHAT";
+        public void consumeAnalyzedChat(String json) {
+                try {
+                        AnalyzedChatMessage message = objectMapper.readValue(json, AnalyzedChatMessage.class);
+                        String roomId = message.getRoomId();
+                        String type = message.getMessageType() != null ? message.getMessageType() : "CHAT";
 
-                switch (type) {
-                        case "CHAT" -> handleChat(roomId, message);
-                        case "DONATION" -> handleDonation(roomId, message);
-                        case "SUBSCRIPTION" -> handleSubscription(roomId, message);
-                        default -> log.warn("[Kafka] Unknown messageType={} for roomId={}", type, roomId);
+                        switch (type) {
+                                case "CHAT" -> handleChat(roomId, message);
+                                case "DONATION" -> handleDonation(roomId, message);
+                                case "SUBSCRIPTION" -> handleSubscription(roomId, message);
+                                default -> log.warn("[Kafka] Unknown messageType={} for roomId={}", type, roomId);
+                        }
+                } catch (JsonProcessingException e) {
+                        log.error("[Kafka] Failed to parse AnalyzedChatMessage: {}", json, e);
                 }
         }
 

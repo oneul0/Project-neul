@@ -3,6 +3,7 @@ package com.neul.collector.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.neul.common.dto.RawChatBatch;
 import com.neul.common.dto.RawChatMessage;
 import com.neul.collector.jni.NativeBridge;
@@ -87,18 +88,29 @@ public class NidChatCollector implements ChatCollector {
         return chzzkWebClient.get()
                 .uri("https://api.chzzk.naver.com/polling/v2/channels/" + channelId + "/live-status")
                 .retrieve()
-                .bodyToMono(JsonNode.class)
-                .map(node -> node.path("content").path("chatChannelId").asText())
+                .bodyToMono(ObjectNode.class)
+                .map(node -> {
+                    String id = node.path("content").path("chatChannelId").asText();
+                    log.info("[NidChat] Fetched chatChannelId: {} for channel: {}", id, channelId);
+                    return id;
+                })
                 .filter(id -> !id.isEmpty())
                 .switchIfEmpty(Mono.error(new RuntimeException("Could not find chatChannelId for " + channelId)));
     }
 
     private Mono<String> getAccessToken(String chatChannelId) {
+        String url = "https://comm-api.game.naver.com/nng_main/v1/chats/access-token?channelId=" + chatChannelId + "&chatType=STREAMING";
+        log.info("[NidChat] Requesting access token from: {}", url);
         return chzzkWebClient.get()
-                .uri("https://comm-api.game.naver.com/web/v1/chat/access-token?channelId=" + chatChannelId + "&chatType=STREAMING")
+                .uri(url)
                 .retrieve()
-                .bodyToMono(JsonNode.class)
-                .map(node -> node.path("content").path("accessToken").asText())
+                .bodyToMono(ObjectNode.class)
+                .map(node -> {
+                    String token = node.path("content").path("accessToken").asText();
+                    log.info("[NidChat] Successfully fetched access token (prefix: {})", 
+                            token.substring(0, Math.min(5, token.length())));
+                    return token;
+                })
                 .filter(token -> !token.isEmpty())
                 .switchIfEmpty(Mono.error(new RuntimeException("Could not get access token for " + chatChannelId)));
     }
@@ -109,7 +121,7 @@ public class NidChatCollector implements ChatCollector {
         // 메시지 수집을 위한 Sink (1분 배칭용)
         Sinks.Many<RawChatMessage> chatSink = Sinks.many().multicast().onBackpressureBuffer();
 
-        // 1분 단위 배칭 파이프라인 (유저 요청 반영: "1분 단위로 묶어서 제공")
+        // 1. 1분 단위 배칭 파이프라인
         Disposable batchJob = chatSink.asFlux()
                 .window(Duration.ofMinutes(1))
                 .flatMap(window -> window.collectList())
@@ -123,29 +135,67 @@ public class NidChatCollector implements ChatCollector {
                             .build());
                 });
 
-        // 웹소켓 연결
-        URI uri = URI.create("wss://kr-ss1.chat.naver.com/chat");
-        
-        Disposable wsJob = wsClient.execute(uri, session -> 
-            session.send(Mono.just(session.textMessage(buildHandshake(chatChannelId, accessToken))))
-                .thenMany(session.receive()
-                        .map(msg -> nativeBridge.preprocessChat(msg.getPayloadAsText())) // Native Bridge 연동
-                        .flatMap(this::parseAndEmit)
-                        .doOnNext(chatSink::tryEmitNext)
-                ).then()
-        ).subscribe(
-            null,
-            err -> {
-                log.error("[NidChat] Error in websocket for channel {}: {}", channelId, err.getMessage());
-                unsubscribe(channelId);
-            }
-        );
+        // 2. 웹소켓 연결 및 자동 재시도 로직
+        Disposable wsJob = connectWebsocket(channelId, chatChannelId, accessToken, chatSink)
+            .subscribe(
+                null,
+                err -> {
+                    log.error("[NidChat] Critical error in websocket for channel {}: {}", channelId, err.getMessage());
+                    err.printStackTrace();
+                    activeSubscriptions.remove(channelId);
+                    batchJob.dispose();
+                }
+            );
 
         return () -> {
             wsJob.dispose();
             batchJob.dispose();
         };
     }
+
+    private Mono<Void> connectWebsocket(String originalChannelId, String chatChannelId, String accessToken, Sinks.Many<RawChatMessage> chatSink) {
+        URI uri = URI.create("wss://kr-ss1.chat.naver.com/chat");
+        
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.add("Origin", "https://chzzk.naver.com");
+        headers.add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+
+        return wsClient.execute(uri, headers, session -> {
+            log.info("[NidChat] WebSocket session established for channel: {}", originalChannelId);
+            
+            String handshakePayload = buildHandshake(chatChannelId, accessToken);
+            log.info("[NidChat] Sending handshake: {}", handshakePayload);
+            Mono<Void> handshake = session.send(Mono.just(session.textMessage(handshakePayload)));
+
+            Flux<Void> pings = Flux.interval(Duration.ofSeconds(20))
+                    .flatMap(i -> {
+                        log.trace("[NidChat] Sending Ping for {}", originalChannelId);
+                        return session.send(Mono.just(session.textMessage("{\"ver\":\"3\",\"cmd\":0}")));
+                    })
+                    .then().flux();
+
+            Flux<Void> receive = session.receive()
+                    .doOnNext(msg -> log.info("[NidChat] Received raw from {}: {}", originalChannelId, msg.getPayloadAsText()))
+                    .flatMap(msg -> {
+                        String text = nativeBridge.preprocessChat(msg.getPayloadAsText());
+                        return parseAndEmit(originalChannelId, text).doOnNext(chatMsg -> {
+                            if ("CHAT".equals(chatMsg.getMessageType())) {
+                                chatSink.tryEmitNext(chatMsg);
+                            } else {
+                                chatProducer.sendChat(chatMsg);
+                            }
+                        }).then();
+                    })
+                    .doOnError(e -> log.error("[NidChat] Receive error for {}: {}", originalChannelId, e.getMessage()))
+                    .then().flux();
+
+            return Mono.when(handshake, pings, receive);
+        })
+        .retryWhen(reactor.util.retry.Retry.backoff(10, Duration.ofSeconds(2))
+                .doBeforeRetry(retrySignal -> log.warn("[NidChat] Retrying connection for {}: attempt {}, error: {}", 
+                        originalChannelId, retrySignal.totalRetries() + 1, retrySignal.failure().getMessage())));
+    }
+
 
     private String buildHandshake(String chatChannelId, String accessToken) {
         Map<String, Object> handshake = Map.of(
@@ -154,7 +204,7 @@ public class NidChatCollector implements ChatCollector {
             "svcid", "game",
             "cid", chatChannelId,
             "bdy", Map.of(
-                "uid", null,
+                "uid", "",
                 "devType", 2001,
                 "accTkn", accessToken,
                 "auth", "READ"
@@ -168,17 +218,17 @@ public class NidChatCollector implements ChatCollector {
         }
     }
 
-    private Flux<RawChatMessage> parseAndEmit(String rawJson) {
+    private Flux<RawChatMessage> parseAndEmit(String roomId, String rawJson) {
         try {
             JsonNode root = objectMapper.readTree(rawJson);
             int cmd = root.path("cmd").asInt();
 
-            // 93101: Chat Message
-            if (cmd == 93101) {
+            // 93101: Chat Message, 93102: Donation, 93103: Subscription
+            if (cmd == 93101 || cmd == 93102 || cmd == 93103) {
                 JsonNode body = root.path("bdy");
                 if (body.isArray()) {
                     return Flux.fromIterable(body)
-                            .map(msgNode -> buildRawMessage(msgNode));
+                            .map(msgNode -> buildRawMessage(roomId, msgNode, cmd));
                 }
             }
         } catch (Exception e) {
@@ -187,21 +237,28 @@ public class NidChatCollector implements ChatCollector {
         return Flux.empty();
     }
 
-    private RawChatMessage buildRawMessage(JsonNode msgNode) {
+    private RawChatMessage buildRawMessage(String roomId, JsonNode msgNode, int cmd) {
         // 프로토콜 분석 결과에 기초한 매핑
         String extra = msgNode.path("extras").asText();
         String senderNickname = "Anonymous";
+        String messageType = "CHAT";
+        
+        if (cmd == 93102) messageType = "DONATION";
+        else if (cmd == 93103) messageType = "SUBSCRIPTION";
+
         try {
             JsonNode extraNode = objectMapper.readTree(extra);
-            senderNickname = extraNode.path("extra").path("userName").asText("Anonymous");
+            senderNickname = extraNode.path("extra").path("userName").asText(
+                extraNode.path("nickname").asText("Anonymous")
+            );
         } catch (Exception e) {}
 
         long timeMs = msgNode.path("msgTime").asLong(System.currentTimeMillis());
 
         return RawChatMessage.builder()
                 .messageId(UUID.randomUUID().toString())
-                .roomId(msgNode.path("cid").asText())
-                .messageType("CHAT")
+                .roomId(roomId) // Use the original long channelId
+                .messageType(messageType)
                 .sender(senderNickname)
                 .content(msgNode.path("msg").asText())
                 .timestamp(LocalDateTime.ofInstant(Instant.ofEpochMilli(timeMs), ZoneId.systemDefault()))

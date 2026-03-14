@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ChatAnalysisProcessor {
 
-    private final KafkaTemplate<String, AnalyzedChatMessage> kafkaTemplate;
+    private final KafkaTemplate<String, String> kafkaTemplate;
     private final OllamaAnalyzerService analyzerService;
     private final ObjectMapper objectMapper;
     private final ChatOptimizer chatOptimizer;
@@ -81,37 +81,41 @@ public class ChatAnalysisProcessor {
     // ─── DONATION / SUBSCRIPTION 패스스루 ────────────────────────────────────
 
     private void publishPassthrough(RawChatMessage msg) {
-        AnalyzedChatMessage passthrough;
+        try {
+            AnalyzedChatMessage passthrough;
 
-        if ("DONATION".equals(msg.getMessageType())) {
-            passthrough = AnalyzedChatMessage.builder()
-                    .messageId(msg.getMessageId())
-                    .roomId(msg.getRoomId())
-                    .messageType("DONATION")
-                    .donationType(msg.getDonationType())
-                    .donatorNickname(msg.getDonatorNickname())
-                    .payAmount(msg.getPayAmount())
-                    .donationText(msg.getDonationText())
-                    .analyzedAt(LocalDateTime.now())
-                    .build();
-            log.info("[Processor] Passthrough DONATION: {}원 from {} in channel {}",
-                    msg.getPayAmount(), msg.getDonatorNickname(), msg.getRoomId());
-        } else { // SUBSCRIPTION
-            passthrough = AnalyzedChatMessage.builder()
-                    .messageId(msg.getMessageId())
-                    .roomId(msg.getRoomId())
-                    .messageType("SUBSCRIPTION")
-                    .subscriberNickname(msg.getSubscriberNickname())
-                    .tierNo(msg.getTierNo())
-                    .tierName(msg.getTierName())
-                    .month(msg.getMonth())
-                    .analyzedAt(LocalDateTime.now())
-                    .build();
-            log.info("[Processor] Passthrough SUBSCRIPTION: tier{} {}개월 from {} in channel {}",
-                    msg.getTierNo(), msg.getMonth(), msg.getSubscriberNickname(), msg.getRoomId());
+            if ("DONATION".equals(msg.getMessageType())) {
+                passthrough = AnalyzedChatMessage.builder()
+                        .messageId(msg.getMessageId())
+                        .roomId(msg.getRoomId())
+                        .messageType("DONATION")
+                        .donationType(msg.getDonationType())
+                        .donatorNickname(msg.getDonatorNickname())
+                        .payAmount(msg.getPayAmount())
+                        .donationText(msg.getDonationText())
+                        .analyzedAt(LocalDateTime.now())
+                        .build();
+                log.info("[Processor] Passthrough DONATION: {}원 from {} in channel {}",
+                        msg.getPayAmount(), msg.getDonatorNickname(), msg.getRoomId());
+            } else { // SUBSCRIPTION
+                passthrough = AnalyzedChatMessage.builder()
+                        .messageId(msg.getMessageId())
+                        .roomId(msg.getRoomId())
+                        .messageType("SUBSCRIPTION")
+                        .subscriberNickname(msg.getSubscriberNickname())
+                        .tierNo(msg.getTierNo())
+                        .tierName(msg.getTierName())
+                        .month(msg.getMonth())
+                        .analyzedAt(LocalDateTime.now())
+                        .build();
+                log.info("[Processor] Passthrough SUBSCRIPTION: tier{} {}개월 from {} in channel {}",
+                        msg.getTierNo(), msg.getMonth(), msg.getSubscriberNickname(), msg.getRoomId());
+            }
+
+            kafkaTemplate.send(OUTPUT_TOPIC, passthrough.getRoomId(), objectMapper.writeValueAsString(passthrough));
+        } catch (JsonProcessingException e) {
+            log.error("[Processor] Failed to serialize analyzed message", e);
         }
-
-        kafkaTemplate.send(OUTPUT_TOPIC, passthrough.getRoomId(), passthrough);
     }
 
     // ─── CHAT 감정 분석 ───────────────────────────────────────────────────────
@@ -128,9 +132,13 @@ public class ChatAnalysisProcessor {
         analyzerService.analyzeBatch(optimized.getCompressedChats())
                 .subscribe(
                         analyzed -> analyzed.forEach(msg -> {
-                            kafkaTemplate.send(OUTPUT_TOPIC, msg.getRoomId(), msg);
-                            log.info("[Processor] Sent analyzed CHAT: roomId={}, emotion={}",
-                                    msg.getRoomId(), msg.getEmotion().getType());
+                            try {
+                                kafkaTemplate.send(OUTPUT_TOPIC, msg.getRoomId(), objectMapper.writeValueAsString(msg));
+                                log.info("[Processor] Sent analyzed CHAT: roomId={}, emotion={}",
+                                        msg.getRoomId(), msg.getEmotion().getType());
+                            } catch (JsonProcessingException e) {
+                                log.error("[Processor] Failed to serialize analyzed CHAT", e);
+                            }
                         }),
                         error -> log.error("[Processor] Analysis failed for batch", error));
     }
