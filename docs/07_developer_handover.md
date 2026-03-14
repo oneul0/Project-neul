@@ -23,15 +23,26 @@
 ## 🛠️ 주요 기능 확장 방법
 
 ### 1. 새로운 감정(Emotion) 추가하기
-1. `backend/common/src/main/java/com/neul/common/dto/Emotion.java` (있는 경우) 또는 관련 DTO 확인.
-2. `OllamaAnalyzerService.java`의 `getSystemPrompt()`에 새 감정 정의와 예시 추가.
-3. 프론트엔드 `page.tsx`의 `EMOTION_MAP`과 `EMOTIONS` 배열에 새 감정, 색상, 아이콘 추가.
+1. `OllamaAnalyzerService.java`의 `getSystemPrompt()` 수정:
+   ```java
+   "determine its overall emotion as one of: JOY, HOPE, ..., NEW_EMOTION"
+   ```
+2. 프론트엔드 `page.tsx`의 `EMOTION_MAP` 수정:
+   ```javascript
+   NEW_EMOTION: { color: "#...", label: "새감정", icon: "🔥" }
+   ```
 
 ### 2. 하이라이트 감지 민감도 조절
-- `ChatStreamService.java`의 `handleChat` 메서드 내 `score >= 0.8` 부분을 수정하여 민감도를 조절할 수 있습니다 (0.0 ~ 1.0).
+- `ChatStreamService.java`:
+  ```java
+  if (!"NEUTRAL".equals(emotion) && score >= 0.8) // 임계값(0.8) 수정
+  ```
 
 ### 3. 배치 크기 조절 (성능 튜닝)
-- **수집 주기**: `NidChatCollector.java`의 `window(Duration.ofSeconds(2))` 수정.
+- `NidChatCollector.java`:
+  ```java
+  .window(Duration.ofSeconds(2)) // 2초 주기 수정
+  ```
 - **분석 단위**: 각 모듈의 `application.yml` 내 `max-poll-records` (Kafka) 값 수정.
 
 ---

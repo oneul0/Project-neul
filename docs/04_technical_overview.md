@@ -4,21 +4,28 @@
 
 ---
 
+
 ## 1. Backend: Micro-batch Architecture
 
 ### [Collector Module]
 - **`NidChatCollector`**: 치지직 채팅 채널 ID 및 엑세스 토큰을 조회한 후, `wss://kr-ss1.chat.naver.com/chat`에 연결하여 실시간 데이터를 수집합니다.
 ### [Collector Module]
-- **`NidChatCollector`**: 치지직 채팅 채널 ID 및 엑세스 토큰을 조회한 후, `wss://kr-ss1.chat.naver.com/chat`에 연결하여 실시간 데이터를 수집합니다.
-- **Batching Scheme**: `window(Duration.ofSeconds(2))`로 묶어 **2초 단위**의 고속 마이크로배칭을 수행하여 실시간성을 극대화했습니다.
+- **Batching Scheme**: `window(Duration.ofSeconds(2))`로 묶어 **2초 단위**의 고속 마이크로배칭을 수행합니다.
+  ```java
+  .window(Duration.ofMinutes(1)) -> .window(Duration.ofSeconds(2))
+  ```
 
 ### [Analyzer Module]
-- **`ChatAnalysisProcessor`**: Kafka에서 전달받은 JSON 리스트를 Java 리스트로 역직렬화한 후, 일괄 분석을 수행합니다.
-- **7-Emotion Analysis**: Ollama를 통해 기쁨, 희망, 슬픔, 분노 등 총 7가지 상세 감정을 분석하도록 프롬프트가 고도화되었습니다.
+- **7-Emotion Analysis**: Ollama를 통해 7가지 상세 감정을 분석합니다.
+  ```java
+  "one of: JOY, HOPE, NEUTRAL, SADNESS, ANGER, WONDER, DISGUST"
+  ```
 
 ### [Core API Module]
-- **`ChatStreamService`**: `analyzed-chat-topic`의 메시지를 소비하여 SSE(Server-Sent Events)를 통해 프런트엔드로 실시간 푸시합니다.
-- **Highlight Engine**: 0.8 이상의 감정 스파이크를 감지하여 타임라인 이벤트를 발생시키고, 치지직 실시간 썸네일 URL을 함께 제공합니다.
+- **Highlight Engine**: 0.8 이상의 감정 스파이크를 감지합니다.
+  ```java
+  if (!"NEUTRAL".equals(emotion) && score >= 0.8) { detectAndEmitHighlight(...) }
+  ```
 
 ---
 
