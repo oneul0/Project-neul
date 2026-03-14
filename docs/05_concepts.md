@@ -20,8 +20,8 @@
 Kafka는 이 사이에 놓이는 **고속 우편함**입니다. 수집 서버는 메시지를 Kafka에 던지고 끝. 분석 서버는 자기 속도에 맞춰 꺼내서 처리합니다.
 
 ```
-[collector]  →  Kafka  →  [analyzer]  →  Kafka  →  [core-api]
-   produce      (버퍼)      consume         (버퍼)      consume
+[collector]  →     Kafka      →  [analyzer]  →     Kafka      →  [core-api]
+ (NidChat)     raw-chat-batch      (Ollama)    analyzed-chat        (SSE)
 ```
 
 ## 핵심 개념 3가지
@@ -131,10 +131,11 @@ public List<AnalyzedChatMessage> analyzeBatch(...) {
 
 // ✅ 비동기 방식 — "나중에 실행되는 작업 상자"만 즉시 반환
 public Mono<List<AnalyzedChatMessage>> analyzeBatch(...) {
-    return Mono.fromCallable(() -> {
-        Thread.sleep(3000); // 이 람다는 구독(subscribe)될 때 실행됨
-        return result;
-    });
+    return webClient.post()
+        .bodyValue(buildPrompt(chats))
+        .retrieve()
+        .bodyToMono(GeminiResponse.class)
+        .map(this::parseResult);
     // 이 메서드 자체는 즉시 반환 → 스레드 블로킹 없음
 }
 ```
@@ -449,8 +450,8 @@ props.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
 # 🔗 전체 데이터 흐름 정리
 
 ```
-[DummyChatGenerator]
-  1초마다 채팅 생성 → KafkaTemplate.send("raw-chat-topic", roomId, RawChatMessage)
+[NidChatCollector]
+  실시간 웹소켓 수집 → KafkaTemplate.send("raw-chat-batch-topic", roomId, RawChatBatch)
                                           │
                                     ┌─────▼──────┐
                                     │  Kafka     │  raw-chat-topic (3 partitions)
@@ -460,7 +461,7 @@ props.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
 [@KafkaListener, MAX_POLL_RECORDS=50]     │
   최대 50개씩 배치 수신                    │
   → JSON 파싱 (ObjectMapper)             │
-  → GeminiAnalyzerService.analyzeBatch() │
+  → ChatAnalysisProcessor.processBatch() │
     (@CircuitBreaker — 실패 시 NEUTRAL)   │
   → KafkaTemplate.send("analyzed-chat-topic", roomId, AnalyzedChatMessage)
                                           │

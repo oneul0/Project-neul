@@ -9,9 +9,9 @@
 
 ```
 [collector :8081]
-  DummyChatGenerator → KafkaProducer → raw-chat-topic
-                                              │
-                                              ▼
+  NidChatCollector (Chzzk WebSocket) → KafkaProducer → raw-chat-batch-topic
+                                               │
+                                               ▼
 [analyzer :8082]
   @KafkaListener(batch) → GeminiAnalyzerService → KafkaTemplate → analyzed-chat-topic
                                                                          │
@@ -84,8 +84,8 @@ docker ps
 > `curl`은 `Invoke-WebRequest`의 별칭이라 `-H` 옵션 처리 방식이 다릅니다.
 
 ```powershell
-# collector 가 test-room-1 으로 하드코딩되어 있으므로 이 roomId 사용
-curl.exe -N -H "Accept: text/event-stream" http://localhost:8083/api/v1/stream/test-room-1
+# 실제 치지직 채널 ID 사용 (예: 458f6ec20b034f49e0fc6d03921646d2)
+curl.exe -N -H "Accept: text/event-stream" http://localhost:8083/api/v1/stream/{channelId}
 ```
 
 ### Step 4 — 데이터 수신 확인
@@ -94,7 +94,7 @@ curl.exe -N -H "Accept: text/event-stream" http://localhost:8083/api/v1/stream/t
 
 ```
 event:chat_analyzed
-data:{"messageId":"...","roomId":"test-room-1","content":"와 오늘 경기 진짜 대박이다!","emotion":{"type":"POSITIVE","score":0.87},"analyzedAt":"..."}
+data:{"messageId":"...","roomId":"{channelId}","content":"...","emotion":{"type":"POSITIVE","score":0.87},"analyzedAt":"..."}
 
 event:stats_update
 data:{"POSITIVE":"14","TOTAL_COUNT":"20","NEGATIVE":"2","NEUTRAL":"4"}
@@ -119,7 +119,7 @@ docker-compose down -v
 
 | 항목 | 현재 상태 | 목표 |
 |------|-----------|------|
-| 감정 분석 | `simulateEmotion()` 랜덤 시뮬레이션 | Vertex AI Gemini API 연동 |
-| 채팅 수집 | `DummyChatGenerator` 하드코딩 데이터 | 유튜브/치지직 실시간 웹소켓 수집 |
-| roomId 연동 | `DummyChatGenerator`가 `test-room-1` 고정 | `POST /broadcasts` 응답 roomId와 연동 |
-| CORS | 미적용 | 프론트엔드 연동 전 추가 필요 |
+| 감정 분석 | Ollama (Gemma:2b) / Gemini 연동 완료 | 분석 모델 고도화 및 다국어 지원 |
+| 채팅 수집 | `NidChatCollector` 치지직 실시간 웹소켓 수집 완료 | 유튜브 등 다중 플랫폼 확장 |
+| roomId 연동 | 동적 채널 ID 연동 완료 | 사용자별 대시보드 커스텀 |
+| CORS | 설정 완료 | 보안 설정 강화 |

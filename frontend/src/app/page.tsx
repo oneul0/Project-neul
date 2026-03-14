@@ -60,24 +60,7 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  // Demo Room constant
-  const demoRoom: LiveChannel = {
-    channelId: "test-room-1",
-    channelName: "데모 채널 (AI 분석 테스트)",
-    liveTitle: "실시간 감정 분석 AI 데모 방송입니다 (더미 데이터)",
-    concurrentUserCount: 999,
-    openDate: new Date().toISOString(),
-    categoryType: "ETC",
-    liveCategory: "DEMO",
-    liveCategoryValue: "AI 분석 데모",
-    sentiment: { TOTAL_COUNT: 0 }
-  };
-
-  const sortedLives = [demoRoom, ...lives].sort((a, b) => {
-    // Keep demo room at the top
-    if (a.channelId === "test-room-1") return -1;
-    if (b.channelId === "test-room-1") return 1;
-
+  const sortedLives = [...lives].sort((a, b) => {
     if (sortBy === "viewers") {
       return b.concurrentUserCount - a.concurrentUserCount;
     }

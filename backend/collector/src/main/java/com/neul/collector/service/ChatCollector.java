@@ -4,7 +4,7 @@ import reactor.core.publisher.Mono;
 
 /**
  * 채팅 수집기 인터페이스.
- * - 실제 치지직 소켓 수집기(ChzzkSocketClient)와 테스트용 더미 수집기(DummyChatCollector)의 공통 규격.
+ * - 실제 치지직 소켓 수집기(NidChatCollector)의 기본 규격.
  */
 public interface ChatCollector {
     

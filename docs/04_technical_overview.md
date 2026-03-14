@@ -25,7 +25,6 @@
 
 ### [Dashboard UI]
 - `src/app/channels/[channelId]/page.tsx`: SSE 엔드포인트(`http://localhost:8081/api/v1/channels/{id}/subscribe`)를 구독합니다.
-- **Dummy Support**: API 연동 전 UI 테스트를 위해 3초 단위 더미 데이터 생성 지원 로직이 포함되어 있습니다.
 
 ### [Channel Search]
 - 유저가 자신의 채널 ID를 직접 입력하여 대시보드로 진입할 수 있는 검색 기능을 홈 화면에 추가하였습니다.
