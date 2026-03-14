@@ -14,6 +14,7 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
 
@@ -38,10 +39,13 @@ public class ChatStreamService {
         // 하이라이트 감지를 위한 최근 고득점 감정 기록 (roomId -> LastPeak)
         private final Map<String, HighlightRecord> lastHighlights = new ConcurrentHashMap<>();
 
+        // 감정 강도 이동 평균 (roomId -> RollingAvg)
+        private final Map<String, Double> intensityRollingAvg = new ConcurrentHashMap<>();
+
         /**
          * analyzed-chat-topic 소비.
-         * CHAT → DB 저장 + Redis 통계 갱신 + SSE 푸시
-         * DONATION / SUBSCRIPTION → SSE 패스스루만 (DB·Redis 저장 없음)
+         * CHAT -> DB 저장 + Redis 통계 갱신 + SSE 푸시
+         * DONATION / SUBSCRIPTION -> SSE 패스스루만 (DB·Redis 저장 없음)
          */
         @KafkaListener(topics = "analyzed-chat-topic", groupId = "neul-core-api-group", containerFactory = "kafkaListenerContainerFactory")
         public void consumeAnalyzedChat(String json) {
@@ -52,6 +56,7 @@ public class ChatStreamService {
 
                         switch (type) {
                                 case "CHAT" -> handleChat(roomId, message);
+                                case "VOTE" -> handleVote(roomId, message);
                                 case "DONATION" -> handleDonation(roomId, message);
                                 case "SUBSCRIPTION" -> handleSubscription(roomId, message);
                                 default -> log.warn("[Kafka] Unknown messageType={} for roomId={}", type, roomId);
@@ -64,33 +69,38 @@ public class ChatStreamService {
         // ─── CHAT ────────────────────────────────────────────────────────────────
 
         private void handleChat(String roomId, AnalyzedChatMessage message) {
-                log.info("[Kafka] CHAT: roomId={}, sender={}, emotion={}",
-                                roomId, message.getSender(),
-                                message.getEmotion() != null ? message.getEmotion().getType() : "N/A");
+                log.info("[Kafka] CHAT: roomId={}, sender={}, senderId={}, content={}",
+                                roomId, message.getSender(), message.getSenderId(),
+                                message.getContent());
 
-                // 1. PostgreSQL 비동기 저장
-                AnalyzedChat entity = AnalyzedChat.builder()
-                                .messageId(message.getMessageId())
-                                .roomId(roomId)
-                                .content(message.getContent())
-                                .sender(message.getSender())
-                                .emotionType(message.getEmotion() != null ? message.getEmotion().getType() : null)
-                                .emotionScore(message.getEmotion() != null ? message.getEmotion().getScore() : null)
-                                .analyzedAt(message.getAnalyzedAt())
-                                .build();
+                Map.Entry<String, Double> topEmotion = getTopEmotion(message.getEmotionScores());
 
-                analyzedChatRepository.save(entity)
+                // 2. Session-based PostgreSQL Persistence
+                streamRedisService.isCollectionActive(roomId)
+                                .flatMap(active -> {
+                                        if (Boolean.TRUE.equals(active)) {
+                                                AnalyzedChat entity = AnalyzedChat.builder()
+                                                                .messageId(message.getMessageId())
+                                                                .roomId(roomId)
+                                                                .content(message.getContent())
+                                                                .sender(message.getSender())
+                                                                .senderId(message.getSenderId()) // Added for Phase 23
+                                                                .emotionType(topEmotion.getKey())
+                                                                .emotionScore(topEmotion.getValue())
+                                                                .analyzedAt(message.getAnalyzedAt())
+                                                                .build();
+
+                                                return analyzedChatRepository.save(entity)
+                                                                .doOnNext(saved -> log.debug("Saved session CHAT to DB: id={}", saved.getId()));
+                                        }
+                                        return Mono.empty();
+                                })
                                 .subscribeOn(Schedulers.boundedElastic())
-                                .subscribe(
-                                                saved -> log.debug("Saved CHAT to DB: id={}", saved.getId()),
-                                                error -> log.error("DB Save Error: {}", error.getMessage()));
+                                .subscribe();
 
-                // 2. Redis 통계 갱신 + SSE 이벤트 발행
-                if (message.getEmotion() != null) {
-                        String emotion = message.getEmotion().getType();
-                        double score = message.getEmotion().getScore();
-
-                        streamRedisService.incrementEmotionStats(roomId, emotion)
+                // 3. Redis 통계 갱신 + SSE 이벤트 발행
+                if (message.getEmotionScores() != null && !message.getEmotionScores().isEmpty()) {
+                        streamRedisService.updateMultiEmotionStats(roomId, message.getEmotionScores())
                                         .then(streamRedisService.getRoomStats(roomId))
                                         .subscribeOn(Schedulers.boundedElastic())
                                         .subscribe(
@@ -99,10 +109,16 @@ public class ChatStreamService {
                                                                 if (sink != null) {
                                                                         sink.tryEmitNext(Map.of("event", "chat_analyzed", "data", message));
                                                                         sink.tryEmitNext(Map.of("event", "stats_update", "data", stats));
-                                                                        
-                                                                        // 하이라이트 감지 로직 (임계값 0.8 이상)
-                                                                        if (!"NEUTRAL".equals(emotion) && score >= 0.8) {
-                                                                                detectAndEmitHighlight(roomId, message);
+
+                                                                        // 하이라이트 감지 로직 (Relative Spike Detection)
+                                                                        double currentIntensity = calculateIntensity(message.getEmotionScores());
+                                                                        updateRollingAvg(roomId, currentIntensity);
+
+                                                                        double avg = intensityRollingAvg.getOrDefault(roomId, 0.5);
+
+                                                                        // 조건: 1) 절대 임계값 0.6 이상 2) 최근 평균 대비 1.5배 이상 스파이크
+                                                                        if (currentIntensity >= 0.6 && currentIntensity > avg * 1.5) {
+                                                                                detectAndEmitHighlight(roomId, message, topEmotion, currentIntensity);
                                                                         }
                                                                 }
                                                         },
@@ -111,42 +127,105 @@ public class ChatStreamService {
                 }
         }
 
-        private void detectAndEmitHighlight(String roomId, AnalyzedChatMessage message) {
-                // 최근 10초 내에 동일 감정 하이라이트가 있었다면 스킵 (중복 방지)
+        private Map.Entry<String, Double> getTopEmotion(Map<String, Double> scores) {
+                if (scores == null || scores.isEmpty()) {
+                        return Map.entry("NEUTRAL", 1.0);
+                }
+                return scores.entrySet().stream()
+                                .max(Map.Entry.comparingByValue())
+                                .orElse(Map.entry("NEUTRAL", 1.0));
+        }
+
+        private double calculateIntensity(Map<String, Double> scores) {
+                if (scores == null)
+                        return 0.0;
+                // NEUTRAL을 제외한 모든 감정의 합산 강도
+                return scores.entrySet().stream()
+                                .filter(e -> !"NEUTRAL".equals(e.getKey()))
+                                .mapToDouble(Map.Entry::getValue)
+                                .sum();
+        }
+
+        private void updateRollingAvg(String roomId, double intensity) {
+                // 단순 지수 이동 평균 (α = 0.2)
+                intensityRollingAvg.compute(roomId, (k, v) -> (v == null) ? intensity : (v * 0.8 + intensity * 0.2));
+        }
+
+        private void detectAndEmitHighlight(String roomId, AnalyzedChatMessage message, Map.Entry<String, Double> topEmotion, double intensity) {
+                // 최근 10초 내에 하이라이트가 있었다면 스킵 (중복 방지)
                 HighlightRecord last = lastHighlights.get(roomId);
                 if (last != null && last.getTimestamp().isAfter(LocalDateTime.now().minusSeconds(10))) {
                         return;
                 }
 
-                log.info("[Highlight] Spike detected! roomId={}, emotion={}, score={}", 
-                        roomId, message.getEmotion().getType(), message.getEmotion().getScore());
+                log.info("[Highlight] Relative spike detected! roomId={}, emotion={}, intensity={}",
+                                roomId, topEmotion.getKey(), String.format("%.2f", intensity));
 
                 // Chzzk에서 현재 실시간 썸네일 URL 가져오기
                 chzzkWebClient.get()
-                        .uri("https://api.chzzk.naver.com/service/v2/channels/" + roomId + "/live-status")
-                        .retrieve()
-                        .bodyToMono(JsonNode.class)
-                        .map(node -> node.path("content").path("liveImageUrl").asText())
-                        .flatMap(imageUrl -> {
-                                HighlightRecord highlight = HighlightRecord.builder()
-                                        .roomId(roomId)
-                                        .emotionType(message.getEmotion().getType())
-                                        .peakScore(message.getEmotion().getScore())
-                                        .topMessage(message.getContent())
-                                        .liveImageUrl(imageUrl.replace("{type}", "1080")) // 고화질
-                                        .timestamp(LocalDateTime.now())
-                                        .build();
-                                
-                                return highlightRepository.save(highlight);
-                        })
-                        .subscribeOn(Schedulers.boundedElastic())
-                        .subscribe(saved -> {
-                                lastHighlights.put(roomId, saved);
-                                Sinks.Many<Object> sink = roomSinks.get(roomId);
-                                if (sink != null) {
-                                        sink.tryEmitNext(Map.of("event", "highlight_detected", "data", saved));
-                                }
-                        }, err -> log.error("Highlight Process Error: {}", err.getMessage()));
+                                .uri("https://api.chzzk.naver.com/service/v2/channels/" + roomId + "/live-status")
+                                .retrieve()
+                                .bodyToMono(JsonNode.class)
+                                .map(node -> node.path("content").path("liveImageUrl").asText())
+                                .flatMap(imageUrl -> {
+                                        HighlightRecord highlight = HighlightRecord.builder()
+                                                        .roomId(roomId)
+                                                        .emotionType(topEmotion.getKey())
+                                                        .peakScore(intensity) // 전체 강도를 peakScore로 저장
+                                                        .topMessage(message.getContent())
+                                                        .liveImageUrl(imageUrl.replace("{type}", "1080")) // 고화질
+                                                        .timestamp(LocalDateTime.now())
+                                                        .build();
+
+                                        return highlightRepository.save(highlight);
+                                })
+                                .subscribeOn(Schedulers.boundedElastic())
+                                .subscribe(saved -> {
+                                        lastHighlights.put(roomId, saved);
+                                        Sinks.Many<Object> sink = roomSinks.get(roomId);
+                                        if (sink != null) {
+                                                sink.tryEmitNext(Map.of("event", "highlight_detected", "data", saved));
+                                        }
+                                }, err -> log.error("Highlight Process Error: {}", err.getMessage()));
+        }
+
+        // ─── VOTE ───────────────────────────────────────────────────────────────
+
+        private void handleVote(String roomId, AnalyzedChatMessage message) {
+                log.info("[Kafka] VOTE: roomId={}, sender={}, senderId={}, content={}",
+                                roomId, message.getSender(), message.getSenderId(),
+                                message.getContent());
+
+                // 1. Record Vote in Redis
+                String content = message.getContent() != null ? message.getContent().trim() : "";
+                String voteOption = content.substring(1).split(" ")[0];
+                
+                streamRedisService.recordVote(roomId, message.getSenderId(), voteOption)
+                        .subscribe(success -> log.debug("Vote recorded from VOTE type: user={}, option={}", message.getSenderId(), voteOption));
+
+                // 2. Save to DB for history (if session active)
+                streamRedisService.isCollectionActive(roomId)
+                                .flatMap(active -> {
+                                        if (Boolean.TRUE.equals(active)) {
+                                                AnalyzedChat entity = AnalyzedChat.builder()
+                                                                .messageId(message.getMessageId())
+                                                                .roomId(roomId)
+                                                                .content(message.getContent())
+                                                                .sender(message.getSender())
+                                                                .senderId(message.getSenderId())
+                                                                .emotionType("VOTE") // Specific tag for votes
+                                                                .emotionScore(1.0)
+                                                                .analyzedAt(message.getAnalyzedAt())
+                                                                .build();
+
+                                                return analyzedChatRepository.save(entity);
+                                        }
+                                        return Mono.empty();
+                                })
+                                .subscribeOn(Schedulers.boundedElastic())
+                                .subscribe();
+
+                // 3. Emit SSE (No stats update, but maybe a simple notification if needed - current dashboard doesn't use it for Min-sim)
         }
 
         // ─── DONATION ────────────────────────────────────────────────────────────

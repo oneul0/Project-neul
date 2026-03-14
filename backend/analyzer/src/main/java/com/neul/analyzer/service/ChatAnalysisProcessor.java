@@ -14,6 +14,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -72,9 +73,45 @@ public class ChatAnalysisProcessor {
         // Step 3: DONATION / SUBSCRIPTION 패스스루 즉시 발행
         passthroughMessages.forEach(this::publishPassthrough);
 
-        // Step 4: CHAT 메시지 → 최적화 → 감정 분석
-        if (!chatMessages.isEmpty()) {
-            analyzeAndPublish(chatMessages);
+        // Step 4: CHAT 메시지 분리 (일반 채팅 vs 투표 명령어)
+        List<RawChatMessage> regularChats = new ArrayList<>();
+        List<RawChatMessage> voteCommands = new ArrayList<>();
+
+        for (RawChatMessage msg : chatMessages) {
+            String content = msg.getContent() != null ? msg.getContent().trim() : "";
+            if (content.startsWith("!") && content.length() > 1 && content.substring(1).split(" ")[0].matches("\\d+")) {
+                voteCommands.add(msg);
+            } else {
+                regularChats.add(msg);
+            }
+        }
+
+        // Step 5: 투표 명령어 패스스루 발행
+        voteCommands.forEach(this::publishVotePassthrough);
+
+        // Step 6: 일반 CHAT 메시지 → 최적화 → 감정 분석
+        if (!regularChats.isEmpty()) {
+            analyzeAndPublish(regularChats);
+        }
+    }
+
+    private void publishVotePassthrough(RawChatMessage msg) {
+        try {
+            AnalyzedChatMessage voteMsg = AnalyzedChatMessage.builder()
+                    .messageId(msg.getMessageId())
+                    .roomId(msg.getRoomId())
+                    .messageType("VOTE")
+                    .content(msg.getContent())
+                    .sender(msg.getSender())
+                    .senderId(msg.getSenderId())
+                    .analyzedAt(LocalDateTime.now())
+                    .build();
+            
+            kafkaTemplate.send(OUTPUT_TOPIC, voteMsg.getRoomId(), objectMapper.writeValueAsString(voteMsg));
+            log.info("[Processor] Passthrough VOTE command: {} from {} in channel {}", 
+                    msg.getContent(), msg.getSender(), msg.getRoomId());
+        } catch (JsonProcessingException e) {
+            log.error("[Processor] Failed to serialize VOTE message", e);
         }
     }
 
@@ -134,8 +171,8 @@ public class ChatAnalysisProcessor {
                         analyzed -> analyzed.forEach(msg -> {
                             try {
                                 kafkaTemplate.send(OUTPUT_TOPIC, msg.getRoomId(), objectMapper.writeValueAsString(msg));
-                                log.info("[Processor] Sent analyzed CHAT: roomId={}, emotion={}",
-                                        msg.getRoomId(), msg.getEmotion().getType());
+                                log.info("[Processor] Sent analyzed CHAT: roomId={}, scores={}",
+                                        msg.getRoomId(), msg.getEmotionScores());
                             } catch (JsonProcessingException e) {
                                 log.error("[Processor] Failed to serialize analyzed CHAT", e);
                             }
