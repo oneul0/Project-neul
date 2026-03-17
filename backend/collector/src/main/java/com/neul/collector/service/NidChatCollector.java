@@ -44,6 +44,7 @@ public class NidChatCollector implements ChatCollector {
     private final ObjectMapper objectMapper;
 
     private final Map<String, Disposable> activeSubscriptions = new ConcurrentHashMap<>();
+    private final Map<String, Boolean> collectionActiveMap = new ConcurrentHashMap<>(); // Added for Phase 23
     private final WebSocketClient wsClient = new ReactorNettyWebSocketClient();
 
     @Override
@@ -246,8 +247,10 @@ public class NidChatCollector implements ChatCollector {
         if (cmd == 93102) messageType = "DONATION";
         else if (cmd == 93103) messageType = "SUBSCRIPTION";
 
+        String senderId = "Anonymous";
         try {
             JsonNode extraNode = objectMapper.readTree(extra);
+            senderId = extraNode.path("uid").asText("Anonymous");
             senderNickname = extraNode.path("extra").path("userName").asText(
                 extraNode.path("nickname").asText("Anonymous")
             );
@@ -255,12 +258,18 @@ public class NidChatCollector implements ChatCollector {
 
         long timeMs = msgNode.path("msgTime").asLong(System.currentTimeMillis());
 
+        String content = msgNode.path("msg").asText();
+        if (content != null) {
+            content = content.trim().replaceAll(":[\\w_.]+:", "[이모티콘]");
+        }
+
         return RawChatMessage.builder()
                 .messageId(UUID.randomUUID().toString())
                 .roomId(roomId) // Use the original long channelId
                 .messageType(messageType)
                 .sender(senderNickname)
-                .content(msgNode.path("msg").asText())
+                .senderId(senderId)
+                .content(content)
                 .timestamp(LocalDateTime.ofInstant(Instant.ofEpochMilli(timeMs), ZoneId.systemDefault()))
                 .build();
     }

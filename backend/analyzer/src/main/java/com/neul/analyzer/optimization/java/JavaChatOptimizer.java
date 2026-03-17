@@ -31,15 +31,11 @@ import java.util.stream.Collectors;
 @Slf4j
 public class JavaChatOptimizer implements ChatOptimizer {
 
-    /**
-     * 이모지, 특수기호, 공백만으로 구성된 문자열을 감지하는 패턴.
-     * {@code \p{So}}: Other Symbol, {@code \p{Sk}}: Modifier Symbol,
-     * {@code \p{Sm}}: Math Symbol, {@code \p{Sc}}: Currency Symbol
-     */
-    private static final Pattern EMOJI_ONLY_PATTERN = Pattern.compile("^[\\p{So}\\p{Sk}\\p{Sm}\\p{Sc}\\p{Zs}\\s]+$");
+    /** 기술적 노이즈(UUID, 긴 헥사코드 등)를 감지하는 패턴 */
+    private static final Pattern TECHNICAL_NOISE_PATTERN = Pattern.compile(".*[a-fA-F0-0]{8}-[a-fA-F0-0]{4}-[a-fA-F0-0]{4}.*|.*[a-fA-F0-9]{32}.*");
 
     /** 필터링 기준: 이 길이 미만의 메시지는 제거 */
-    private static final int MIN_CONTENT_LENGTH = 2;
+    private static final int MIN_CONTENT_LENGTH = 1; // 1글자(이모지 등) 허용
 
     @Override
     public OptimizedBatch optimize(List<RawChatMessage> rawMessages) {
@@ -82,12 +78,12 @@ public class JavaChatOptimizer implements ChatOptimizer {
 
                     String trimmed = content.trim();
 
-                    // Rule 1: 너무 짧은 메시지 제거
+                    // Rule 1: 너무 짧은 메시지 제거 (1글자 미만 등)
                     if (trimmed.length() < MIN_CONTENT_LENGTH)
                         return false;
 
-                    // Rule 2: 이모지·특수기호만으로 구성된 메시지 제거
-                    if (EMOJI_ONLY_PATTERN.matcher(trimmed).matches())
+                    // Rule 2: 기술적 노이즈(아이디, UUID 등) 제거
+                    if (TECHNICAL_NOISE_PATTERN.matcher(trimmed).find())
                         return false;
 
                     // Rule 3: 동일 sender의 같은 내용 도배 제거 (배치 내 첫 번째만 유지)
@@ -112,6 +108,7 @@ public class JavaChatOptimizer implements ChatOptimizer {
                     RawChatMessage rep = group.get(0); // 그룹 대표 메시지
                     return CompressedChat.builder()
                             .representativeId(rep.getMessageId())
+                            .representativeSenderId(rep.getSenderId()) // Added for Phase 23
                             .roomId(rep.getRoomId())
                             .content(rep.getContent())
                             .count(group.size())

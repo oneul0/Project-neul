@@ -20,6 +20,9 @@ public class CompressedChat {
     /** 그룹을 대표하는 원본 messageId */
     private final String representativeId;
 
+    /** 그룹을 대표하는 발신자 ID */
+    private final String representativeSenderId; // Added for Phase 23
+
     /** 방 ID */
     private final String roomId;
 

@@ -62,7 +62,11 @@ public class StreamRedisService {
     public Mono<Boolean> isCollectionActive(String roomId) {
         String key = "room:" + roomId + ":session";
         return redisTemplate.opsForValue().get(key)
-                .map(val -> (Boolean) val)
+                .map(val -> {
+                    if (val instanceof Boolean) return (Boolean) val;
+                    if (val instanceof String) return Boolean.parseBoolean((String) val);
+                    return false;
+                })
                 .defaultIfEmpty(false);
     }
 

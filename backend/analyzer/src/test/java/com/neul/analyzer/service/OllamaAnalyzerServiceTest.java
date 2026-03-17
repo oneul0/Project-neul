@@ -3,7 +3,6 @@ package com.neul.analyzer.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.neul.common.dto.AnalyzedChatMessage;
-import com.neul.common.dto.Emotion;
 import com.neul.analyzer.dto.ollama.OllamaMessage;
 import com.neul.analyzer.dto.ollama.OllamaRequest;
 import com.neul.analyzer.dto.ollama.OllamaResponse;
@@ -68,10 +67,11 @@ class OllamaAnalyzerServiceTest {
                 CompressedChat.builder().representativeId("msg-2").roomId("room-1").content("졸려요").count(3).build()
         );
 
-        String mockJsonResponse = "[" +
-                "{\"messageId\": \"msg-1\", \"type\": \"POSITIVE\", \"score\": 0.8}," +
-                "{\"messageId\": \"msg-2\", \"type\": \"NEGATIVE\", \"score\": -0.5}" +
-                "]";
+        String mockJsonResponse = "{" +
+                "\"keywords\": [], \"results\": [" +
+                "{\"messageId\": \"msg-1\", \"scores\": {\"JOY\": 0.8, \"NEUTRAL\": 0.2}}," +
+                "{\"messageId\": \"msg-2\", \"scores\": {\"ANGER\": 0.5, \"SADNESS\": 0.5}}" +
+                "]}";
 
         OllamaResponse mockResponse = OllamaResponse.builder()
                 .model("gemma:2b")
@@ -95,13 +95,13 @@ class OllamaAnalyzerServiceTest {
                     assertThat(results).hasSize(2);
                     
                     AnalyzedChatMessage msg1 = results.stream().filter(r -> r.getMessageId().equals("msg-1")).findFirst().get();
-                    assertThat(msg1.getEmotion().getType()).isEqualTo("POSITIVE");
-                    assertThat(msg1.getEmotion().getScore()).isEqualTo(0.8);
+                    assertThat(msg1.getEmotionScores().get("JOY")).isEqualTo(0.8);
+                    assertThat(msg1.getEmotionScores().get("NEUTRAL")).isEqualTo(0.2);
                     assertThat(msg1.getContent()).isEqualTo("좋은 아침이에요");
 
                     AnalyzedChatMessage msg2 = results.stream().filter(r -> r.getMessageId().equals("msg-2")).findFirst().get();
-                    assertThat(msg2.getEmotion().getType()).isEqualTo("NEGATIVE");
-                    assertThat(msg2.getEmotion().getScore()).isEqualTo(-0.5);
+                    assertThat(msg2.getEmotionScores().get("ANGER")).isEqualTo(0.5);
+                    assertThat(msg2.getEmotionScores().get("SADNESS")).isEqualTo(0.5);
                 })
                 .verifyComplete();
 
@@ -123,7 +123,7 @@ class OllamaAnalyzerServiceTest {
         );
 
         // msg-2에 대한 분석 정보가 JSON에 없는 경우
-        String mockJsonResponse = "[{\"messageId\": \"msg-1\", \"type\": \"POSITIVE\", \"score\": 1.0}]";
+        String mockJsonResponse = "{\"keywords\": [], \"results\": [{\"messageId\": \"msg-1\", \"scores\": {\"JOY\": 1.0}}]}";
 
         OllamaResponse mockResponse = OllamaResponse.builder()
                 .message(OllamaMessage.builder().content(mockJsonResponse).build())
@@ -140,8 +140,7 @@ class OllamaAnalyzerServiceTest {
                 .assertNext(results -> {
                     assertThat(results).hasSize(2);
                     AnalyzedChatMessage msg2 = results.stream().filter(r -> r.getMessageId().equals("msg-2")).findFirst().get();
-                    assertThat(msg2.getEmotion().getType()).isEqualTo("NEUTRAL");
-                    assertThat(msg2.getEmotion().getScore()).isEqualTo(0.0);
+                    assertThat(msg2.getEmotionScores().get("NEUTRAL")).isEqualTo(1.0);
                 })
                 .verifyComplete();
     }
@@ -154,7 +153,7 @@ class OllamaAnalyzerServiceTest {
                 CompressedChat.builder().representativeId("msg-1").roomId("room-1").content("테스트").count(1).build()
         );
 
-        String mockJsonResponse = "```json\n[{\"messageId\": \"msg-1\", \"type\": \"NEUTRAL\", \"score\": 0.0}]\n```";
+        String mockJsonResponse = "```json\n{\"keywords\": [], \"results\": [{\"messageId\": \"msg-1\", \"scores\": {\"NEUTRAL\": 1.0}}]}\n```";
 
         OllamaResponse mockResponse = OllamaResponse.builder()
                 .message(OllamaMessage.builder().content(mockJsonResponse).build())
@@ -169,7 +168,7 @@ class OllamaAnalyzerServiceTest {
         // when & then
         StepVerifier.create(geminiAnalyzerService.analyzeBatch(chats))
                 .assertNext(results -> {
-                    assertThat(results.get(0).getEmotion().getType()).isEqualTo("NEUTRAL");
+                    assertThat(results.get(0).getEmotionScores().get("NEUTRAL")).isEqualTo(1.0);
                 })
                 .verifyComplete();
     }
@@ -183,7 +182,7 @@ class OllamaAnalyzerServiceTest {
         );
 
         String mockResponseContent = "Here is your analysis result:\n" +
-                "[{\"messageId\": \"msg-1\", \"type\": \"POSITIVE\", \"score\": 0.9}]\n" +
+                "{\"keywords\": [], \"results\": [{\"messageId\": \"msg-1\", \"scores\": {\"JOY\": 0.9}}]}\n" +
                 "I hope this helps!";
 
         OllamaResponse mockResponse = OllamaResponse.builder()
@@ -200,8 +199,7 @@ class OllamaAnalyzerServiceTest {
         StepVerifier.create(geminiAnalyzerService.analyzeBatch(chats))
                 .assertNext(results -> {
                     assertThat(results).hasSize(1);
-                    assertThat(results.get(0).getEmotion().getType()).isEqualTo("POSITIVE");
-                    assertThat(results.get(0).getEmotion().getScore()).isEqualTo(0.9);
+                    assertThat(results.get(0).getEmotionScores().get("JOY")).isEqualTo(0.9);
                 })
                 .verifyComplete();
     }
@@ -230,8 +228,7 @@ class OllamaAnalyzerServiceTest {
         StepVerifier.create(geminiAnalyzerService.analyzeBatch(chats))
                 .assertNext(results -> {
                     assertThat(results).hasSize(1);
-                    assertThat(results.get(0).getEmotion().getType()).isEqualTo("NEUTRAL");
-                    assertThat(results.get(0).getEmotion().getScore()).isEqualTo(0.0);
+                    assertThat(results.get(0).getEmotionScores().get("NEUTRAL")).isEqualTo(1.0);
                 })
                 .verifyComplete();
     }

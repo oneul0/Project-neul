@@ -91,12 +91,16 @@ public class ChatStreamService {
                                                                 .build();
 
                                                 return analyzedChatRepository.save(entity)
-                                                                .doOnNext(saved -> log.debug("Saved session CHAT to DB: id={}", saved.getId()));
+                                                                .doOnNext(saved -> log.debug("Saved session CHAT to DB: id={}", saved.getId()))
+                                                                .doOnError(err -> log.error("DB Save Error: {}", err.getMessage()));
                                         }
                                         return Mono.empty();
                                 })
                                 .subscribeOn(Schedulers.boundedElastic())
-                                .subscribe();
+                                .subscribe(
+                                    success -> log.debug("DB Process finished"),
+                                    err -> log.error("General DB Process Error: {}", err.getMessage())
+                                );
 
                 // 3. Redis 통계 갱신 + SSE 이벤트 발행
                 if (message.getEmotionScores() != null && !message.getEmotionScores().isEmpty()) {

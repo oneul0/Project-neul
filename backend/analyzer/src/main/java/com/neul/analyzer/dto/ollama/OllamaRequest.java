@@ -17,4 +17,5 @@ public class OllamaRequest {
     private boolean stream;
     // For enforcing JSON output in Ollama, we can use "format": "json" (if supported by the model/version)
     private String format;
+    private java.util.Map<String, Object> options;
 }

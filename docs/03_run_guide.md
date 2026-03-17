@@ -33,7 +33,7 @@
 | gradlew.bat | 프로젝트 루트에 파일 존재 여부 확인 | — |
 
 > **gradlew.bat이 없으면?** `gradle-wrapper.jar`와 `gradle-wrapper.properties`가 `gradle/wrapper/`에 있다면  
-> `gradlew.bat` 배치 스크립트만 추가하면 됩니다. → `docs/02_troubleshooting.md` 참고
+> `gradlew.bat` 배치 스크립트만 추가하면 됩니다. → [02_troubleshooting_log.md](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/02_troubleshooting_log.md) 참고
 
 ---
 
@@ -76,16 +76,28 @@ docker ps
 .\gradlew.bat :collector:bootRun
 ```
 
-### Step 3 — SSE 스트림 구독
+### Step 3 — 수집 시작 (Collector 트리거)
 
-**터미널 D** — 수신 대기
+구독(Subscribe)만 해서는 데이터가 흐르지 않습니다. 먼저 `collector`에게 어떤 채널을 수집할지 알려줘야 합니다.
+
+**터미널 D** (또는 새 터미널)
+```powershell
+# 실제 치지직 채널 ID 사용 (예: 458f6ec20b034f49e0fc6d03921646d2)
+curl.exe -X POST http://localhost:8081/api/v1/channels/458f6ec20b034f49e0fc6d03921646d2/subscribe
+```
+`{"channelId":"...","status":"subscribed"}` 응답이 오면 정상입니다.
+
+### Step 4 — SSE 스트림 구독 (데이터 확인)
+
+이제 분석된 데이터를 실시간으로 받아봅니다.
+
+**터미널 E** (수신 대기)
 
 > ⚠️ PowerShell에서는 반드시 `curl.exe`를 사용하세요.  
 > `curl`은 `Invoke-WebRequest`의 별칭이라 `-H` 옵션 처리 방식이 다릅니다.
 
 ```powershell
-# 실제 치지직 채널 ID 사용 (예: 458f6ec20b034f49e0fc6d03921646d2)
-curl.exe -N -H "Accept: text/event-stream" http://localhost:8083/api/v1/stream/{channelId}
+curl.exe -N -H "Accept: text/event-stream" http://localhost:8083/api/v1/stream/458f6ec20b034f49e0fc6d03921646d2
 ```
 
 ### Step 4 — 데이터 수신 확인
@@ -115,7 +127,33 @@ docker-compose down -v
 
 ---
 
-## 4. 현재 미완성 항목
+## 5. 엔드투엔드(E2E) 테스트 실행 가이드
+
+이 프로젝트는 [Testcontainers](https://www.testcontainers.org/)와 [Playwright](https://playwright.dev/)를 사용하여 인프라부터 UI까지 자동화된 테스트를 제공합니다.
+
+### 5-1. 백엔드 파이프라인 테스트 (Kafka → Core-API → SSE → DB)
+Docker Desktop이 실행 중인 상태에서 아래 명령어를 실행하세요. 별도의 인프라를 수동으로 띄울 필요 없이 테스트용 컨테이너가 자동으로 기동됩니다.
+
+```powershell
+# backend 폴더에서
+.\gradlew.bat :core-api:test --tests com.neul.core_api.e2e.FullPipelineE2ETest
+```
+
+### 5-2. 프론트엔드 UI 테스트 (Playwright)
+실제 브라우저 환경에서 대시보드 렌더링을 확인합니다.
+
+```powershell
+# frontend 폴더에서
+npx playwright test
+```
+
+> [!TIP]
+> Playwright UI 모드를 사용하면 테스트 과정을 시각적으로 확인할 수 있습니다:
+> `npx playwright test --ui`
+
+---
+
+## 6. 현재 미완성 항목
 
 | 항목 | 현재 상태 | 목표 |
 |------|-----------|------|

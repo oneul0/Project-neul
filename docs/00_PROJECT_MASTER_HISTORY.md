@@ -4,6 +4,22 @@
 
 ---
 
+## 📂 프로젝트 문서 색인 (Documentation Index)
+
+| 번호 | 문서명 | 주요 내용 |
+|:---:|---|---|
+| 00 | [마스터 히스토리](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/00_PROJECT_MASTER_HISTORY.md) | 프로젝트 전체 진행 현황 및 타임라인 |
+| 01 | [ADR (의사결정 기록)](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/01_ADR.md) | 주요 설계 결정 사항 (Kafka, WebFlux, JNI 등) |
+| 02 | [트러블슈팅 로그](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/02_troubleshooting_log.md) | 장애 상황 및 버그 해결 기록 |
+| 03 | [로컬 실행 가이드](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/03_run_guide.md) | 환경 설정, 서비스 실행 및 E2E 테스트 방법 |
+| 04 | [기술 개념 가이드](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/04_technical_concepts.md) | 사용된 기술 스택(Reactor, Redis 등) 심층 분석 |
+| 05 | [개발자 인수인계서](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/05_developer_handover.md) | 신규 개발자를 위한 온보딩 및 구조 가이드 |
+| 06 | [테스트 자동화 전략](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/06_testing_strategy.md) | E2E 테스트 시나리오 및 검증 전략 |
+| 07 | [네이티브 최적화 가이드](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/07_native_optimization_guide.md) | Java → Rust 전환/최적화 표준 가이드 |
+| 08 | [성능 전이 로그](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/08_performance_migration_log.md) | 최적화 세션별 성능 개선 데이터 기록 |
+
+---
+
 ## 📅 2026-02-27: 프로젝트 스캐폴딩 및 기초 파이프라인 구축
 
 ### [완료된 작업]
@@ -40,6 +56,7 @@
 
 ### [완료된 작업]
 - **Chzzk API 연동**: Client Auth 기반 세션 발급 및 소켓(Socket.IO) 수집기 구현.
+- **실시간 채팅 수집기**: `NidChatCollector` 구축을 통해 `wss://kr-ss1.chat.naver.com/chat` 실시간 데이터 수집 시작.
 - **이벤트 라우팅**: 후원/구독 이벤트는 분석 없이 즉시 통과(Passthrough) 처리.
 - **프론트엔드 스캐폴딩**: Next.js 16 + Tailwind CSS v4 환경 구성.
 - **ADR 수립**: ADR-005 (Chzzk API 서버 통합 인증 도입).
@@ -59,7 +76,9 @@
 
 ### [완료된 작업]
 - **Collection**: 공식 API의 한계를 넘기 위해 브라우저 내부 웹소켓(NID Chat) 직접 연동 성공.
-- **Micro-batching**: 초당 수천 건 처리를 위해 1분 단위 `RawChatBatch` 전송 구조로 전환.
+- **Micro-batching**: 초당 수천 건 처리를 위해 기존 1분 단위를 **2초 단위(`window(Duration.ofSeconds(2))`)** 고속 마이크로배칭으로 고도화.
+- **Emotion Analysis**: Ollama를 통한 **7가지 감정 모델**(JOY, HOPE, NEUTRAL, SADNESS, ANGER, WONDER, DISGUST) 분석 기능 추가.
+- **Highlight Engine**: 0.8 이상의 감정 스파이크를 실시간 감지하여 하이라이트 이벤트 발행 기능 구현.
 - **Common Module**: 데이터 일관성을 위해 모든 DTO를 `common` 모듈로 통합 및 전수 리팩토링.
 - **JNI Foundation**: `NativeBridge` 구현 및 성능 측정을 위한 `PerformanceProfiler` 유틸리티 추가.
 - **Documentation**: ADR-001~003(신규), 성능 전이 로그, JNI 가이드 등 문서 체계화.
@@ -67,6 +86,14 @@
 ### [이슈 해결 (Troubleshooting)]
 - **Port Conflict**: 8082 포트 점유 프로세스 정리.
 - **Import Hell**: `common` 모듈 통합 후 발생한 수백 개의 Import 오류 일괄 수정.
+
+---
+
+## 📅 2026-03-17: 데이터 처리 기술 정리 및 E2E 학습 가이드 통합
+
+### [완료된 작업]
+- **Technical Summary**: 대용량 데이터 대응을 위한 5대 핵심 전략(리액티브, 카프카 배치, 최적화 엔진, 패스스루, Redis 집계) 정리.
+- **Run Guide Integration**: E2E 테스트 실습 가이드를 [03_run_guide.md](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/03_run_guide.md) 내 '섹션 5'로 통합.
 
 ---
 
