@@ -1,0 +1,61 @@
+[
+  {
+    "roomId": "test-room",
+    "messages": [
+      {
+        "messageId": "m1",
+        "roomId": "test-room",
+        "messageType": "CHAT",
+        "sender": "UserA",
+        "senderId": "uid-a",
+        "content": "오늘 방송 꿀잼이네요!",
+        "timestamp": "2026-03-14T20:10:00"
+      },
+      {
+        "messageId": "m2",
+        "roomId": "test-room",
+        "messageType": "CHAT",
+        "sender": "UserB",
+        "senderId": "uid-b",
+        "content": "!1",
+        "timestamp": "2026-03-14T20:10:05"
+      },
+      {
+        "messageId": "m3",
+        "roomId": "test-room",
+        "messageType": "CHAT",
+        "sender": "UserA",
+        "senderId": "uid-a",
+        "content": "!2",
+        "timestamp": "2026-03-14T20:10:10"
+      },
+      {
+        "messageId": "m4",
+        "roomId": "test-room",
+        "messageType": "CHAT",
+        "sender": "UserC",
+        "senderId": "uid-c",
+        "content": "이거 진짜 별론데... 좀 그렇다",
+        "timestamp": "2026-03-14T20:10:15"
+      },
+      {
+        "messageId": "m5",
+        "roomId": "test-room",
+        "messageType": "CHAT",
+        "sender": "UserD",
+        "senderId": "uid-d",
+        "content": "ㄹㅇㅋㅋ ㅇㅈ",
+        "timestamp": "2026-03-14T20:10:20"
+      },
+      {
+        "messageId": "m6",
+        "roomId": "test-room",
+        "messageType": "CHAT",
+        "sender": "UserB",
+        "senderId": "uid-b",
+        "content": "나만 재미있나? 난 최고인듯",
+        "timestamp": "2026-03-14T20:10:25"
+      }
+    ]
+  }
+]
