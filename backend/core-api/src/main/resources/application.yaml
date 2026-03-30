@@ -6,6 +6,9 @@ spring:
     url: r2dbc:postgresql://127.0.0.1:5432/neul_db
     username: neul_user
     password: neul_password
+  sql:
+    init:
+      mode: never
 
   data:
     redis:
@@ -14,12 +17,20 @@ spring:
 
   kafka:
     bootstrap-servers: 127.0.0.1:9092
+    consumer:
+      auto-offset-reset: earliest
 
 server:
   port: 8083
   error:
     include-message: always
     include-stacktrace: always
+
+app:
+  chzzk:
+    live-status-base-url: https://api.chzzk.naver.com/service/v2/channels
+  collector:
+    base-url: http://localhost:8081
 
 # Chzzk Open API 설정 (환경변수로 주입)
 chzzk:
