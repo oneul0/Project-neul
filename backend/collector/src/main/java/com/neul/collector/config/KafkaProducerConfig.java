@@ -38,6 +38,14 @@ public class KafkaProducerConfig {
     }
 
     @Bean
+    public NewTopic v2RawChatTopic() {
+        return TopicBuilder.name("v2-raw-chat")
+                .partitions(5)
+                .replicas(1)
+                .build();
+    }
+
+    @Bean
     public ProducerFactory<String, String> producerFactory() {
         Map<String, Object> configProps = new HashMap<>();
         configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);

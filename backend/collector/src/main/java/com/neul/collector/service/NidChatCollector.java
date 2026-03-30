@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.neul.common.dto.RawChatBatch;
 import com.neul.common.dto.RawChatMessage;
 import com.neul.collector.jni.NativeBridge;
+import com.neul.collector.v2.producer.V2ChatProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Primary;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.socket.client.ReactorNettyWebSocketClient;
 import org.springframework.web.reactive.socket.client.WebSocketClient;
+import io.micrometer.core.instrument.MeterRegistry;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -40,11 +42,12 @@ public class NidChatCollector implements ChatCollector {
 
     private final WebClient chzzkWebClient;
     private final ChatProducer chatProducer;
+    private final V2ChatProducer v2ChatProducer;
     private final NativeBridge nativeBridge;
     private final ObjectMapper objectMapper;
+    private final MeterRegistry meterRegistry;
 
     private final Map<String, Disposable> activeSubscriptions = new ConcurrentHashMap<>();
-    private final Map<String, Boolean> collectionActiveMap = new ConcurrentHashMap<>(); // Added for Phase 23
     private final WebSocketClient wsClient = new ReactorNettyWebSocketClient();
 
     @Override
@@ -91,12 +94,19 @@ public class NidChatCollector implements ChatCollector {
                 .retrieve()
                 .bodyToMono(ObjectNode.class)
                 .map(node -> {
-                    String id = node.path("content").path("chatChannelId").asText();
-                    log.info("[NidChat] Fetched chatChannelId: {} for channel: {}", id, channelId);
+                    JsonNode content = node.path("content");
+                    if (content.isMissingNode() || content.isNull()) {
+                        log.error("[NidChat] Chzzk API returned empty content for channel {}. Maybe adult-only or restricted? Response: {}", channelId, node);
+                        return "";
+                    }
+                    String id = content.path("chatChannelId").asText();
+                    if (!id.isEmpty()) {
+                        log.info("[NidChat] Fetched chatChannelId: {} for channel: {}", id, channelId);
+                    }
                     return id;
                 })
                 .filter(id -> !id.isEmpty())
-                .switchIfEmpty(Mono.error(new RuntimeException("Could not find chatChannelId for " + channelId)));
+                .switchIfEmpty(Mono.error(new RuntimeException("Could not find chatChannelId for " + channelId + ". Check if the channel is adult-only or restricted.")));
     }
 
     private Mono<String> getAccessToken(String chatChannelId) {
@@ -108,8 +118,12 @@ public class NidChatCollector implements ChatCollector {
                 .bodyToMono(ObjectNode.class)
                 .map(node -> {
                     String token = node.path("content").path("accessToken").asText();
-                    log.info("[NidChat] Successfully fetched access token (prefix: {})", 
-                            token.substring(0, Math.min(5, token.length())));
+                    if (!token.isEmpty()) {
+                        log.info("[NidChat] Successfully fetched access token (prefix: {})", 
+                                token.substring(0, Math.min(5, token.length())));
+                    } else {
+                        log.error("[NidChat] Failed to get access token for {}. Response: {}", chatChannelId, node);
+                    }
                     return token;
                 })
                 .filter(token -> !token.isEmpty())
@@ -182,6 +196,7 @@ public class NidChatCollector implements ChatCollector {
                         return parseAndEmit(originalChannelId, text).doOnNext(chatMsg -> {
                             if ("CHAT".equals(chatMsg.getMessageType())) {
                                 chatSink.tryEmitNext(chatMsg);
+                                v2ChatProducer.sendRawChat(chatMsg);
                             } else {
                                 chatProducer.sendChat(chatMsg);
                             }
@@ -229,7 +244,11 @@ public class NidChatCollector implements ChatCollector {
                 JsonNode body = root.path("bdy");
                 if (body.isArray()) {
                     return Flux.fromIterable(body)
-                            .map(msgNode -> buildRawMessage(roomId, msgNode, cmd));
+                            .map(msgNode -> {
+                                RawChatMessage msg = buildRawMessage(roomId, msgNode, cmd);
+                                meterRegistry.counter("neul.chat.collected.total", "roomId", roomId).increment();
+                                return msg;
+                            });
                 }
             }
         } catch (Exception e) {

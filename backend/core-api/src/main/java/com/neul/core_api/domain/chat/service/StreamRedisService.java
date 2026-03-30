@@ -83,4 +83,12 @@ public class StreamRedisService {
                 .map(Object::toString)
                 .collectList();
     }
+
+    public Mono<Map<Object, Object>> recordKeywordGroupsAndGetStats(String roomId, Map<String, String> keywordGroups) {
+        String key = "vote:keywords:" + roomId;
+        return Flux.fromIterable(keywordGroups.entrySet())
+                .flatMap(entry -> redisTemplate.opsForHash().increment(key, entry.getValue(), 1))
+                .then(redisTemplate.opsForHash().entries(key)
+                        .collectMap(Map.Entry::getKey, Map.Entry::getValue));
+    }
 }

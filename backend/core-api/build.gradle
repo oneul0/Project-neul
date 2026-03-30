@@ -1,21 +1,19 @@
+apply plugin: 'org.springframework.boot'
+
 dependencies {
 	implementation project(':common')
+	implementation 'org.springframework.boot:spring-boot-starter-webflux:3.1.5'
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis-reactive:3.1.5'
+	implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc:3.1.5'
+	implementation 'org.springframework.kafka:spring-kafka:3.1.1'
+	implementation 'org.postgresql:r2dbc-postgresql:1.0.2.RELEASE'
 
-	// 클라이언트와 SSE 통신을 위한 WebFlux
-	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+	implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.3'
+	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.15.3'
 
-	// 논블로킹 RDB 통신을 위한 R2DBC (PostgreSQL)
-	implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
-	implementation 'org.postgresql:r2dbc-postgresql'
-	runtimeOnly 'org.postgresql:postgresql' // Flyway나 기존 JDBC 호환용
-
-	// 논블로킹 Redis 통신을 위한 Reactive Redis
-	implementation 'org.springframework.boot:spring-boot-starter-data-redis-reactive'
-
-	// Kafka Consumer
-	implementation 'org.springframework.boot:spring-boot-starter-kafka'
-
-	// JSON 직렬화/역직렬화를 위한 Jackson 핵심 모듈
-	implementation 'com.fasterxml.jackson.core:jackson-databind'
-	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+	testImplementation "org.testcontainers:testcontainers:1.19.0"
+	testImplementation "org.testcontainers:junit-jupiter:1.19.0"
+	testImplementation "org.testcontainers:kafka:1.19.0"
+	testImplementation "org.testcontainers:postgresql:1.19.0"
+	testImplementation "org.testcontainers:r2dbc:1.19.0"
 }

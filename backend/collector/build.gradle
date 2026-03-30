@@ -1,23 +1,11 @@
+apply plugin: 'org.springframework.boot'
+
 dependencies {
-	// 공통 DTO 모듈 참조
 	implementation project(':common')
+	implementation 'org.springframework.boot:spring-boot-starter-webflux:3.1.5'
+	implementation 'org.springframework.kafka:spring-kafka:3.1.1'
+	implementation 'org.springframework.boot:spring-boot-starter-actuator:3.1.5'
 
-	// 논블로킹 통신을 위한 WebFlux
-	implementation 'org.springframework.boot:spring-boot-starter-webflux'
-
-	// 비동기 스트림 파이프라인을 위한 Reactor Kafka
-	implementation 'org.springframework.boot:spring-boot-starter-kafka'
-
-	// JSON 직렬화/역직렬화를 위한 Jackson 핵심 모듈
-	implementation 'com.fasterxml.jackson.core:jackson-databind'
-
-	// Java 8 날짜/시간 타입(LocalDateTime 등) 지원 모듈 추가
-	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
-
-	// Chzzk Open API Socket.IO 클라이언트 (공식 지원 최대 버전: 2.0.3 -> Java client 1.0.2가 Engine.IO 3 호환)
-	implementation 'io.socket:socket.io-client:1.0.2'
-
-	// 재연결 로직용 Resilience4j (Circuit Breaker / Retry)
-	implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
-	implementation 'io.github.resilience4j:resilience4j-reactor:2.2.0'
+	implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.3'
+	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.15.3'
 }

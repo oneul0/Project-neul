@@ -1,16 +1,15 @@
+apply plugin: 'org.springframework.boot'
+
 dependencies {
 	implementation project(':common')
+	implementation 'org.springframework.boot:spring-boot-starter-webflux:3.1.5'
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis-reactive:3.1.5'
+	implementation 'org.springframework.kafka:spring-kafka:3.1.1'
+	implementation 'org.springframework.boot:spring-boot-starter-actuator:3.1.5'
 
-	// 외부 AI API 호출을 위한 WebClient용
-	implementation 'org.springframework.boot:spring-boot-starter-kafka'
+	implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.1.0'
+	implementation 'io.github.resilience4j:resilience4j-reactor:2.1.0'
 
-	// Rate Limit 제어 및 장애 격리를 위한 서킷 브레이커 (Reactive 지원 버전)
-	implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
-	implementation 'io.github.resilience4j:resilience4j-reactor:2.2.0'
-
-	implementation 'org.springframework.boot:spring-boot-starter-webflux'
-
-	// JSON 직렬화/역직렬화를 위한 Jackson 핵심 모듈
-	implementation 'com.fasterxml.jackson.core:jackson-databind'
-	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+	implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.3'
+	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.15.3'
 }

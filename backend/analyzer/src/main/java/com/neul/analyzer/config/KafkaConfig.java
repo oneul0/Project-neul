@@ -28,7 +28,7 @@ public class KafkaConfig {
     @Bean
     public NewTopic analyzedChatTopic() {
         return TopicBuilder.name("analyzed-chat-topic")
-                .partitions(3)
+                .partitions(5)
                 .replicas(1)
                 .build();
     }
@@ -41,7 +41,70 @@ public class KafkaConfig {
                 .build();
     }
 
-    // ── Consumer (String Value, 배치 처리용) ──────────────────────────────
+    @Bean
+    public NewTopic vodRawChatTopic() {
+        return TopicBuilder.name("vod-raw-chat-topic")
+                .partitions(5)
+                .replicas(1)
+                .build();
+    }
+
+    @Bean
+    public NewTopic v2RawChatTopic() {
+        return TopicBuilder.name("v2-raw-chat")
+                .partitions(5)
+                .replicas(1)
+                .build();
+    }
+
+    @Bean
+    public NewTopic v2SentimentTopic() {
+        return TopicBuilder.name("v2-sentiment")
+                .partitions(5)
+                .replicas(1)
+                .build();
+    }
+
+    @Bean
+    public NewTopic v2TrollTopic() {
+        return TopicBuilder.name("v2-troll")
+                .partitions(5)
+                .replicas(1)
+                .build();
+    }
+
+    @Bean
+    public NewTopic v2ContextTopic() {
+        return TopicBuilder.name("v2-context")
+                .partitions(5)
+                .replicas(1)
+                .build();
+    }
+
+    @Bean
+    public NewTopic v2AggregateTopic() {
+        return TopicBuilder.name("v2-aggregate")
+                .partitions(5)
+                .replicas(1)
+                .build();
+    }
+
+    @Bean
+    public NewTopic v2AgentDlqTopic() {
+        return TopicBuilder.name("v2-agent-dlq")
+                .partitions(1)
+                .replicas(1)
+                .build();
+    }
+
+    @Bean
+    public NewTopic v2BriefingDlqTopic() {
+        return TopicBuilder.name("v2-briefing-dlq")
+                .partitions(1)
+                .replicas(1)
+                .build();
+    }
+
     @Bean
     public ConsumerFactory<String, String> consumerFactory() {
         Map<String, Object> props = new HashMap<>();
@@ -49,28 +112,41 @@ public class KafkaConfig {
         props.put(ConsumerConfig.GROUP_ID_CONFIG, "neul-analyzer-group");
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
-        // bufferTimeout 효과를 위해 최대 50건씩 폴링
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 50);
         return new DefaultKafkaConsumerFactory<>(props);
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory() {
+        ConcurrentKafkaListenerContainerFactory<String, String> factory = new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory());
+        return factory;
     }
 
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, String> batchKafkaListenerContainerFactory() {
         ConcurrentKafkaListenerContainerFactory<String, String> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory());
-        factory.setBatchListener(true); // 배치 수신 활성화
+        factory.setBatchListener(true);
+        factory.setConcurrency(5);
         return factory;
     }
 
-    // ── Producer (String Value, AnalyzedChatMessage → JSON) ──────────────────
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, String> vodKafkaListenerContainerFactory() {
+        ConcurrentKafkaListenerContainerFactory<String, String> factory = new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory());
+        factory.setConcurrency(5);
+        return factory;
+    }
+
     @Bean
     public ProducerFactory<String, String> producerFactory() {
         Map<String, Object> props = new HashMap<>();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-
         return new DefaultKafkaProducerFactory<>(props);
     }
 

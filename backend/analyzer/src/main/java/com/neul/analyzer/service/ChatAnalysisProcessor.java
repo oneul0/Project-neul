@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -25,8 +26,10 @@ public class ChatAnalysisProcessor {
 
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final OllamaAnalyzerService analyzerService;
+    private final HeuristicSentimentAnalyzer heuristicAnalyzer;
     private final ObjectMapper objectMapper;
     private final ChatOptimizer chatOptimizer;
+    private final MeterRegistry meterRegistry;
 
     private static final String OUTPUT_TOPIC = "analyzed-chat-topic";
 
@@ -158,25 +161,54 @@ public class ChatAnalysisProcessor {
     // ─── CHAT 감정 분석 ───────────────────────────────────────────────────────
 
     private void analyzeAndPublish(List<RawChatMessage> chatMessages) {
-        // 최적화 (필터링 + 압축)
-        OptimizedBatch optimized = chatOptimizer.optimize(chatMessages);
-        if (optimized.getCompressedChats().isEmpty()) {
-            log.info("[Processor] All chat messages filtered out. Skipping analysis.");
+        // Step 1: Fast-Path (Heuristic)
+        List<RawChatMessage> ambiguousMessages = new ArrayList<>();
+
+        chatMessages.forEach(msg -> {
+            AnalyzedChatMessage fastResult = heuristicAnalyzer.analyze(msg);
+            
+            // 즉각적인 피드백 발행
+            publishToTopic(fastResult, "[Processor] Sent Fast-Path CHAT");
+            meterRegistry.counter("neul.chat.analyzed", "path", "fast").increment();
+
+            // 모호한 채팅만 Slow-Path 후보로 선정
+            if (fastResult.isAmbiguous()) {
+                ambiguousMessages.add(msg);
+            }
+        });
+
+        // Step 2: Slow-Path (LLM Deep Analysis) - Only for Ambiguous chats
+        if (ambiguousMessages.isEmpty()) {
+            log.debug("[Processor] No ambiguous chats in batch. Skipping LLM analysis.");
             return;
         }
+
+        // 최적화 (필터링 + 압축)
+        OptimizedBatch optimized = chatOptimizer.optimize(ambiguousMessages);
+        if (optimized.getCompressedChats().isEmpty()) {
+            log.info("[Processor] Ambiguous chats filtered out. Skipping LLM analysis.");
+            return;
+        }
+
+        log.info("[Processor] Sending {} ambiguous chats (compressed to {}) to LLM", 
+                ambiguousMessages.size(), optimized.getCompressedChats().size());
 
         // Gemini 감정 분석
         analyzerService.analyzeBatch(optimized.getCompressedChats())
                 .subscribe(
                         analyzed -> analyzed.forEach(msg -> {
-                            try {
-                                kafkaTemplate.send(OUTPUT_TOPIC, msg.getRoomId(), objectMapper.writeValueAsString(msg));
-                                log.info("[Processor] Sent analyzed CHAT: roomId={}, scores={}",
-                                        msg.getRoomId(), msg.getEmotionScores());
-                            } catch (JsonProcessingException e) {
-                                log.error("[Processor] Failed to serialize analyzed CHAT", e);
-                            }
+                            publishToTopic(msg, "[Processor] Sent Slow-Path (LLM) CHAT");
+                            meterRegistry.counter("neul.chat.analyzed", "path", "slow").increment();
                         }),
-                        error -> log.error("[Processor] Analysis failed for batch", error));
+                        error -> log.error("[Processor] LLM Analysis failed for batch", error));
+    }
+
+    private void publishToTopic(AnalyzedChatMessage msg, String logPrefix) {
+        try {
+            kafkaTemplate.send(OUTPUT_TOPIC, msg.getRoomId(), objectMapper.writeValueAsString(msg));
+            log.info("{} : roomId={}, scores={}", logPrefix, msg.getRoomId(), msg.getEmotionScores());
+        } catch (JsonProcessingException e) {
+            log.error("[Processor] Failed to serialize analyzed message", e);
+        }
     }
 }

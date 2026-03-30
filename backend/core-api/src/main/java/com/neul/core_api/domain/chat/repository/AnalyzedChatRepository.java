@@ -8,4 +8,7 @@ import org.springframework.stereotype.Repository;
 public interface AnalyzedChatRepository extends ReactiveCrudRepository<AnalyzedChat, Long> {
     reactor.core.publisher.Flux<AnalyzedChat> findByRoomIdAndSenderId(String roomId, String senderId);
     reactor.core.publisher.Mono<AnalyzedChat> findByMessageId(String messageId);
+
+    @org.springframework.data.r2dbc.repository.Query("SELECT * FROM analyzed_chats WHERE room_id = :roomId ORDER BY analyzed_at DESC LIMIT 200")
+    reactor.core.publisher.Flux<AnalyzedChat> findRecentByRoomId(String roomId);
 }

@@ -18,4 +18,6 @@ public class ChzzkProperties {
     private String clientId;
     private String clientSecret;
     private String redirectUri;
+    private String nidAut;
+    private String nidSes;
 }

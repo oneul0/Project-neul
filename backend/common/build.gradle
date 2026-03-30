@@ -1,19 +1,11 @@
-bootJar {
-    enabled = false
-}
-
-jar {
-    enabled = true
-}
+apply plugin: 'java'
 
 dependencies {
-    implementation 'com.fasterxml.jackson.core:jackson-databind'
-    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
-    implementation 'org.slf4j:slf4j-api'
-    
-    compileOnly 'org.projectlombok:lombok'
-    annotationProcessor 'org.projectlombok:lombok'
-    
-    testImplementation 'org.junit.jupiter:junit-jupiter-api'
-    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.3'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.15.3'
+}
+
+// Ensure it's treated as a plain library JAR
+jar {
+    archiveClassifier = ''
 }

@@ -10,6 +10,7 @@ import com.neul.core_api.domain.chat.repository.AnalyzedChatRepository;
 import com.neul.core_api.domain.chat.repository.HighlightRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -27,11 +28,19 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class ChatStreamService {
 
+        private static final String DEFAULT_HIGHLIGHT_IMAGE_URL = "https://placehold.co/1280x720?text=highlight";
+
         private final AnalyzedChatRepository analyzedChatRepository;
         private final HighlightRepository highlightRepository;
         private final StreamRedisService streamRedisService;
         private final ObjectMapper objectMapper;
-        private final WebClient chzzkWebClient = WebClient.builder().build();
+        private final WebClient.Builder webClientBuilder;
+
+        @Value("${app.chzzk.live-status-base-url:https://api.chzzk.naver.com/service/v2/channels}")
+        private String liveStatusBaseUrl;
+
+        @Value("${app.collector.base-url:http://localhost:8081}")
+        private String collectorBaseUrl;
 
         // Room(channelId)별 SSE Sink 맵 (replay 최근 100개 버퍼)
         private final Map<String, Sinks.Many<Object>> roomSinks = new ConcurrentHashMap<>();
@@ -114,6 +123,12 @@ public class ChatStreamService {
                                                                         sink.tryEmitNext(Map.of("event", "chat_analyzed", "data", message));
                                                                         sink.tryEmitNext(Map.of("event", "stats_update", "data", stats));
 
+                                                                        // 키워드 그룹 처리 (투표/키워드 풀용)
+                                                                        if (message.getKeywordGroups() != null && !message.getKeywordGroups().isEmpty()) {
+                                                                                streamRedisService.recordKeywordGroupsAndGetStats(roomId, message.getKeywordGroups())
+                                                                                                .subscribe(keywordStats -> sink.tryEmitNext(Map.of("event", "keyword_update", "data", keywordStats)));
+                                                                        }
+
                                                                         // 하이라이트 감지 로직 (Relative Spike Detection)
                                                                         double currentIntensity = calculateIntensity(message.getEmotionScores());
                                                                         updateRollingAvg(roomId, currentIntensity);
@@ -165,19 +180,18 @@ public class ChatStreamService {
                 log.info("[Highlight] Relative spike detected! roomId={}, emotion={}, intensity={}",
                                 roomId, topEmotion.getKey(), String.format("%.2f", intensity));
 
-                // Chzzk에서 현재 실시간 썸네일 URL 가져오기
-                chzzkWebClient.get()
-                                .uri("https://api.chzzk.naver.com/service/v2/channels/" + roomId + "/live-status")
-                                .retrieve()
-                                .bodyToMono(JsonNode.class)
-                                .map(node -> node.path("content").path("liveImageUrl").asText())
+                fetchLiveImageUrl(roomId)
+                                .map(this::normalizeHighlightImageUrl)
+                                .filter(url -> !url.isBlank())
+                                .defaultIfEmpty(DEFAULT_HIGHLIGHT_IMAGE_URL)
+                                .onErrorReturn(DEFAULT_HIGHLIGHT_IMAGE_URL)
                                 .flatMap(imageUrl -> {
                                         HighlightRecord highlight = HighlightRecord.builder()
                                                         .roomId(roomId)
                                                         .emotionType(topEmotion.getKey())
                                                         .peakScore(intensity) // 전체 강도를 peakScore로 저장
                                                         .topMessage(message.getContent())
-                                                        .liveImageUrl(imageUrl.replace("{type}", "1080")) // 고화질
+                                                        .liveImageUrl(imageUrl)
                                                         .timestamp(LocalDateTime.now())
                                                         .build();
 
@@ -275,10 +289,27 @@ public class ChatStreamService {
                                 });
         }
 
+        private Mono<String> fetchLiveImageUrl(String roomId) {
+                return webClientBuilder.build()
+                                .get()
+                                .uri(liveStatusBaseUrl + "/" + roomId + "/live-status")
+                                .retrieve()
+                                .bodyToMono(JsonNode.class)
+                                .map(node -> node.path("content").path("liveImageUrl").asText());
+        }
+
+        private String normalizeHighlightImageUrl(String imageUrl) {
+                if (imageUrl == null || imageUrl.isBlank()) {
+                        return DEFAULT_HIGHLIGHT_IMAGE_URL;
+                }
+                return imageUrl.replace("{type}", "1080");
+        }
+
         private void stopCollector(String roomId) {
                 // collector 모듈의 DELETE /api/v1/channels/{roomId}/subscribe 호출
-                chzzkWebClient.delete()
-                                .uri("http://localhost:8081/api/v1/channels/" + roomId + "/subscribe")
+                webClientBuilder.build()
+                                .delete()
+                                .uri(collectorBaseUrl + "/api/v1/channels/" + roomId + "/subscribe")
                                 .retrieve()
                                 .toBodilessEntity()
                                 .subscribeOn(Schedulers.boundedElastic())

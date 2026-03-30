@@ -30,7 +30,10 @@ public class AnalyzedChatMessage {
     private String senderId; // Added for Phase 23
     private Map<String, Double> emotionScores;
     private List<String> keywords;
-    private LocalDateTime analyzedAt;
+    private Map<String, String> keywordGroups; // Keyword -> Representative Name
+    private LocalDateTime timestamp; // 원본 채팅 발생 시간
+    private LocalDateTime analyzedAt; // 분석 완료 시간
+    private boolean isAmbiguous; // LLM 정밀 분석 필요 여부
 
     private String donationType;
     private String donatorNickname;
