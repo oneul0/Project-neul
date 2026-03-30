@@ -1,7 +1,7 @@
 package com.neul.core_api.e2e;
 
+import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.KafkaContainer;
@@ -15,9 +15,9 @@ import org.testcontainers.utility.DockerImageName;
  * E2E 테스트를 위한 베이스 클래스.
  * Testcontainers를 사용하여 Kafka, Redis, PostgreSQL을 격리된 환경에서 기동합니다.
  */
-@Testcontainers
-@ActiveProfiles("test")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@AutoConfigureWebTestClient
+@Testcontainers(disabledWithoutDocker = true)
 public abstract class E2ETestBase {
 
     @Container
@@ -52,5 +52,9 @@ public abstract class E2ETestBase {
 
         // SQL 초기화 (schema.sql 강제 실행)
         registry.add("spring.sql.init.mode", () -> "always");
+
+        // 외부 API 의존성을 테스트에서 차단
+        registry.add("app.chzzk.live-status-base-url", () -> "http://127.0.0.1:1/mock-channels");
+        registry.add("app.collector.base-url", () -> "http://127.0.0.1:1");
     }
 }

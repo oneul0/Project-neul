@@ -3,6 +3,7 @@ package com.neul.core_api;
 import com.neul.core_api.domain.chat.entity.AnalyzedChat;
 import com.neul.core_api.domain.chat.repository.AnalyzedChatRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Disabled;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import reactor.test.StepVerifier;
@@ -10,6 +11,7 @@ import reactor.test.StepVerifier;
 import java.time.LocalDateTime;
 
 @SpringBootTest
+@Disabled("Requires Docker & running Postgres")
 class DatabaseConnectionTest {
 
     @Autowired
