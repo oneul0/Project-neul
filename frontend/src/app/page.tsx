@@ -1,220 +1,141 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
-import Link from "next/link";
-import { Users, AlertCircle, RefreshCw, TrendingUp, Sparkles, AlertTriangle } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { LogIn, LogOut, ShieldCheck, Sparkles } from "lucide-react";
 
-interface SentimentStats {
-  TOTAL_COUNT: number;
-  POSITIVE?: number;
-  NEGATIVE?: number;
-  NEUTRAL?: number;
-}
-
-interface LiveChannel {
-  channelId: string;
+interface OwnerProfile {
+  authenticated: boolean;
+  channelId?: string;
   channelName?: string;
-  channel?: {
-    channelId: string;
-    channelName: string;
-    channelImageUrl: string;
-  };
-  liveTitle: string;
-  liveImageUrl?: string;
-  liveThumbnailImageUrl?: string;
-  concurrentUserCount: number;
-  openDate: string;
-  categoryType: string;
-  liveCategory: string;
-  liveCategoryValue: string;
-  sentiment: SentimentStats;
+  expiresAt?: string;
+  message?: string;
 }
 
 export default function Home() {
-  const [lives, setLives] = useState<LiveChannel[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<"viewers" | "positive" | "negative">("viewers");
-  const [searchId, setSearchId] = useState("");
+  const router = useRouter();
+  const [ownerProfile, setOwnerProfile] = useState<OwnerProfile | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
-  const fetchLives = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch("http://localhost:8083/api/v1/lives?size=20");
-      if (!res.ok) throw new Error("Failed to fetch live channels");
-
-      const data = await res.json();
-      setLives(data.content?.data || data.data || []);
-      setError(null);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const ownerChannelId = ownerProfile?.channelId ?? "";
+  const isAuthenticated = !!ownerProfile?.authenticated && !!ownerChannelId;
 
   useEffect(() => {
-    fetchLives();
-    const interval = setInterval(fetchLives, 30000); // refresh every 30s
-    return () => clearInterval(interval);
-  }, []);
+    const fetchOwnerProfile = async () => {
+      try {
+        setAuthLoading(true);
+        const response = await fetch("http://localhost:8081/api/v1/chzzk/me", {
+          credentials: "include",
+        });
+        const profile = (await response.json()) as OwnerProfile;
+        setOwnerProfile(profile);
 
-  const sortedLives = [...lives].sort((a, b) => {
-    if (sortBy === "viewers") {
-      return b.concurrentUserCount - a.concurrentUserCount;
-    }
-
-    // Calculate pos/neg ratio
-    const getRatio = (stats: SentimentStats, type: "POSITIVE" | "NEGATIVE") => {
-      if (!stats || stats.TOTAL_COUNT === 0) return 0;
-      const count = type === "POSITIVE" ? (stats.POSITIVE || 0) : (stats.NEGATIVE || 0);
-      return count / stats.TOTAL_COUNT;
+        if (response.ok && profile.authenticated && profile.channelId) {
+          router.replace(`/channels/${profile.channelId}`);
+        }
+      } catch {
+        setOwnerProfile({
+          authenticated: false,
+          message: "Could not verify the current CHZZK session.",
+        });
+      } finally {
+        setAuthLoading(false);
+      }
     };
 
-    if (sortBy === "positive") {
-      return getRatio(b.sentiment, "POSITIVE") - getRatio(a.sentiment, "POSITIVE");
-    }
-    if (sortBy === "negative") {
-      return getRatio(b.sentiment, "NEGATIVE") - getRatio(a.sentiment, "NEGATIVE");
-    }
-    return 0;
-  });
+    fetchOwnerProfile();
+  }, [router]);
+
+  const handleLogin = () => {
+    window.location.href = "http://localhost:8081/api/v1/chzzk/login";
+  };
+
+  const handleLogout = async () => {
+    await fetch("http://localhost:8081/api/v1/chzzk/logout", {
+      method: "DELETE",
+      credentials: "include",
+    });
+
+    setOwnerProfile({
+      authenticated: false,
+      message: "You have been signed out.",
+    });
+  };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white mb-2">실시간 방송 탐색</h1>
-          <p className="text-slate-400">시청자들의 감정 반응을 기반으로 새로운 스트리머를 발견하세요.</p>
-        </div>
+    <div className="flex min-h-[calc(100vh-220px)] items-center justify-center">
+      <section className="w-full max-w-3xl rounded-[36px] border border-slate-200 bg-white p-8 shadow-[0_24px_80px_rgba(15,23,42,0.08)] sm:p-12">
+        <div className="mx-auto max-w-2xl text-center">
+          <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-[11px] font-black uppercase tracking-[0.25em] text-emerald-700">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Owner Dashboard
+          </div>
 
-        <div className="flex bg-slate-800/50 p-1 rounded-xl glass border border-slate-700/50">
-          <button
-            onClick={() => setSortBy("viewers")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${sortBy === "viewers" ? "bg-slate-700 text-white shadow-md shadow-black/20" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/80"}`}
-          >
-            <div className="flex items-center gap-2"><Users className="w-4 h-4" /> 시청자순</div>
-          </button>
-          <button
-            onClick={() => setSortBy("positive")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${sortBy === "positive" ? "bg-emerald-500/20 text-emerald-400 shadow-md shadow-emerald-900/20" : "text-slate-400 hover:text-emerald-400/70 hover:bg-slate-800/80"}`}
-          >
-            <div className="flex items-center gap-2"><Sparkles className="w-4 h-4" /> 긍정적</div>
-          </button>
-          <button
-            onClick={() => setSortBy("negative")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${sortBy === "negative" ? "bg-red-500/20 text-red-400 shadow-md shadow-red-900/20" : "text-slate-400 hover:text-red-400/70 hover:bg-slate-800/80"}`}
-          >
-            <div className="flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> 혼돈의 도가니</div>
-          </button>
-        </div>
-      </div>
+          <h1 className="mt-6 text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">
+            Sign in and go straight to your stream dashboard
+          </h1>
+          <p className="mt-4 text-base leading-8 text-slate-600">
+            This workspace is no longer a public stream list. Once your CHZZK account is verified,
+            you are redirected directly into your own operator dashboard.
+          </p>
 
-      {/* Manual Search / Jump to Channel */}
-      <div className="glass-panel p-4 rounded-2xl border-slate-700/50 bg-slate-900/40 flex flex-col md:flex-row gap-4 items-center">
-        <div className="relative flex-1 w-full">
-          <input
-            type="text"
-            placeholder="직접 채널 ID 입력 (예: test-room-1 또는 치지직 채널 UID)"
-            value={searchId}
-            onChange={(e) => setSearchId(e.target.value)}
-            className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all pl-11"
-          />
-          <Sparkles className="absolute left-4 top-3 w-5 h-5 text-slate-500" />
-        </div>
-        <Link 
-          href={`/channels/${searchId}`}
-          className={`w-full md:w-auto px-6 py-2.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${searchId.trim() ? "bg-primary text-white hover:bg-primary/80 shadow-lg shadow-primary/20" : "bg-slate-800 text-slate-500 cursor-not-allowed"}`}
-          onClick={(e) => !searchId.trim() && e.preventDefault()}
-        >
-          분석 시작
-        </Link>
-      </div>
+          <div className="mt-10 rounded-[28px] border border-slate-200 bg-slate-50 p-6 text-left">
+            <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+              Authentication status
+            </div>
 
-      {error && (
-        <div className="glass-panel border-red-500/30 p-4 rounded-xl flex items-center gap-3 text-red-400 bg-red-950/20">
-          <AlertCircle className="w-5 h-5 flex-shrink-0" />
-          <p>방송 목록을 불러오는 중 오류가 발생했습니다: {error}</p>
-          <button onClick={fetchLives} className="ml-auto text-sm bg-red-500/20 px-3 py-1.5 rounded-lg hover:bg-red-500/30 transition">
-            다시 시도
-          </button>
-        </div>
-      )}
-
-      {loading && lives.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-4">
-          <RefreshCw className="w-8 h-8 animate-spin text-primary" />
-          <p>라이브 채널을 불러오고 있습니다...</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {sortedLives.map((live) => {
-            const total = live.sentiment?.TOTAL_COUNT || 0;
-            const posPct = total > 0 ? Math.round(((live.sentiment?.POSITIVE || 0) / total) * 100) : 0;
-            const negPct = total > 0 ? Math.round(((live.sentiment?.NEGATIVE || 0) / total) * 100) : 0;
-            const hasActivity = total > 0;
-            const channelName = live.channel?.channelName || live.channelName || "알 수 없음";
-
-            // Generate a thumbnail url replacing {type}
-            const imageUrl = live.liveThumbnailImageUrl || live.liveImageUrl;
-            const thumbUrl = imageUrl ? imageUrl.replace("{type}", "480") : "/placeholder.jpg";
-
-            return (
-              <Link
-                href={`/channels/${live.channelId}`}
-                key={live.channelId}
-                className="group flex flex-col glass rounded-2xl overflow-hidden hover:border-slate-600 transition-all duration-300 hover:shadow-xl hover:shadow-black/40 hover:-translate-y-1 bg-slate-900/60"
-              >
-                <div className="relative aspect-video overflow-hidden bg-slate-800">
-                  <Image
-                    src={thumbUrl}
-                    alt={live.liveTitle}
-                    fill
-                    unoptimized
-                    className="object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-90" />
-
-                  <div className="absolute top-3 left-3 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider shadow-sm flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                    LIVE
-                  </div>
-
-                  <div className="absolute bottom-3 left-3 right-3 flex justify-between items-end">
-                    <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-lg text-white text-xs font-semibold shadow-sm">
-                      <Users className="w-3.5 h-3.5 text-slate-300" />
-                      {live.concurrentUserCount.toLocaleString()}
-                    </div>
-
-                    {hasActivity && (
-                      <div className="flex flex-col gap-1 items-end">
-                        <div className="flex gap-1">
-                          {posPct > 0 && <span className="bg-emerald-500/90 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm">긍정 {posPct}%</span>}
-                          {negPct > 0 && <span className="bg-red-500/90 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm">부정 {negPct}%</span>}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+            {authLoading ? (
+              <div className="mt-4 text-sm font-bold text-slate-500">
+                Checking current CHZZK session...
+              </div>
+            ) : isAuthenticated ? (
+              <>
+                <div className="mt-4 text-2xl font-black text-slate-950">
+                  {ownerProfile?.channelName || "Owner channel"} is authenticated
                 </div>
-
-                <div className="p-4 flex flex-col flex-1">
-                  <h3 className="text-slate-100 font-bold text-base line-clamp-2 leading-tight mb-2 group-hover:text-primary transition-colors">
-                    {live.liveTitle}
-                  </h3>
-                  <div className="mt-auto flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-white shadow-inner">
-                      {channelName.charAt(0)}
-                    </div>
-                    <span className="text-slate-400 text-sm font-medium truncate flex-1">{channelName}</span>
-                    <span className="text-xs text-slate-500 bg-slate-800 px-2 py-1 rounded-md">{live.liveCategoryValue}</span>
-                  </div>
+                <div className="mt-2 text-sm text-slate-600">
+                  Redirecting to your dashboard now.
                 </div>
-              </Link>
-            );
-          })}
+              </>
+            ) : (
+              <>
+                <div className="mt-4 text-2xl font-black text-slate-950">
+                  Sign in to continue
+                </div>
+                <div className="mt-2 text-sm text-slate-600">
+                  {ownerProfile?.message ||
+                    "Only the broadcaster who owns the channel can open the analytics dashboard."}
+                </div>
+              </>
+            )}
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              {isAuthenticated ? (
+                <button
+                  onClick={handleLogout}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-100"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign out
+                </button>
+              ) : (
+                <button
+                  onClick={handleLogin}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800"
+                >
+                  <LogIn className="h-4 w-4" />
+                  Sign in with CHZZK
+                </button>
+              )}
+
+              <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-600">
+                <Sparkles className="h-4 w-4 text-emerald-500" />
+                Owner-only analytics flow
+              </div>
+            </div>
+          </div>
         </div>
-      )}
+      </section>
     </div>
   );
 }

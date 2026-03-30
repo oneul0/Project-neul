@@ -1,535 +1,1102 @@
 "use client";
 
-import { useEffect, useState, useRef, use } from "react";
-import { 
-    ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis 
+import { use, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
 } from "recharts";
-import { 
-    MessageSquare, Heart, AlertCircle, Settings2, Activity, 
-    Zap, Flame, Download, Info, Smile, Frown, Target, Hash
+import {
+  AlertCircle,
+  BarChart3,
+  CheckCircle2,
+  Clock3,
+  Download,
+  Lock,
+  Radio,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
+  Target,
+  Users,
+  Waves,
 } from "lucide-react";
+import KeywordBubbleChart from "@/components/KeywordBubbleChart";
+import VodHighlightBoard from "@/components/VodHighlightBoard";
+import MoodGauge from "@/components/MoodGauge";
+import EmotionHeatmap from "@/components/EmotionHeatmap";
+import V2InsightsPanel from "@/components/v2/V2InsightsPanel";
+import type { V2Frame } from "@/components/v2/V2InsightsPanel";
+import { appendOwnerId, buildOwnerHeaders } from "@/lib/ownerAuth";
 
 interface Highlight {
-    id: number;
-    roomId: string;
-    emotionType: string;
-    peakScore: number;
-    topMessage: string;
-    liveImageUrl: string;
-    timestamp: string;
+  id: number;
+  roomId: string;
+  emotionType: string;
+  peakScore: number;
+  topMessage: string;
+  liveImageUrl: string;
+  timestamp: string;
 }
 
 interface AnalyzedChatMessage {
-    messageId: string;
-    roomId: string;
-    messageType: "CHAT" | "DONATION" | "SUBSCRIPTION";
-    content?: string;
-    sender?: string;
-    emotionScores?: Record<string, number>;
-    keywords?: string[];
-    analyzedAt?: string;
+  messageId: string;
+  roomId: string;
+  messageType: "CHAT" | "DONATION" | "SUBSCRIPTION";
+  content?: string;
+  sender?: string;
+  senderId?: string;
+  emotionScores?: Record<string, number>;
+  keywords?: string[];
+  analyzedAt?: string;
+  timestamp?: string;
 }
 
-const EMOTIONS = ["JOY", "HOPE", "NEUTRAL", "SADNESS", "ANGER", "WONDER", "DISGUST"];
+interface OwnerProfile {
+  authenticated: boolean;
+  channelId?: string;
+  channelName?: string;
+  expiresAt?: string;
+  message?: string;
+}
 
 const EMOTION_MAP: Record<string, { color: string; label: string; icon: string }> = {
-    JOY: { color: "#fbbf24", label: "기쁨", icon: "😄" },
-    HOPE: { color: "#38bdf8", label: "희망", icon: "✨" },
-    NEUTRAL: { color: "#94a3b8", label: "중립", icon: "😐" },
-    SADNESS: { color: "#818cf8", label: "슬픔", icon: "😢" },
-    ANGER: { color: "#f87171", label: "분노", icon: "💢" },
-    WONDER: { color: "#c084fc", label: "놀람", icon: "😲" },
-    DISGUST: { color: "#fb7185", label: "혐오", icon: "🤮" },
-    VOTE: { color: "#6366f1", label: "투표", icon: "🗳️" },
+  JOY: { color: "#f59e0b", label: "Joy", icon: "J" },
+  HOPE: { color: "#38bdf8", label: "Hope", icon: "H" },
+  NEUTRAL: { color: "#94a3b8", label: "Neutral", icon: "N" },
+  SADNESS: { color: "#818cf8", label: "Sadness", icon: "S" },
+  ANGER: { color: "#ef4444", label: "Anger", icon: "A" },
+  WONDER: { color: "#c084fc", label: "Wonder", icon: "W" },
+  DISGUST: { color: "#fb7185", label: "Disgust", icon: "D" },
 };
 
-export default function ChannelDashboard({ params }: { params: Promise<{ channelId: string }> }) {
-    const { channelId } = use(params);
+const EMPTY_OWNER_PROFILE: OwnerProfile = {
+  authenticated: false,
+  message: "Sign in with CHZZK to access your stream dashboard.",
+};
 
-    const [stats, setStats] = useState<Record<string, number>>({ 
-        JOY: 0, HOPE: 0, NEUTRAL: 0, SADNESS: 0, ANGER: 0, WONDER: 0, DISGUST: 0, TOTAL_COUNT: 0 
-    });
-    const [highlights, setHighlights] = useState<Highlight[]>([]);
-    const [trendData, setTrendData] = useState<{ time: string; score: number }[]>([]);
-    const [keywords, setKeywords] = useState<string[]>([]);
-    const [isConnected, setIsConnected] = useState(false);
-    const [latestVibe, setLatestVibe] = useState<{ emotion: string; content: string } | null>(null);
-    const [isSessionActive, setIsSessionActive] = useState(false);
-    const [pollResults, setPollResults] = useState<Record<string, number>>({});
-    const [voters, setVoters] = useState<Record<string, string>>({});
-    const [selectedVoter, setSelectedVoter] = useState<string | null>(null);
-    const [voterHistory, setVoterHistory] = useState<AnalyzedChatMessage[]>([]);
-    const [pollItems, setPollItems] = useState<string[]>([]); // Phase 24
-    const [showPollCreator, setShowPollCreator] = useState(false); // Phase 24
-    const [newPollItems, setNewPollItems] = useState<string[]>(["", ""]); // Phase 24
+export default function ChannelDashboard({
+  params,
+}: {
+  params: Promise<{ channelId: string }>;
+}) {
+  const { channelId } = use(params);
 
-    const eventSourceRef = useRef<EventSource | null>(null);
+  const [stats, setStats] = useState<Record<string, number>>({
+    JOY: 0,
+    HOPE: 0,
+    NEUTRAL: 0,
+    SADNESS: 0,
+    ANGER: 0,
+    WONDER: 0,
+    DISGUST: 0,
+    TOTAL_COUNT: 0,
+  });
+  const [highlights, setHighlights] = useState<Highlight[]>([]);
+  const [history, setHistory] = useState<any[]>([]);
+  const [trendData, setTrendData] = useState<{ time: string; score: number; timestamp?: string }[]>([]);
+  const [isConnected, setIsConnected] = useState(false);
+  const [latestVibe, setLatestVibe] = useState<{
+    emotion: string;
+    score: number;
+    label: string;
+    color: string;
+  } | null>(null);
+  const [isSessionActive, setIsSessionActive] = useState(false);
+  const [pollResults, setPollResults] = useState<Record<string, number>>({});
+  const [voters, setVoters] = useState<Record<string, string>>({});
+  const [selectedVoter, setSelectedVoter] = useState<string | null>(null);
+  const [voterHistory, setVoterHistory] = useState<AnalyzedChatMessage[]>([]);
+  const [pollItems, setPollItems] = useState<string[]>([]);
+  const [showPollCreator, setShowPollCreator] = useState(false);
+  const [newPollItems, setNewPollItems] = useState<string[]>(["", ""]);
+  const [keywordStats, setKeywordStats] = useState<Record<string, number>>({});
+  const [v2Frame, setV2Frame] = useState<V2Frame | null>(null);
+  const [activeTab, setActiveTab] = useState<"live" | "vod">("live");
+  const [ownerChannelId, setOwnerChannelId] = useState("");
+  const [ownerProfile, setOwnerProfile] = useState<OwnerProfile>(EMPTY_OWNER_PROFILE);
+  const [authLoading, setAuthLoading] = useState(true);
 
-    useEffect(() => {
-        if (!channelId) return;
+  const eventSourceRef = useRef<EventSource | null>(null);
 
-        const subscribeChannel = async () => {
-            try {
-                await fetch(`http://localhost:8081/api/v1/channels/${channelId}/subscribe`, {
-                    method: 'POST'
-                });
-            } catch (err) {
-                console.error("Failed to subscribe:", err);
+  useEffect(() => {
+    const fetchOwnerProfile = async () => {
+      try {
+        setAuthLoading(true);
+        const response = await fetch("http://localhost:8081/api/v1/chzzk/me", {
+          credentials: "include",
+        });
+        const profile = (await response.json()) as OwnerProfile;
+
+        if (!response.ok || !profile.authenticated) {
+          setOwnerProfile(profile);
+          setOwnerChannelId("");
+          return;
+        }
+
+        setOwnerProfile(profile);
+        setOwnerChannelId(profile.channelId ?? "");
+      } catch {
+        setOwnerProfile(EMPTY_OWNER_PROFILE);
+        setOwnerChannelId("");
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+
+    fetchOwnerProfile();
+  }, []);
+
+  const hasOwnerIdentity = !!ownerChannelId;
+  const isAuthorizedChannel = ownerChannelId === channelId;
+
+  useEffect(() => {
+    if (!channelId || !isAuthorizedChannel) return;
+
+    const fetchHistory = async () => {
+      try {
+        const res = await fetch(appendOwnerId(`http://localhost:8083/api/v1/stream/${channelId}/history`, ownerChannelId), {
+          credentials: "include",
+          headers: buildOwnerHeaders(ownerChannelId),
+        });
+        const data = await res.json();
+        setHistory(data);
+
+        if (data.length > 0) {
+          const latest = data[0];
+          setLatestVibe({
+            emotion: latest.emotionType,
+            score: latest.emotionScore,
+            label: EMOTION_MAP[latest.emotionType]?.label || "Neutral",
+            color: EMOTION_MAP[latest.emotionType]?.color || "#94a3b8",
+          });
+        }
+      } catch {
+        // Wait for stream recovery.
+      }
+    };
+
+    const connectSSE = () => {
+      const url = appendOwnerId(`http://localhost:8083/api/v1/stream/${channelId}`, ownerChannelId);
+      const es = new EventSource(url, { withCredentials: true });
+      eventSourceRef.current = es;
+
+      es.onopen = () => setIsConnected(true);
+
+      es.addEventListener("stats_update", (event) => {
+        try {
+          setStats((prev) => ({ ...prev, ...JSON.parse(event.data) }));
+        } catch {}
+      });
+
+      es.addEventListener("chat_analyzed", (event) => {
+        try {
+          const data: AnalyzedChatMessage = JSON.parse(event.data);
+          const scores = data.emotionScores || { NEUTRAL: 1 };
+          const [emotionType, emotionScore] = Object.entries(scores).reduce((a, b) =>
+            a[1] > b[1] ? a : b,
+          );
+          const timestamp = data.timestamp || new Date().toISOString();
+
+          setLatestVibe({
+            emotion: emotionType,
+            score: emotionScore,
+            label: EMOTION_MAP[emotionType]?.label || "Neutral",
+            color: EMOTION_MAP[emotionType]?.color || "#94a3b8",
+          });
+
+          setHistory((prev) => {
+            const existingIndex = prev.findIndex((item) => item.messageId === data.messageId);
+            let nextHistory = prev;
+
+            if (existingIndex !== -1) {
+              nextHistory = [...prev];
+              nextHistory[existingIndex] = {
+                ...nextHistory[existingIndex],
+                emotionType,
+                emotionScore,
+                keywords: data.keywords || nextHistory[existingIndex].keywords,
+                analyzedAt: data.analyzedAt || nextHistory[existingIndex].analyzedAt,
+              };
+            } else {
+              nextHistory = [
+                {
+                  messageId: data.messageId,
+                  emotionType,
+                  emotionScore,
+                  timestamp,
+                  keywords: data.keywords,
+                  analyzedAt: data.analyzedAt || new Date().toISOString(),
+                },
+                ...prev,
+              ];
             }
-        };
 
-        subscribeChannel();
+            return nextHistory
+              .sort(
+                (a, b) =>
+                  new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+              )
+              .slice(0, 200);
+          });
 
-        const connectSSE = () => {
-            const url = `http://localhost:8083/api/v1/stream/${channelId}`;
-            const es = new EventSource(url);
-            eventSourceRef.current = es;
-
-            es.onopen = () => setIsConnected(true);
-
-            es.addEventListener("stats_update", (e) => {
-                try {
-                    const newStats = JSON.parse(e.data);
-                    setStats(prev => ({ ...prev, ...newStats }));
-                } catch (err) { }
+          setTrendData((prev) => {
+            const timeStr = new Date(timestamp).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
             });
+            const score =
+              emotionType === "JOY" || emotionType === "HOPE"
+                ? emotionScore
+                : emotionType === "ANGER" || emotionType === "DISGUST"
+                  ? -emotionScore
+                  : 0;
 
-            es.addEventListener("chat_analyzed", (e) => {
-                try {
-                    const data: AnalyzedChatMessage = JSON.parse(e.data);
-                    
-                    const scores = data.emotionScores || { NEUTRAL: 1.0 };
-                    const topEmotionEntry = Object.entries(scores).reduce((a, b) => a[1] > b[1] ? a : b);
-                    const emotionType = topEmotionEntry[0];
-                    const emotionScore = topEmotionEntry[1];
-                    
-                    if (data.keywords && data.keywords.length > 0) {
-                        setKeywords(data.keywords);
-                    }
+            const nextEntry = { time: timeStr, score, timestamp };
+            return [...prev.filter((entry) => entry.timestamp !== timestamp), nextEntry]
+              .sort(
+                (a, b) =>
+                  new Date(a.timestamp || 0).getTime() -
+                  new Date(b.timestamp || 0).getTime(),
+              )
+              .slice(-30);
+          });
+        } catch {}
+      });
 
-                    if (data.content) {
-                        setLatestVibe({ emotion: emotionType, content: data.content });
-                    }
-
-                    setTrendData(prev => {
-                        const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                        const score = (emotionType === "JOY" || emotionType === "HOPE") ? emotionScore : 
-                                      (emotionType === "ANGER" || emotionType === "DISGUST") ? -emotionScore : 0;
-                        return [...prev, { time: now, score }].slice(-30);
-                    });
-                } catch (err) { }
-            });
-
-            es.addEventListener("highlight_detected", (e) => {
-                try {
-                    const highlight: Highlight = JSON.parse(e.data);
-                    setHighlights(prev => [...prev, highlight].slice(-10));
-                } catch (err) { }
-            });
-
-            es.onerror = () => {
-                setIsConnected(false);
-                es.close();
-                setTimeout(connectSSE, 5000);
-            };
-        };
-
-        connectSSE();
-
-        const fetchInitialState = async () => {
-            try {
-                const res = await fetch(`http://localhost:8083/api/v1/poll/${channelId}/session`);
-                const active = await res.json();
-                setIsSessionActive(active);
-
-                const pollRes = await fetch(`http://localhost:8083/api/v1/poll/${channelId}/results`);
-                const results = await pollRes.json();
-                setPollResults(results);
-
-                const itemsRes = await fetch(`http://localhost:8083/api/v1/poll/${channelId}/items`);
-                const items = await itemsRes.json();
-                setPollItems(items);
-            } catch (err) {}
-        };
-        fetchInitialState();
-
-        const pollInterval = setInterval(async () => {
-            try {
-                const res = await fetch(`http://localhost:8083/api/v1/poll/${channelId}/results`);
-                const results = await res.json();
-                setPollResults(results);
-
-                const voterRes = await fetch(`http://localhost:8083/api/v1/poll/${channelId}/voters`);
-                const voterData = await voterRes.json();
-                setVoters(voterData);
-            } catch (err) {}
-        }, 3000);
-
-        return () => {
-            if (eventSourceRef.current) eventSourceRef.current.close();
-            clearInterval(pollInterval);
-        };
-    }, [channelId]);
-
-    const radarData = []; // Removed for Phase 24
-
-    const handleDownload = async (imageUrl: string, timestamp: string) => {
+      es.addEventListener("highlight_detected", (event) => {
         try {
-            const response = await fetch(imageUrl);
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `highlight_${channelId}_${timestamp.replace(/[:.-]/g, '_')}.jpg`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-        } catch (err) {
-            console.error("Download failed:", err);
-            window.open(imageUrl, '_blank');
-        }
+          setHighlights((prev) => [JSON.parse(event.data), ...prev].slice(0, 12));
+        } catch {}
+      });
+
+      es.addEventListener("keyword_update", (event) => {
+        try {
+          setKeywordStats(JSON.parse(event.data));
+        } catch {}
+      });
+
+      es.onerror = () => {
+        setIsConnected(false);
+        es.close();
+        setTimeout(connectSSE, 5000);
+      };
     };
 
-    const handleToggleSession = async () => {
-        try {
-            const nextState = !isSessionActive;
-            await fetch(`http://localhost:8083/api/v1/poll/${channelId}/session?active=${nextState}`, {
-                method: 'POST'
-            });
-            setIsSessionActive(nextState);
-        } catch (err) {
-            console.error("Failed to toggle session:", err);
-        }
+    const fetchPollState = async () => {
+      try {
+        const sessionRes = await fetch(appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}/session`, ownerChannelId), {
+          credentials: "include",
+          headers: buildOwnerHeaders(ownerChannelId),
+        });
+        setIsSessionActive(await sessionRes.json());
+
+        const pollRes = await fetch(appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}/results`, ownerChannelId), {
+          credentials: "include",
+          headers: buildOwnerHeaders(ownerChannelId),
+        });
+        setPollResults(await pollRes.json());
+
+        const itemsRes = await fetch(appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}/items`, ownerChannelId), {
+          credentials: "include",
+          headers: buildOwnerHeaders(ownerChannelId),
+        });
+        setPollItems(await itemsRes.json());
+      } catch {}
     };
 
-    const handleClearPoll = async () => {
-        if (!confirm("투표를 초기화하시겠습니까?")) return;
-        try {
-            await fetch(`http://localhost:8083/api/v1/poll/${channelId}`, {
-                method: 'DELETE'
-            });
-            setPollResults({});
-            setVoters({});
-        } catch (err) {
-            console.error("Failed to clear poll:", err);
-        }
-    };
+    fetchHistory();
+    fetchPollState();
+    connectSSE();
 
-    const handleVoterClick = async (userId: string) => {
-        setSelectedVoter(userId);
-        try {
-            const res = await fetch(`http://localhost:8083/api/v1/poll/${channelId}/voters/${userId}/history`);
-            const history = await res.json();
-            setVoterHistory(history);
-        } catch (err) {
-            console.error("Failed to fetch voter history:", err);
-        }
-    };
+    const pollInterval = setInterval(async () => {
+      try {
+        const results = await (
+          await fetch(appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}/results`, ownerChannelId), {
+            credentials: "include",
+            headers: buildOwnerHeaders(ownerChannelId),
+          })
+        ).json();
+        setPollResults(results);
 
-    const handleCreatePoll = async () => {
-        const items = newPollItems.filter(i => i.trim() !== "");
-        if (items.length < 2) {
-            alert("최소 2개 이상의 항목을 입력해 주세요.");
-            return;
-        }
-        try {
-            await fetch(`http://localhost:8083/api/v1/poll/${channelId}/items`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(items)
-            });
-            setPollItems(items);
-            setShowPollCreator(false);
-            // Also reset results when a new poll is created
-            await fetch(`http://localhost:8083/api/v1/poll/${channelId}`, { method: 'DELETE' });
-            setPollResults({});
-            setVoters({});
-        } catch (err) {
-            console.error("Failed to create poll:", err);
-        }
+        const voterData = await (
+          await fetch(appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}/voters`, ownerChannelId), {
+            credentials: "include",
+            headers: buildOwnerHeaders(ownerChannelId),
+          })
+        ).json();
+        setVoters(voterData);
+      } catch {}
+    }, 3000);
+
+    return () => {
+      eventSourceRef.current?.close();
+      clearInterval(pollInterval);
     };
+  }, [channelId, isAuthorizedChannel, ownerChannelId]);
+
+  const dominantMix = useMemo(
+    () =>
+      Object.entries(stats)
+        .filter(([key]) => key in EMOTION_MAP)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4),
+    [stats],
+  );
+
+  const mergedKeywordStats = useMemo(
+    () => ({
+      ...keywordStats,
+      ...(v2Frame?.keywords ?? []).reduce<Record<string, number>>((acc, keyword, index) => {
+        acc[keyword] = Math.max(keywordStats[keyword] ?? 0, 8 - index);
+        return acc;
+      }, {}),
+    }),
+    [keywordStats, v2Frame],
+  );
+
+  const totalPollVotes = Object.values(pollResults).reduce((sum, count) => sum + count, 0);
+
+  const handleLogin = () => {
+    window.location.href = "http://localhost:8081/api/v1/chzzk/login";
+  };
+
+  const handleLogout = async () => {
+    await fetch("http://localhost:8081/api/v1/chzzk/logout", {
+      method: "DELETE",
+      credentials: "include",
+    });
+    setOwnerProfile(EMPTY_OWNER_PROFILE);
+    setOwnerChannelId("");
+    setIsSessionActive(false);
+  };
+
+  const handleDownload = async (imageUrl: string, timestamp: string) => {
+    try {
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `highlight_${channelId}_${timestamp.replace(/[:.-]/g, "_")}.jpg`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(anchor);
+    } catch {}
+  };
+
+  const handleToggleSession = async () => {
+    try {
+      if (!isAuthorizedChannel) {
+        alert("Only the authenticated channel owner can start analysis.");
+        return;
+      }
+
+      const nextState = !isSessionActive;
+
+      if (nextState) {
+        const response = await fetch(`http://localhost:8081/api/v1/channels/${channelId}/subscribe`, {
+          method: "POST",
+          credentials: "include",
+          headers: buildOwnerHeaders(ownerChannelId),
+        });
+        if (response.status === 403) {
+          alert("Only your own channel can be analyzed.");
+          return;
+        }
+        if (!response.ok) {
+          throw new Error("Collector subscription failed");
+        }
+      } else {
+        await fetch(`http://localhost:8081/api/v1/channels/${channelId}/subscribe`, {
+          method: "DELETE",
+          credentials: "include",
+          headers: buildOwnerHeaders(ownerChannelId),
+        });
+      }
+
+      await fetch(appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}/session?active=${nextState}`, ownerChannelId), {
+        method: "POST",
+        credentials: "include",
+        headers: buildOwnerHeaders(ownerChannelId),
+      });
+      setIsSessionActive(nextState);
+    } catch (error) {
+      console.error("Failed to toggle session:", error);
+      alert("Failed to change session state. Please verify backend status.");
+    }
+  };
+
+  const handleClearPoll = async () => {
+    if (!confirm("Reset the current poll?")) return;
+    try {
+      await fetch(appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}`, ownerChannelId), {
+        method: "DELETE",
+        credentials: "include",
+        headers: buildOwnerHeaders(ownerChannelId),
+      });
+      setPollResults({});
+      setVoters({});
+    } catch {}
+  };
+
+  const handleCreatePoll = async () => {
+    const items = newPollItems.filter((item) => item.trim() !== "");
+    if (items.length < 2) {
+      alert("Please add at least two options.");
+      return;
+    }
+
+    try {
+      await fetch(appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}/items`, ownerChannelId), {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...buildOwnerHeaders(ownerChannelId),
+        },
+        body: JSON.stringify(items),
+      });
+      setPollItems(items);
+      setShowPollCreator(false);
+      await fetch(appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}`, ownerChannelId), {
+        method: "DELETE",
+        credentials: "include",
+        headers: buildOwnerHeaders(ownerChannelId),
+      });
+      setPollResults({});
+      setVoters({});
+    } catch {}
+  };
+
+  const openVoterHistory = async (userId: string) => {
+    setSelectedVoter(userId);
+    const response = await fetch(
+      appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}/voters/${userId}/history`, ownerChannelId),
+      {
+        credentials: "include",
+        headers: buildOwnerHeaders(ownerChannelId),
+      },
+    );
+    setVoterHistory(await response.json());
+  };
+
+  const renderMetric = (
+    label: string,
+    value: string,
+    description: string,
+    tone: "default" | "good" | "warn" = "default",
+  ) => {
+    const toneClass =
+      tone === "good"
+        ? "border-emerald-200 bg-emerald-50"
+        : tone === "warn"
+          ? "border-amber-200 bg-amber-50"
+          : "border-slate-200 bg-white";
 
     return (
-        <div className="flex flex-col h-full space-y-6">
-            {/* Header Section */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 glass-panel p-6 rounded-2xl border-slate-700/50">
-                <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xl font-bold text-white shadow-lg ring-2 ring-white/10">
-                        {channelId.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <h1 className="text-2xl font-bold text-white tracking-tight">Streamer Dashboard</h1>
-                            <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${isConnected ? "bg-emerald-500/20 text-emerald-400" : "bg-red-500/20 text-red-400 animate-pulse"}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? "bg-emerald-500" : "bg-red-500"}`} />
-                                {isConnected ? "Live Analytics" : "Connecting"}
-                            </span>
-                        </div>
-                        <p className="text-slate-400 text-sm flex items-center gap-1.5 mt-0.5">
-                            <Activity className="w-4 h-4 text-primary" />
-                            실시간 민심 분석 중... (ID: {channelId})
-                        </p>
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-6">
-                    <button 
-                        onClick={handleToggleSession}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all font-bold ${isSessionActive ? "bg-rose-500/20 text-rose-400 border-rose-500/50 hover:bg-rose-500/30" : "bg-emerald-500/20 text-emerald-400 border-emerald-500/50 hover:bg-emerald-500/30"}`}
-                    >
-                        <Flame className={`w-4 h-4 ${isSessionActive ? "animate-pulse" : ""}`} />
-                        {isSessionActive ? "수집 중지 (Live)" : "수집 시작"}
-                    </button>
-                    <div className="h-10 w-px bg-slate-700 mx-1 hidden md:block" />
-                    <div className="flex flex-col items-end">
-                        <span className="text-xs text-slate-500 uppercase font-bold tracking-widest">Total Chats</span>
-                        <span className="text-2xl font-mono font-bold text-white">{stats.TOTAL_COUNT.toLocaleString()}</span>
-                    </div>
-                </div>
-            </div>
-
-            {/* Main Content Grid */}
-            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
-                {/* Left Column: Emotion Analytics Simplified */}
-                <div className="lg:col-span-4 flex flex-col gap-6 min-h-0">
-                    {/* Min-sim Graph (Expanded) */}
-                    <div className="flex-1 glass-panel p-6 rounded-3xl flex flex-col border-slate-700/50">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-2">
-                                <Zap className="w-5 h-5 text-amber-400" />
-                                <h3 className="font-bold text-slate-200">실시간 민심 그래프</h3>
-                            </div>
-                            <span className="text-[10px] font-mono text-slate-500">SENTIMENT PULSE</span>
-                        </div>
-                        <div className="flex-1">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={trendData}>
-                                    <defs>
-                                        <linearGradient id="colorPulse" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                                        </linearGradient>
-                                    </defs>
-                                    <XAxis dataKey="time" hide />
-                                    <YAxis domain={[-1.2, 1.2]} hide />
-                                    <Tooltip content={({ active, payload }) => {
-                                        if (active && payload && payload.length) {
-                                            return (
-                                                <div className="bg-slate-900 border border-slate-700 p-2 rounded shadow-xl text-xs text-white">
-                                                    {payload[0].value > 0 ? "매우 긍정" : payload[0].value < 0 ? "매우 부정" : "중립"}
-                                                </div>
-                                            );
-                                        }
-                                        return null;
-                                    }} />
-                                    <Area type="monotone" dataKey="score" stroke="#6366f1" strokeWidth={3} fill="url(#colorPulse)" isAnimationActive={false} />
-                                </AreaChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
-
-                    {/* Quick Emotion Summary (Moved here, kept simple) */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="glass-panel p-4 rounded-2xl flex flex-col justify-center items-center">
-                            <span className="text-[10px] text-emerald-400 font-bold uppercase">Positive</span>
-                            <span className="text-2xl font-mono text-white">{(stats.JOY + stats.HOPE).toLocaleString()}</span>
-                        </div>
-                        <div className="glass-panel p-4 rounded-2xl flex flex-col justify-center items-center">
-                            <span className="text-[10px] text-rose-400 font-bold uppercase">Negative</span>
-                            <span className="text-2xl font-mono text-white">{(stats.ANGER + stats.DISGUST).toLocaleString()}</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Right Column: Interaction */}
-                <div className="lg:col-span-8 flex flex-col gap-6 min-h-0">
-                    <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6 min-h-0">
-                        {/* Poll Statistics */}
-                        <div className="glass-panel p-6 rounded-3xl flex flex-col border-slate-700/50">
-                            <div className="flex items-center justify-between mb-6">
-                                <div className="flex items-center gap-2">
-                                    <Target className="w-5 h-5 text-indigo-400" />
-                                    <h3 className="font-bold text-slate-200">실시간 투표 현황</h3>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <button onClick={() => setShowPollCreator(true)} className="text-[10px] font-bold text-indigo-400 hover:text-white transition-colors">투표 생성</button>
-                                    <button onClick={handleClearPoll} className="text-[10px] font-bold text-slate-500 hover:text-rose-400 transition-colors">초기화</button>
-                                </div>
-                            </div>
-                            <div className="flex-1 overflow-y-auto space-y-4">
-                                {pollItems.length > 0 ? pollItems.map((item, index) => {
-                                    const option = (index + 1).toString();
-                                    const count = pollResults[option] || 0;
-                                    const maxCount = Math.max(...Object.values(pollResults), 1);
-                                    return (
-                                        <div key={option} className="p-4 bg-slate-800/40 rounded-2xl border border-slate-700/30">
-                                            <div className="flex items-center justify-between mb-2">
-                                                <div className="flex items-center gap-3">
-                                                    <span className="px-2 py-0.5 rounded-md bg-indigo-500 text-white text-[10px] font-black">!{option}</span>
-                                                    <span className="text-sm font-bold text-slate-200">{item}</span>
-                                                </div>
-                                                <span className="text-xl font-mono font-bold text-white">{count}표</span>
-                                            </div>
-                                            <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
-                                                <div className="h-full bg-indigo-500 transition-all duration-500" style={{ width: `${(count / maxCount) * 100}%` }} />
-                                            </div>
-                                        </div>
-                                    );
-                                }) : (
-                                    <div className="flex-1 flex flex-col items-center justify-center py-10">
-                                        <Info className="w-8 h-8 text-slate-700 mb-2" />
-                                        <p className="text-slate-600 text-xs font-bold uppercase tracking-widest text-center">투표 항목을<br/>생성해 주세요.</p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Voter List */}
-                        <div className="glass-panel p-6 rounded-3xl flex flex-col border-slate-700/50">
-                            <div className="flex items-center gap-2 mb-4">
-                                <MessageSquare className="w-5 h-5 text-emerald-400" />
-                                <h3 className="font-bold text-slate-200">투표 참여 명단</h3>
-                            </div>
-                            <div className="flex-1 overflow-y-auto pr-2">
-                                <div className="grid grid-cols-1 gap-2">
-                                    {Object.entries(voters).map(([userId, option]) => (
-                                        <button 
-                                            key={userId} 
-                                            onClick={() => handleVoterClick(userId)}
-                                            className={`flex items-center justify-between p-3 rounded-xl border transition-all ${selectedVoter === userId ? "bg-indigo-500/20 border-indigo-500/50 shadow-inner" : "bg-slate-800/20 border-slate-700/30 hover:bg-slate-800/40"}`}
-                                        >
-                                            <span className="text-xs font-medium text-slate-300">User_{userId.slice(0,6)}</span>
-                                            <span className="px-2 py-0.5 rounded-md bg-slate-700 text-indigo-300 text-[10px] font-bold">!{option}</span>
-                                        </button>
-                                    ))}
-                                    {Object.keys(voters).length === 0 && (
-                                        <p className="text-center text-slate-600 text-[10px] py-10 uppercase tracking-widest">no participants yet</p>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Voter History Sidebar/Panel */}
-                    {selectedVoter && (
-                        <div className="glass-panel p-6 rounded-3xl border-indigo-500/30 bg-indigo-500/5 flex flex-col min-h-[200px]">
-                            <div className="flex items-center justify-between mb-4">
-                                <h4 className="font-bold text-slate-200">
-                                    <span className="text-indigo-400">User_{selectedVoter.slice(0,6)}</span> 님의 수집 채팅
-                                </h4>
-                                <button onClick={() => setSelectedVoter(null)} className="text-slate-500 hover:text-white">닫기</button>
-                            </div>
-                            <div className="flex-1 overflow-y-auto pr-2 space-y-2 max-h-[150px]">
-                                {voterHistory.map((msg, i) => (
-                                    <div key={i} className="p-3 bg-slate-800/40 rounded-xl border border-slate-700/30 text-xs">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className="text-[10px] font-black uppercase text-indigo-400">CHAT</span>
-                                            <span className="text-[10px] text-slate-500">{new Date(msg.analyzedAt || '').toLocaleTimeString()}</span>
-                                        </div>
-                                        <p className="text-slate-200">{msg.content}</p>
-                                    </div>
-                                ))}
-                                {voterHistory.length === 0 && <p className="text-center text-slate-600 text-[10px] py-4">기록이 없습니다.</p>}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* Timeline Bar */}
-            <div className="h-[120px] glass-panel p-4 rounded-3xl border-slate-700/50 flex flex-col">
-                <div className="flex items-center gap-2 mb-3">
-                    <Target className="w-4 h-4 text-rose-500" />
-                    <h3 className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">Highlight Moments</h3>
-                </div>
-                <div className="flex-1 flex items-center gap-3 overflow-x-auto no-scrollbar scroll-smooth">
-                    {highlights.map((h, i) => (
-                        <div key={i} className="flex-shrink-0 group relative">
-                            <div 
-                                className="w-10 h-10 rounded-full border-2 border-slate-900 shadow-xl flex items-center justify-center cursor-pointer transition-all hover:scale-110"
-                                style={{ backgroundColor: EMOTION_MAP[h.emotionType]?.color }}
-                            >
-                                <span className="text-sm">{EMOTION_MAP[h.emotionType]?.icon}</span>
-                            </div>
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 glass-panel rounded-xl opacity-0 group-hover:opacity-100 transition-all pointer-events-none z-50">
-                                <p className="text-[10px] text-white font-bold mb-1 italic">"{h.topMessage}"</p>
-                                <button 
-                                    onClick={() => handleDownload(h.liveImageUrl, h.timestamp)}
-                                    className="text-[9px] text-indigo-400 hover:text-white flex items-center gap-1"
-                                >
-                                    <Download className="w-2 h-2" /> Download Image
-                                </button>
-                            </div>
-                        </div>
-                    ))}
-                    {highlights.length === 0 && <p className="text-slate-600 text-[10px] font-bold w-full text-center uppercase tracking-widest">Waiting for spikes...</p>}
-                </div>
-            </div>
-
-            {/* Poll Creator Modal */}
-            {showPollCreator && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="w-full max-w-md glass-panel p-6 rounded-3xl border-slate-700/50 shadow-2xl animate-in zoom-in-95 duration-200">
-                        <div className="flex items-center justify-between mb-6">
-                            <h3 className="text-xl font-bold text-white">새 투표 생성</h3>
-                            <button onClick={() => setShowPollCreator(false)} className="text-slate-500 hover:text-white transition-colors">
-                                <AlertCircle className="w-6 h-6 rotate-45" />
-                            </button>
-                        </div>
-                        <div className="space-y-4 mb-8">
-                            {newPollItems.map((item, index) => (
-                                <div key={index} className="flex gap-2">
-                                    <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 text-indigo-400 font-bold">
-                                        {index + 1}
-                                    </div>
-                                    <input 
-                                        type="text"
-                                        placeholder={`항목 ${index + 1} 입력...`}
-                                        className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
-                                        value={item}
-                                        onChange={(e) => {
-                                            const updated = [...newPollItems];
-                                            updated[index] = e.target.value;
-                                            setNewPollItems(updated);
-                                        }}
-                                    />
-                                    {newPollItems.length > 2 && (
-                                        <button 
-                                            onClick={() => setNewPollItems(newPollItems.filter((_, i) => i !== index))}
-                                            className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all"
-                                        >
-                                            <AlertCircle className="w-5 h-5" />
-                                        </button>
-                                    )}
-                                </div>
-                            ))}
-                            {newPollItems.length < 5 && (
-                                <button 
-                                    onClick={() => setNewPollItems([...newPollItems, ""])}
-                                    className="w-full py-3 bg-slate-800/50 border border-dashed border-slate-700 rounded-2xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all font-bold text-sm"
-                                >
-                                    + 항목 추가
-                                </button>
-                            )}
-                        </div>
-                        <div className="flex gap-3">
-                            <button 
-                                onClick={() => setShowPollCreator(false)}
-                                className="flex-1 py-3 px-6 rounded-2xl bg-slate-800 text-slate-300 font-bold hover:bg-slate-700 transition-all"
-                            >
-                                취소
-                            </button>
-                            <button 
-                                onClick={handleCreatePoll}
-                                className="flex-2 py-3 px-8 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-500 shadow-lg shadow-indigo-600/20 transition-all active:scale-95"
-                            >
-                                투표 시작하기
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
+      <div className={`rounded-[28px] border p-5 ${toneClass}`}>
+        <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">{label}</div>
+        <div className="mt-4 text-3xl font-black text-slate-950">{value}</div>
+        <div className="mt-2 text-sm text-slate-600">{description}</div>
+      </div>
     );
+  };
+
+  if (activeTab === "vod") {
+    return (
+      <div className="space-y-8">
+        <section className="rounded-[36px] border border-slate-200 bg-white p-8 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+            <div className="space-y-3">
+              <div className="inline-flex items-center gap-2 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.25em] text-indigo-300">
+                <BarChart3 className="h-3.5 w-3.5" />
+                VOD Review
+              </div>
+              <h1 className="text-4xl font-black tracking-tight text-slate-950">Post-stream archive board</h1>
+              <p className="max-w-2xl text-base leading-7 text-slate-600">
+                Review indexed moments, inspect standout reactions, and bring your VOD workflow
+                into the same console.
+              </p>
+            </div>
+
+            <button
+              onClick={() => setActiveTab("live")}
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-100"
+            >
+              <Radio className="h-4 w-4" />
+              Back to live dashboard
+            </button>
+          </div>
+        </section>
+
+        <div className="min-h-[780px]">
+          <VodHighlightBoard />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      <section className="rounded-[36px] border border-slate-200 bg-white p-8 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+        <div className="flex flex-col gap-8 xl:flex-row xl:items-start xl:justify-between">
+          <div className="max-w-3xl space-y-4">
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.25em] text-emerald-300">
+              <Radio className="h-3.5 w-3.5" />
+              Stream Control Center
+            </div>
+            <div>
+              <h1 className="text-4xl font-black tracking-tight text-slate-950">Live operations dashboard</h1>
+              <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
+                Track chat momentum, emotional shifts, highlight candidates, and poll activity
+                from a single operator view built for stream owners.
+              </p>
+            </div>
+          </div>
+
+          <div className="w-full max-w-xl rounded-[28px] border border-slate-200 bg-slate-50 p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Owner Access</div>
+                {authLoading ? (
+                  <div className="mt-3 text-sm font-bold text-slate-500">Checking CHZZK session...</div>
+                ) : hasOwnerIdentity ? (
+                  <>
+                    <div className="mt-3 text-xl font-black text-slate-950">
+                      Signed in as {ownerProfile.channelName || "channel owner"}
+                    </div>
+                    <div className="mt-2 text-sm text-slate-600">
+                      owner channel id <span className="font-mono text-slate-800">{ownerChannelId}</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mt-3 text-xl font-black text-slate-950">Sign in required</div>
+                    <div className="mt-2 text-sm text-slate-600">
+                      {ownerProfile.message || "Only the verified streamer can open this dashboard."}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div
+                className={`mt-1 inline-flex h-10 items-center gap-2 rounded-full border px-4 text-xs font-black uppercase tracking-[0.2em] ${
+                  isAuthorizedChannel
+                    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
+                    : "border-amber-500/20 bg-amber-500/10 text-amber-300"
+                }`}
+              >
+                <ShieldCheck className="h-4 w-4" />
+                {isAuthorizedChannel ? "Authorized" : "Restricted"}
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              {!hasOwnerIdentity ? (
+                <button
+                  onClick={handleLogin}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-emerald-400"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Sign in with CHZZK
+                </button>
+              ) : (
+                <button
+                  onClick={handleLogout}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-100"
+                >
+                  <Lock className="h-4 w-4" />
+                  Sign out
+                </button>
+              )}
+
+              <button
+                onClick={handleToggleSession}
+                disabled={!isAuthorizedChannel}
+                className={`inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-black transition ${
+                  !isAuthorizedChannel
+                    ? "cursor-not-allowed bg-slate-200 text-slate-500"
+                    : isSessionActive
+                      ? "bg-rose-500/12 text-rose-300 hover:bg-rose-500/18"
+                      : "bg-sky-500 text-slate-950 hover:bg-sky-400"
+                }`}
+              >
+                <RefreshCw className="h-4 w-4" />
+                {isSessionActive ? "Stop analysis" : "Start analysis"}
+              </button>
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Room</div>
+                <div className="mt-2 truncate font-mono text-sm text-slate-800">{channelId}</div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Session</div>
+                <div className="mt-2 text-sm font-bold text-slate-950">
+                  {isSessionActive ? "Collecting and analyzing" : "Standby mode"}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+        {renderMetric(
+          "Message Volume",
+          `${stats.TOTAL_COUNT || 0}`,
+          "Total analyzed messages in the current live session.",
+          "default",
+        )}
+        {renderMetric(
+          "Connection",
+          isConnected ? "Online" : "Retrying",
+          isConnected ? "Realtime event stream is healthy." : "SSE stream is reconnecting.",
+          isConnected ? "good" : "warn",
+        )}
+        {renderMetric(
+          "Session Mode",
+          isSessionActive ? "Active" : "Paused",
+          isSessionActive ? "Collector and poll session are enabled." : "Analysis is currently idle.",
+          isSessionActive ? "good" : "warn",
+        )}
+        {renderMetric(
+          "Current Mood",
+          latestVibe ? latestVibe.label : "Waiting",
+          latestVibe ? `Latest dominant emotion at ${(latestVibe.score * 100).toFixed(0)}%.` : "No analyzed chat yet.",
+          latestVibe ? "good" : "default",
+        )}
+      </section>
+
+      <section className="flex flex-wrap items-center justify-between gap-4">
+        <div className="inline-flex rounded-2xl border border-slate-200 bg-white p-1">
+          <button
+            onClick={() => setActiveTab("live")}
+            className={`rounded-xl px-4 py-2 text-sm font-black transition ${
+              activeTab === "live" ? "bg-slate-950 text-white" : "text-slate-500 hover:text-slate-950"
+            }`}
+          >
+            Live dashboard
+          </button>
+          <button
+            onClick={() => setActiveTab("vod")}
+            className={`rounded-xl px-4 py-2 text-sm font-black transition ${
+              activeTab === "vod" ? "bg-slate-950 text-white" : "text-slate-500 hover:text-slate-950"
+            }`}
+          >
+            VOD archive
+          </button>
+        </div>
+
+        <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+          <Clock3 className="h-3.5 w-3.5" />
+          Owner-only analytics workspace
+        </div>
+      </section>
+
+      {isAuthorizedChannel ? (
+        <V2InsightsPanel roomId={channelId} ownerId={ownerChannelId} onFrame={setV2Frame} />
+      ) : (
+        <section className="rounded-[30px] border border-amber-500/20 bg-amber-500/8 p-6">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 text-amber-300" />
+            <div>
+              <h2 className="text-lg font-black text-slate-950">Access limited to the verified owner</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                Sign in with the same CHZZK account that owns this channel to unlock realtime
+                guardrails, poll controls, and detailed analytics.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <section className="grid gap-6 xl:grid-cols-[1.35fr_0.85fr]">
+        <div className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-[0.82fr_1.18fr]">
+            <div className="min-w-0 rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-5 flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Current Mood</div>
+                  <div className="mt-2 text-xl font-black text-slate-950">Operator pulse</div>
+                </div>
+                <div className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                  {v2Frame ? `Balance ${(v2Frame.balance * 100).toFixed(0)}%` : "Live"}
+                </div>
+              </div>
+              <MoodGauge
+                emotion={latestVibe?.emotion || "NEUTRAL"}
+                score={latestVibe?.score || 0}
+                label={latestVibe?.label || "Neutral"}
+                color={latestVibe?.color || "#94a3b8"}
+              />
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                {v2Frame?.mentalBuffer ? (
+                  <>
+                    Buffered negative <span className="font-black text-slate-950">{(v2Frame.mentalBuffer.emaNegative * 100).toFixed(0)}%</span>
+                    {" · "}
+                    buffered positive <span className="font-black text-slate-950">{(v2Frame.mentalBuffer.emaPositive * 100).toFixed(0)}%</span>
+                  </>
+                ) : (
+                  <>The dashboard will start smoothing crowd mood once the v2 stream arrives.</>
+                )}
+              </div>
+            </div>
+
+            <div className="min-w-0 rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-5 flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Trend</div>
+                  <div className="mt-2 text-xl font-black text-slate-950">Emotional momentum</div>
+                </div>
+                <Waves className="h-5 w-5 text-sky-300" />
+              </div>
+
+              <div className="h-[260px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={trendData}>
+                    <defs>
+                      <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                    <XAxis dataKey="time" tick={{ fill: "#94a3b8", fontSize: 11 }} tickLine={false} axisLine={false} />
+                    <YAxis domain={[-1, 1]} tick={{ fill: "#94a3b8", fontSize: 11 }} tickLine={false} axisLine={false} />
+                    <Tooltip
+                      contentStyle={{
+                        background: "rgba(15,23,42,0.94)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: 16,
+                        color: "#fff",
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="score"
+                      stroke="#38bdf8"
+                      strokeWidth={3}
+                      fill="url(#trendFill)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          <div className="min-w-0 rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Signal Surface</div>
+                <div className="mt-2 text-xl font-black text-slate-950">Heatmap and keyword clusters</div>
+              </div>
+              <Target className="h-5 w-5 text-indigo-300" />
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
+              <div className="min-w-0 rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                <EmotionHeatmap history={history} emotionMap={EMOTION_MAP} />
+              </div>
+              <div className="min-w-0 rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Keywords</div>
+                    <div className="mt-1 text-sm text-slate-600">
+                      {v2Frame?.topicLabel || "Realtime keyword landscape"}
+                    </div>
+                  </div>
+                </div>
+                <div className="h-[340px]">
+                  <KeywordBubbleChart data={mergedKeywordStats} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Mix</div>
+                <div className="mt-2 text-xl font-black text-slate-950">Emotion composition</div>
+              </div>
+              <BarChart3 className="h-5 w-5 text-amber-300" />
+            </div>
+
+            <div className="space-y-4">
+              {dominantMix.map(([emotion, count]) => {
+                const ratio = stats.TOTAL_COUNT ? (count / stats.TOTAL_COUNT) * 100 : 0;
+                const config = EMOTION_MAP[emotion];
+
+                return (
+                  <div key={emotion} className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2 font-bold text-slate-950">
+                        <span
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-black"
+                          style={{ backgroundColor: `${config.color}22`, color: config.color }}
+                        >
+                          {config.icon}
+                        </span>
+                        {config.label}
+                      </div>
+                      <span className="font-mono text-slate-400">{ratio.toFixed(0)}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-900/80">
+                      <div
+                        className="h-2 rounded-full"
+                        style={{ width: `${ratio}%`, backgroundColor: config.color }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Poll</div>
+                <div className="mt-2 text-xl font-black text-slate-950">Interactive control</div>
+              </div>
+              <Users className="h-5 w-5 text-emerald-300" />
+            </div>
+
+            <div className="mb-4 flex flex-wrap gap-3">
+              <button
+                onClick={() => setShowPollCreator((prev) => !prev)}
+                className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-black text-white transition hover:bg-slate-800"
+              >
+                {showPollCreator ? "Close editor" : "Edit options"}
+              </button>
+              <button
+                onClick={handleClearPoll}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 transition hover:bg-slate-100"
+              >
+                Reset votes
+              </button>
+            </div>
+
+            {showPollCreator ? (
+              <div className="mb-5 space-y-3 rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                {newPollItems.map((item, index) => (
+                  <input
+                    key={`${index}-${item}`}
+                    value={item}
+                    onChange={(event) =>
+                      setNewPollItems((prev) =>
+                        prev.map((current, currentIndex) =>
+                          currentIndex === index ? event.target.value : current,
+                        ),
+                      )
+                    }
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-sky-400/40"
+                    placeholder={`Option ${index + 1}`}
+                  />
+                ))}
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    onClick={() => setNewPollItems((prev) => [...prev, ""])}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700"
+                  >
+                    Add option
+                  </button>
+                  <button
+                    onClick={handleCreatePoll}
+                    className="rounded-2xl bg-sky-500 px-4 py-2 text-sm font-black text-slate-950"
+                  >
+                    Save poll
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="space-y-3">
+              {pollItems.length === 0 ? (
+                <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
+                  Create a poll to track viewer intent during live operations.
+                </div>
+              ) : (
+                pollItems.map((item) => {
+                  const votes = pollResults[item] ?? 0;
+                  const ratio = totalPollVotes ? (votes / totalPollVotes) * 100 : 0;
+                  const votersForItem = Object.entries(voters)
+                    .filter(([, selected]) => selected === item)
+                    .map(([userId]) => userId)
+                    .slice(0, 5);
+
+                  return (
+                    <div key={item} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="font-bold text-slate-950">{item}</div>
+                        <div className="text-sm font-mono text-slate-500">
+                          {votes} votes · {ratio.toFixed(0)}%
+                        </div>
+                      </div>
+                      <div className="mt-3 h-2 rounded-full bg-white/6">
+                        <div className="h-2 rounded-full bg-emerald-400" style={{ width: `${ratio}%` }} />
+                      </div>
+                      {votersForItem.length > 0 ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {votersForItem.map((userId) => (
+                            <button
+                              key={userId}
+                              onClick={() => openVoterHistory(userId)}
+                              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700 transition hover:bg-slate-100"
+                            >
+                              {userId}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Highlights</div>
+                <div className="mt-2 text-xl font-black text-slate-950">Moment vault</div>
+              </div>
+              <Sparkles className="h-5 w-5 text-pink-300" />
+            </div>
+
+            <div className="space-y-3">
+              {highlights.length === 0 ? (
+                <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
+                  Highlight candidates will appear here once notable moments are detected.
+                </div>
+              ) : (
+                highlights.map((highlight) => (
+                  <div key={highlight.id} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-2">
+                        <div className="text-sm font-black text-slate-950">{highlight.emotionType}</div>
+                        <div className="text-sm leading-6 text-slate-700">{highlight.topMessage}</div>
+                        <div className="text-xs text-slate-500">
+                          score {highlight.peakScore.toFixed(2)} · {new Date(highlight.timestamp).toLocaleString()}
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleDownload(highlight.liveImageUrl, highlight.timestamp)}
+                        className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-100"
+                      >
+                        <Download className="h-4 w-4" />
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {selectedVoter ? (
+        <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Voter Inspector</div>
+              <div className="mt-2 text-xl font-black text-slate-950">{selectedVoter}</div>
+            </div>
+            <button
+              onClick={() => {
+                setSelectedVoter(null);
+                setVoterHistory([]);
+              }}
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {voterHistory.length === 0 ? (
+              <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
+                No recent analyzed history for this viewer yet.
+              </div>
+            ) : (
+              voterHistory.map((message) => {
+                const strongestEmotion = Object.entries(message.emotionScores || { NEUTRAL: 1 }).reduce((a, b) =>
+                  a[1] > b[1] ? a : b,
+                );
+                const config = EMOTION_MAP[strongestEmotion[0]] || EMOTION_MAP.NEUTRAL;
+
+                return (
+                  <div key={message.messageId} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                      <span
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full"
+                        style={{ backgroundColor: `${config.color}22`, color: config.color }}
+                      >
+                        {config.icon}
+                      </span>
+                      {config.label}
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-slate-700">{message.content || "(empty message)"}</p>
+                    <div className="mt-3 text-xs text-slate-500">
+                      {message.analyzedAt ? new Date(message.analyzedAt).toLocaleString() : "Pending timestamp"}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      <section className="grid gap-5 lg:grid-cols-3">
+        <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-emerald-300" />
+            <div>
+              <div className="text-sm font-black text-slate-950">Stable operator view</div>
+              <div className="mt-1 text-sm text-slate-600">
+                Metrics, v2 signals, polls, and highlights now live in one dashboard frame.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <Users className="h-5 w-5 text-sky-300" />
+            <div>
+              <div className="text-sm font-black text-slate-950">Owner-only workflow</div>
+              <div className="mt-1 text-sm text-slate-600">
+                Access control remains centered on the authenticated streamer account.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <Target className="h-5 w-5 text-pink-300" />
+            <div>
+              <div className="text-sm font-black text-slate-950">Feedback-friendly layout</div>
+              <div className="mt-1 text-sm text-slate-600">
+                The screen is grouped by operations, signals, and actions so we can tune each block.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
 }

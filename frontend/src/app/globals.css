@@ -1,74 +1,79 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: var(--font-geist-sans), "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  
-  --color-background: #0f172a; /* slate-900 */
-  --color-foreground: #f8fafc; /* slate-50 */
-  
-  --color-primary: #10b981; /* Chzzk green-ish emerald-500 */
-  --color-primary-hover: #059669; /* emerald-600 */
-  
-  --color-positive: #3b82f6; /* blue-500 */
-  --color-neutral: #94a3b8; /* slate-400 */
-  --color-negative: #ef4444; /* red-500 */
+  --font-sans: var(--font-geist-sans), "Pretendard Variable", Pretendard, -apple-system,
+    BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo",
+    "Noto Sans KR", "Malgun Gothic", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
 
-  --color-card: rgba(30, 41, 59, 0.7); /* slate-800 with opacity */
-  --color-card-border: rgba(255, 255, 255, 0.1);
+  --color-background: #f8fafc;
+  --color-foreground: #0f172a;
+  --color-border: #e2e8f0;
+  --color-primary: #0f172a;
+  --color-secondary: #10b981;
 }
 
 :root {
-  --background: #0f172a;
-  --foreground: #f8fafc;
+  --background: #f8fafc;
+  --foreground: #0f172a;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background-color: var(--background);
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(16, 185, 129, 0.08), transparent 20%),
+    radial-gradient(circle at 80% 12%, rgba(56, 189, 248, 0.08), transparent 18%),
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 42%, #f1f5f9 100%);
   color: var(--foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-image: 
-    radial-gradient(circle at 15% 50%, rgba(16, 185, 129, 0.08), transparent 25%),
-    radial-gradient(circle at 85% 30%, rgba(59, 130, 246, 0.08), transparent 25%);
-  background-attachment: fixed;
-  min-height: 100vh;
 }
 
-/* Glassmorphism utilities */
 @utility glass {
-  background: var(--color-card);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--color-card-border);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 @utility glass-panel {
-  background: linear-gradient(145deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.9) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.08);
 }
 
 @utility text-gradient {
-  background: linear-gradient(135deg, #34d399 0%, #3b82f6 100%);
+  background: linear-gradient(135deg, #0f172a 0%, #10b981 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.3);
-  border-radius: 4px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.45);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.5);
+  background: rgba(100, 116, 139, 0.55);
+  background-clip: padding-box;
 }
