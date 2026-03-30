@@ -1,0 +1,16 @@
+.gradle-home/
+.idea/
+backend/.gradle-user-home/
+
+backend/*_debug*.txt
+backend/*debug*.txt
+backend/*test_info*.txt
+backend/*build_info*.txt
+backend/*build_log*.txt
+backend/build_output.txt
+backend/common_err.txt
+backend/common_final_err.txt
+backend/final_debug*.txt
+backend/full_test_results.txt
+backend/test_log_final.txt
+backend/test_output.txt
