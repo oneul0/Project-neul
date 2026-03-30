@@ -78,15 +78,19 @@ public class JavaChatOptimizer implements ChatOptimizer {
 
                     String trimmed = content.trim();
 
-                    // Rule 1: 너무 짧은 메시지 제거 (1글자 미만 등)
-                    if (trimmed.length() < MIN_CONTENT_LENGTH)
+                    // Rule 1: 너무 짧은 메시지 제거 (1자 이하)
+                    if (trimmed.length() <= 1)
                         return false;
 
-                    // Rule 2: 기술적 노이즈(아이디, UUID 등) 제거
+                    // Rule 2: 이모지로만 구성된 메시지 제거
+                    if (isEmojiOnly(trimmed))
+                        return false;
+
+                    // Rule 3: 기술적 노이즈(아이디, UUID 등) 제거
                     if (TECHNICAL_NOISE_PATTERN.matcher(trimmed).find())
                         return false;
 
-                    // Rule 3: 동일 sender의 같은 내용 도배 제거 (배치 내 첫 번째만 유지)
+                    // Rule 4: 동일 sender의 같은 내용 도배 제거 (배치 내 첫 번째만 유지)
                     String spamKey = msg.getSender() + "::" + trimmed;
                     return seenSenderContent.add(spamKey);
                 })
@@ -116,6 +120,15 @@ public class JavaChatOptimizer implements ChatOptimizer {
                             .build();
                 })
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 문자열이 오직 이모지/특수기호로만 구성되어 있는지 확인합니다.
+     */
+    private boolean isEmojiOnly(String text) {
+        if (text == null || text.isBlank()) return false;
+        // 한글(완성형+자음/모음), 영문, 숫자가 하나라도 포함되어 있으면 이모지 전용이 아님
+        return !text.matches(".*[ㄱ-ㅎㅏ-ㅣ가-힣a-zA-Z0-9].*");
     }
 
     /**

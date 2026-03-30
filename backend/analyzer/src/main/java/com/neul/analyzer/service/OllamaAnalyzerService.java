@@ -13,10 +13,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import reactor.core.publisher.Mono;
 
-import java.time.LocalDateTime;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,11 +28,17 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class OllamaAnalyzerService {
 
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
+    private final MeterRegistry meterRegistry;
+
+    public OllamaAnalyzerService(WebClient webClient, ObjectMapper objectMapper, MeterRegistry meterRegistry) {
+        this.webClient = webClient;
+        this.objectMapper = objectMapper;
+        this.meterRegistry = meterRegistry;
+    }
 
     @Value("${app.ollama.api-url}")
     private String ollamaApiUrl;
@@ -71,34 +80,51 @@ public class OllamaAnalyzerService {
                 .stream(false)
                 .format("json") 
                 .options(Map.of(
-                        "temperature", 0.4, // Lowered for more deterministic keywords
+                        "temperature", 0.4,
                         "num_predict", 1024,
-                        "top_p", 0.8 // Lowered to focus on high-probability tokens
+                        "top_p", 0.8
                 ))
                 .build();
 
-        // 3. Call Ollama API with timeout
+        // 3. Call Ollama API with timeout & metrics
+        Timer.Sample sample = (meterRegistry != null) ? Timer.start(meterRegistry) : null;
+        if (meterRegistry != null) {
+            meterRegistry.counter("neul.llm.api.calls.total").increment();
+        }
+
         return webClient.post()
                 .uri(ollamaApiUrl)
                 .bodyValue(requestDto)
                 .retrieve()
                 .bodyToMono(OllamaResponse.class)
                 .timeout(Duration.ofSeconds(60))
-                .map(response -> parseOllamaResponse(response, chats, logicalIdToOriginalId))
+                .map(response -> {
+                    if (sample != null && meterRegistry != null) {
+                        sample.stop(meterRegistry.timer("neul.llm.api.latency"));
+                    }
+                    return parseOllamaResponse(response, chats, logicalIdToOriginalId);
+                })
                 .doFinally(signalType -> isProcessing.set(false));
     }
 
     private String getSystemPrompt() {
-        return "You are a professional Korean streaming sentiment analyzer. " +
+        return "You are a professional Korean streaming sentiment and keyword analyzer. " +
                "Categories: JOY, HOPE, NEUTRAL, SADNESS, ANGER, WONDER, DISGUST. " +
                "Rules:\n" +
                "1. Extract 3-5 keywords ONLY from the provided chat messages. Do not invent keywords.\n" +
-               "2. Reactions like ㄹㅇ, ㅇㅈ, etc. inherit the emotion of previous context.\n" +
-               "3. Be decisive. Avoid NEUTRAL if possible.\n" +
-               "4. Ensure scores sum to 1.0.\n" +
-               "5. Output ONLY JSON. Never return 'null' for keywords.\n\n" +
+               "2. For each keyword, provide a 'representativeName' (a normalized form to group synonyms, e.g., '킹아' and 'KINGA' -> 'KINGA').\n" +
+               "3. Reactions like ㄹㅇ, ㅇㅈ, etc. inherit the emotion of previous context.\n" +
+               "4. Be decisive. Avoid NEUTRAL if possible.\n" +
+               "5. Ensure scores sum to 1.0.\n" +
+               "6. Output ONLY JSON.\n\n" +
                "Example:\n" +
-               "{\"keywords\": [\"나이스\", \"대박\"], \"results\": [{\"messageId\": \"1\", \"scores\": {\"JOY\": 0.9, ...}}]}";
+               "{\n" +
+               "  \"keywords\": [\n" +
+               "    {\"text\": \"나이스\", \"representativeName\": \"나이스\"},\n" +
+               "    {\"text\": \"킹아\", \"representativeName\": \"KINGA\"}\n" +
+               "  ],\n" +
+               "  \"results\": [{\"messageId\": \"1\", \"scores\": {\"JOY\": 0.9, ...}}]\n" +
+               "}";
     }
 
     private String buildPrompt(List<CompressedChat> chats, Map<String, String> idMap) {
@@ -121,25 +147,31 @@ public class OllamaAnalyzerService {
             return createFallbackList(originalChats);
         }
 
-        log.debug("[Ollama] Raw LLM Response: {}", content);
+        log.info("[Ollama] Raw LLM Response: {}", content);
 
         try {
             String jsonStr = extractJsonText(content);
-            log.debug("[Ollama] Extracted JSON: {}", jsonStr);
+            log.info("[Ollama] Extracted JSON: {}", jsonStr);
             List<Map<String, Object>> resultList;
-            List<String> rawKeywords = List.of();
+            List<Map<String, String>> rawKeywords = List.of();
             
             if (jsonStr.startsWith("{")) {
                 Map<String, Object> root = objectMapper.readValue(jsonStr, new TypeReference<Map<String, Object>>() {});
                 if (root.containsKey("results")) {
                     Object resultsObj = root.get("results");
                     if (resultsObj instanceof List) {
-                        resultList = (List<Map<String, Object>>) resultsObj;
+                        @SuppressWarnings("unchecked")
+                        List<Map<String, Object>> list = (List<Map<String, Object>>) resultsObj;
+                        resultList = list;
                     } else {
-                        resultList = List.of((Map<String, Object>) resultsObj);
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> mapObj = (Map<String, Object>) resultsObj;
+                        resultList = List.of(mapObj);
                     }
                     if (root.get("keywords") instanceof List) {
-                        rawKeywords = (List<String>) root.get("keywords");
+                        @SuppressWarnings("unchecked")
+                        List<Map<String, String>> keywords = (List<Map<String, String>>) root.get("keywords");
+                        rawKeywords = keywords;
                     }
                 } else {
                     resultList = List.of(root);
@@ -148,19 +180,27 @@ public class OllamaAnalyzerService {
                 resultList = objectMapper.readValue(jsonStr, new TypeReference<List<Map<String, Object>>>() {});
             }
 
-            // Keyowrd Sanitization (Phase 22)
-            final List<String> finalKeywords = rawKeywords.stream()
-                .filter(java.util.Objects::nonNull)
-                .map(String::trim)
-                .filter(k -> !k.isEmpty() && !k.equalsIgnoreCase("null"))
-                .filter(k -> !k.matches(".*[a-fA-F0-0]{8}-[a-fA-F0-0]{4}-[a-fA-F0-0]{4}.*|.*[a-fA-F0-9]{32}.*")) // ID/Hex filter
-                .distinct()
-                .collect(Collectors.toList());
+            // Keyword Mapping (Phase 24)
+            final Map<String, String> keywordToGroup = new HashMap<>();
+            final List<String> finalKeywords = new ArrayList<>();
+            
+            for (Map<String, String> kwMap : rawKeywords) {
+                String text = kwMap.get("text");
+                String group = kwMap.get("representativeName");
+                if (text != null && !text.isBlank()) {
+                    text = text.trim();
+                    finalKeywords.add(text);
+                    if (group != null && !group.isBlank()) {
+                        keywordToGroup.put(text, group.trim());
+                    }
+                }
+            }
             Map<String, Map<String, Double>> emotionMapByLogicalId = resultList.stream()
                 .filter(map -> map != null && map.containsKey("messageId") && map.containsKey("scores"))
                 .collect(Collectors.toMap(
                     map -> String.valueOf(map.get("messageId")),
                     map -> {
+                        @SuppressWarnings("unchecked")
                         Map<String, Object> rawScores = (Map<String, Object>) map.get("scores");
                         Map<String, Double> scores = new HashMap<>();
                         rawScores.forEach((k, v) -> scores.put(k, ((Number) v).doubleValue()));
@@ -185,6 +225,8 @@ public class OllamaAnalyzerService {
                         .senderId(chat.getRepresentativeSenderId()) // Preserve senderId
                         .emotionScores(scores != null ? scores : createNeutralScores())
                         .keywords(finalKeywords)
+                        .keywordGroups(!keywordToGroup.isEmpty() ? keywordToGroup : null)
+                        .timestamp(chat.getTimestamp())
                         .analyzedAt(LocalDateTime.now())
                         .build();
             }).collect(Collectors.toList());
@@ -196,6 +238,8 @@ public class OllamaAnalyzerService {
     }
 
     private String extractJsonText(String text) {
+        if (text == null) return "";
+        
         int firstBrace = text.indexOf('{');
         int firstBracket = text.indexOf('[');
         
@@ -211,7 +255,9 @@ public class OllamaAnalyzerService {
         int end = Math.max(lastBrace, lastBracket);
         
         if (start != -1 && end != -1 && start < end) {
-            return text.substring(start, end + 1);
+            String result = text.substring(start, end + 1);
+            // Remove markdown code block markers if accidentally included
+            return result.replace("```json", "").replace("```", "").trim();
         }
         
         return text.trim();
@@ -226,6 +272,7 @@ public class OllamaAnalyzerService {
                         .content(chat.getContent())
                         .senderId(chat.getRepresentativeSenderId()) // Added for Phase 23
                         .emotionScores(createNeutralScores())
+                        .timestamp(chat.getTimestamp())
                         .analyzedAt(LocalDateTime.now())
                         .build())
                 .collect(Collectors.toList());
@@ -256,6 +303,7 @@ public class OllamaAnalyzerService {
                         .content(chat.getContent())
                         .senderId(chat.getRepresentativeSenderId()) // Added for Phase 23
                         .emotionScores(createNeutralScores())
+                        .timestamp(chat.getTimestamp())
                         .analyzedAt(LocalDateTime.now())
                         .build())
                 .collect(Collectors.toList());

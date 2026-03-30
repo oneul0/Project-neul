@@ -18,11 +18,14 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -45,6 +48,8 @@ class OllamaAnalyzerServiceTest {
 
     @Mock
     private WebClient.ResponseSpec responseSpec;
+ 
+    private MeterRegistry meterRegistry;
 
     private ObjectMapper objectMapper;
 
@@ -52,7 +57,11 @@ class OllamaAnalyzerServiceTest {
     void setUp() {
         objectMapper = new ObjectMapper();
         objectMapper.registerModule(new JavaTimeModule());
-        geminiAnalyzerService = new OllamaAnalyzerService(webClient, objectMapper);
+        
+        // Real SimpleMeterRegistry for testing
+        meterRegistry = new SimpleMeterRegistry();
+        
+        geminiAnalyzerService = new OllamaAnalyzerService(webClient, objectMapper, meterRegistry);
         
         ReflectionTestUtils.setField(geminiAnalyzerService, "ollamaApiUrl", "http://localhost:11434/api/chat");
         ReflectionTestUtils.setField(geminiAnalyzerService, "ollamaModel", "gemma:2b");
@@ -69,8 +78,8 @@ class OllamaAnalyzerServiceTest {
 
         String mockJsonResponse = "{" +
                 "\"keywords\": [], \"results\": [" +
-                "{\"messageId\": \"msg-1\", \"scores\": {\"JOY\": 0.8, \"NEUTRAL\": 0.2}}," +
-                "{\"messageId\": \"msg-2\", \"scores\": {\"ANGER\": 0.5, \"SADNESS\": 0.5}}" +
+                "{\"messageId\": \"1\", \"scores\": {\"JOY\": 0.8, \"NEUTRAL\": 0.2}}," +
+                "{\"messageId\": \"2\", \"scores\": {\"ANGER\": 0.5, \"SADNESS\": 0.5}}" +
                 "]}";
 
         OllamaResponse mockResponse = OllamaResponse.builder()
@@ -82,7 +91,7 @@ class OllamaAnalyzerServiceTest {
         // WebClient Mocking
         when(webClient.post()).thenReturn(requestBodyUriSpec);
         when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
-        when(requestBodySpec.bodyValue(any())).thenReturn(requestHeadersSpec);
+        doReturn(requestHeadersSpec).when(requestBodySpec).bodyValue(any());
         when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.bodyToMono(OllamaResponse.class)).thenReturn(Mono.just(mockResponse));
 
@@ -123,7 +132,7 @@ class OllamaAnalyzerServiceTest {
         );
 
         // msg-2에 대한 분석 정보가 JSON에 없는 경우
-        String mockJsonResponse = "{\"keywords\": [], \"results\": [{\"messageId\": \"msg-1\", \"scores\": {\"JOY\": 1.0}}]}";
+        String mockJsonResponse = "{\"keywords\": [], \"results\": [{\"messageId\": \"1\", \"scores\": {\"JOY\": 1.0}}]}";
 
         OllamaResponse mockResponse = OllamaResponse.builder()
                 .message(OllamaMessage.builder().content(mockJsonResponse).build())
@@ -131,7 +140,7 @@ class OllamaAnalyzerServiceTest {
 
         when(webClient.post()).thenReturn(requestBodyUriSpec);
         when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
-        when(requestBodySpec.bodyValue(any())).thenReturn(requestHeadersSpec);
+        doReturn(requestHeadersSpec).when(requestBodySpec).bodyValue(any());
         when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.bodyToMono(OllamaResponse.class)).thenReturn(Mono.just(mockResponse));
 
@@ -153,7 +162,7 @@ class OllamaAnalyzerServiceTest {
                 CompressedChat.builder().representativeId("msg-1").roomId("room-1").content("테스트").count(1).build()
         );
 
-        String mockJsonResponse = "```json\n{\"keywords\": [], \"results\": [{\"messageId\": \"msg-1\", \"scores\": {\"NEUTRAL\": 1.0}}]}\n```";
+        String mockJsonResponse = "```json\n{\"keywords\": [], \"results\": [{\"messageId\": \"1\", \"scores\": {\"NEUTRAL\": 1.0}}]}\n```";
 
         OllamaResponse mockResponse = OllamaResponse.builder()
                 .message(OllamaMessage.builder().content(mockJsonResponse).build())
@@ -161,7 +170,7 @@ class OllamaAnalyzerServiceTest {
 
         when(webClient.post()).thenReturn(requestBodyUriSpec);
         when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
-        when(requestBodySpec.bodyValue(any())).thenReturn(requestHeadersSpec);
+        doReturn(requestHeadersSpec).when(requestBodySpec).bodyValue(any());
         when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.bodyToMono(OllamaResponse.class)).thenReturn(Mono.just(mockResponse));
 
@@ -182,7 +191,7 @@ class OllamaAnalyzerServiceTest {
         );
 
         String mockResponseContent = "Here is your analysis result:\n" +
-                "{\"keywords\": [], \"results\": [{\"messageId\": \"msg-1\", \"scores\": {\"JOY\": 0.9}}]}\n" +
+                "{\"keywords\": [], \"results\": [{\"messageId\": \"1\", \"scores\": {\"JOY\": 0.9}}]}\n" +
                 "I hope this helps!";
 
         OllamaResponse mockResponse = OllamaResponse.builder()
@@ -191,7 +200,7 @@ class OllamaAnalyzerServiceTest {
 
         when(webClient.post()).thenReturn(requestBodyUriSpec);
         when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
-        when(requestBodySpec.bodyValue(any())).thenReturn(requestHeadersSpec);
+        doReturn(requestHeadersSpec).when(requestBodySpec).bodyValue(any());
         when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.bodyToMono(OllamaResponse.class)).thenReturn(Mono.just(mockResponse));
 
@@ -220,7 +229,7 @@ class OllamaAnalyzerServiceTest {
 
         when(webClient.post()).thenReturn(requestBodyUriSpec);
         when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
-        when(requestBodySpec.bodyValue(any())).thenReturn(requestHeadersSpec);
+        doReturn(requestHeadersSpec).when(requestBodySpec).bodyValue(any());
         when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.bodyToMono(OllamaResponse.class)).thenReturn(Mono.just(mockResponse));
 
