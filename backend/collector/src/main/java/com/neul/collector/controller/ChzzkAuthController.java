@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 
 @Slf4j
@@ -28,6 +29,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ChzzkAuthController {
 
+    private static final Duration REFRESH_SKEW = Duration.ofMinutes(5);
     private static final String AUTH_STATE_COOKIE = "NEUL_CHZZK_AUTH_STATE";
     private static final String AUTH_SESSION_COOKIE = "NEUL_CHZZK_AUTH_SESSION";
     private static final String OWNER_ASSERTION_COOKIE = "NEUL_OWNER_ASSERTION";
@@ -43,32 +45,33 @@ public class ChzzkAuthController {
 
     @GetMapping("/login")
     public Mono<ResponseEntity<Void>> login() {
-        String state = authStore.issueState();
-        final String authorizeUrl;
+        return authStore.issueState()
+                .map(state -> {
+                    final String authorizeUrl;
+                    try {
+                        authorizeUrl = authService.buildAuthorizeUrl(state);
+                    } catch (Exception error) {
+                        throw new IllegalStateException(error);
+                    }
 
-        try {
-            authorizeUrl = authService.buildAuthorizeUrl(state);
-        } catch (Exception error) {
-            log.error("[ChzzkAuth] Login bootstrap failed: {}", error.getMessage(), error);
-            return Mono.just(redirect(
-                    frontendUrl + "/?auth=config_missing",
-                    clearStateCookie(),
-                    clearSessionCookie(),
-                    clearOwnerAssertionCookie()
-            ));
-        }
+                    ResponseCookie stateCookie = ResponseCookie.from(AUTH_STATE_COOKIE, state)
+                            .httpOnly(true)
+                            .sameSite("Lax")
+                            .path("/")
+                            .maxAge(Duration.ofMinutes(10))
+                            .build();
 
-        ResponseCookie stateCookie = ResponseCookie.from(AUTH_STATE_COOKIE, state)
-                .httpOnly(true)
-                .sameSite("Lax")
-                .path("/")
-                .maxAge(Duration.ofMinutes(10))
-                .build();
-
-        return Mono.just(ResponseEntity.status(HttpStatus.FOUND)
-                .header(HttpHeaders.SET_COOKIE, stateCookie.toString())
-                .header(HttpHeaders.LOCATION, authorizeUrl)
-                .build());
+                    return redirect(authorizeUrl, stateCookie);
+                })
+                .onErrorResume(error -> {
+                    log.error("[ChzzkAuth] Login bootstrap failed: {}", error.getMessage(), error);
+                    return Mono.<ResponseEntity<Void>>just(redirect(
+                            frontendUrl + "/?auth=config_missing",
+                            clearStateCookie(),
+                            clearSessionCookie(),
+                            clearOwnerAssertionCookie()
+                    ));
+                });
     }
 
     @GetMapping("/callback")
@@ -77,20 +80,27 @@ public class ChzzkAuthController {
             @RequestParam String state,
             @CookieValue(name = AUTH_STATE_COOKIE, required = false) String stateCookieValue
     ) {
-        if (stateCookieValue == null || !stateCookieValue.equals(state) || !authStore.consumeState(state)) {
-            return Mono.just(redirect(frontendUrl + "/?auth=state_mismatch", clearStateCookie(), clearSessionCookie(), clearOwnerAssertionCookie()));
+        if (stateCookieValue == null || !stateCookieValue.equals(state)) {
+            return Mono.<ResponseEntity<Void>>just(redirect(frontendUrl + "/?auth=state_mismatch", clearStateCookie(), clearSessionCookie(), clearOwnerAssertionCookie()));
         }
 
-        return authService.exchangeCode(code, state)
-                .flatMap(tokenResponse -> authService.fetchProfile(tokenResponse.getAccessToken())
-                        .map(profile -> authStore.createSession(tokenResponse, profile)))
-                .map(session -> redirect(frontendUrl + "/channels/" + session.getChannelId() + "?auth=success",
-                        clearStateCookie(),
-                        sessionCookie(session),
-                        ownerAssertionCookie(session)))
+        return authStore.consumeState(state)
+                .flatMap(isValid -> {
+                    if (!isValid) {
+                        return Mono.<ResponseEntity<Void>>just(redirect(frontendUrl + "/?auth=state_mismatch", clearStateCookie(), clearSessionCookie(), clearOwnerAssertionCookie()));
+                    }
+
+                    return authService.exchangeCode(code, state)
+                            .flatMap(tokenResponse -> authService.fetchProfile(tokenResponse.getAccessToken())
+                                    .flatMap(profile -> authStore.createSession(tokenResponse, profile)))
+                            .map(session -> redirect(frontendUrl + "/channels/" + session.getChannelId() + "?auth=success",
+                                    clearStateCookie(),
+                                    sessionCookie(session),
+                                    ownerAssertionCookie(session)));
+                })
                 .onErrorResume(error -> {
                     log.error("[ChzzkAuth] Callback failed: {}", error.getMessage(), error);
-                    return Mono.just(redirect(frontendUrl + "/?auth=failed", clearStateCookie(), clearSessionCookie(), clearOwnerAssertionCookie()));
+                    return Mono.<ResponseEntity<Void>>just(redirect(frontendUrl + "/?auth=failed", clearStateCookie(), clearSessionCookie(), clearOwnerAssertionCookie()));
                 });
     }
 
@@ -98,48 +108,50 @@ public class ChzzkAuthController {
     public Mono<ResponseEntity<Map<String, Object>>> me(
             @CookieValue(name = AUTH_SESSION_COOKIE, required = false) String sessionId
     ) {
-        ChzzkAuthSession session = authStore.getSession(sessionId);
-        if (session == null) {
-            return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of(
-                            "authenticated", false,
-                            "message", "CHZZK login is required."
-                    )));
-        }
+        return authStore.peekSession(sessionId)
+                .flatMap(session -> {
+                    if (shouldRefresh(session)) {
+                        return refreshSessionResponse(sessionId, session)
+                                .onErrorResume(error -> {
+                                    log.warn("[ChzzkAuth] Session refresh failed for channelId={}: {}", session.getChannelId(), error.getMessage());
+                                    if (session.getExpiresAt().isAfter(Instant.now())) {
+                                        return Mono.just(okMe(session, false));
+                                    }
+                                    return authStore.invalidateSession(sessionId).then(unauthorizedMe());
+                                });
+                    }
 
-        return Mono.just(ResponseEntity.ok(Map.of(
-                "authenticated", true,
-                "channelId", session.getChannelId(),
-                "channelName", session.getChannelName(),
-                "expiresAt", session.getExpiresAt().toString()
-        )));
+                    if (session.getExpiresAt().isBefore(Instant.now())) {
+                        return authStore.invalidateSession(sessionId).then(unauthorizedMe());
+                    }
+
+                    return Mono.just(okMe(session, false));
+                })
+                .switchIfEmpty(unauthorizedMe());
     }
 
     @DeleteMapping("/logout")
     public Mono<ResponseEntity<Map<String, Object>>> logout(
             @CookieValue(name = AUTH_SESSION_COOKIE, required = false) String sessionId
     ) {
-        ChzzkAuthSession session = authStore.getSession(sessionId);
-        Mono<Void> revokeMono = session != null
-                ? authService.revokeToken(session.getAccessToken(), "access_token").onErrorResume(error -> Mono.empty())
-                : Mono.empty();
-
-        return revokeMono.then(Mono.fromSupplier(() -> {
-            authStore.invalidateSession(sessionId);
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.SET_COOKIE, clearSessionCookie().toString())
-                    .header(HttpHeaders.SET_COOKIE, clearOwnerAssertionCookie().toString())
-                    .body(Map.of("ok", true));
-        }));
+        return authStore.getSession(sessionId)
+                .flatMap(session -> authService.revokeToken(session.getAccessToken(), "access_token")
+                        .onErrorResume(error -> Mono.empty())
+                        .then(authStore.invalidateSession(sessionId)))
+                .switchIfEmpty(authStore.invalidateSession(sessionId))
+                .then(Mono.fromSupplier(() -> ResponseEntity.ok()
+                        .header(HttpHeaders.SET_COOKIE, clearSessionCookie().toString())
+                        .header(HttpHeaders.SET_COOKIE, clearOwnerAssertionCookie().toString())
+                        .body(Map.of("ok", true))));
     }
 
     private ResponseEntity<Void> redirect(String location, ResponseCookie... cookies) {
-        ResponseEntity.BodyBuilder builder = ResponseEntity.status(HttpStatus.FOUND)
-                .header(HttpHeaders.LOCATION, location);
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(HttpHeaders.LOCATION, location);
         for (ResponseCookie cookie : cookies) {
-            builder.header(HttpHeaders.SET_COOKIE, cookie.toString());
+            headers.add(HttpHeaders.SET_COOKIE, cookie.toString());
         }
-        return builder.build();
+        return new ResponseEntity<>(headers, HttpStatus.FOUND);
     }
 
     private ResponseCookie sessionCookie(ChzzkAuthSession session) {
@@ -149,6 +161,50 @@ public class ChzzkAuthController {
                 .path("/")
                 .maxAge(Duration.ofSeconds(Math.max(session.getExpiresIn(), 60)))
                 .build();
+    }
+
+    private boolean shouldRefresh(ChzzkAuthSession session) {
+        if (session == null || session.getRefreshToken() == null || session.getRefreshToken().isBlank()) {
+            return false;
+        }
+        return session.getExpiresAt().minus(REFRESH_SKEW).isBefore(Instant.now());
+    }
+
+    private Mono<ResponseEntity<Map<String, Object>>> refreshSessionResponse(String sessionId, ChzzkAuthSession currentSession) {
+        log.info("[ChzzkAuth] Refreshing session {} for channelId={}", sessionId, currentSession.getChannelId());
+        return authService.refreshToken(currentSession.getRefreshToken())
+                .flatMap(tokenResponse -> authService.fetchProfile(tokenResponse.getAccessToken())
+                        .flatMap(profile -> authStore.refreshSession(sessionId, currentSession, tokenResponse, profile)))
+                .map(session -> ResponseEntity.ok()
+                        .header(HttpHeaders.SET_COOKIE, sessionCookie(session).toString())
+                        .header(HttpHeaders.SET_COOKIE, ownerAssertionCookie(session).toString())
+                        .body(meBody(session, true)))
+                .doOnNext(response -> log.info("[ChzzkAuth] Session refresh completed for channelId={}", currentSession.getChannelId()));
+    }
+
+    private ResponseEntity<Map<String, Object>> okMe(ChzzkAuthSession session, boolean refreshed) {
+        return ResponseEntity.ok(meBody(session, refreshed));
+    }
+
+    private Mono<ResponseEntity<Map<String, Object>>> unauthorizedMe() {
+        log.info("[ChzzkAuth] No valid CHZZK session found");
+        return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .header(HttpHeaders.SET_COOKIE, clearSessionCookie().toString())
+                .header(HttpHeaders.SET_COOKIE, clearOwnerAssertionCookie().toString())
+                .body(Map.of(
+                        "authenticated", false,
+                        "message", "CHZZK login is required."
+                )));
+    }
+
+    private Map<String, Object> meBody(ChzzkAuthSession session, boolean refreshed) {
+        return Map.of(
+                "authenticated", true,
+                "channelId", session.getChannelId(),
+                "channelName", session.getChannelName(),
+                "expiresAt", session.getExpiresAt().toString(),
+                "refreshed", refreshed
+        );
     }
 
     private ResponseCookie clearStateCookie() {

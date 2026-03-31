@@ -61,6 +61,7 @@ interface OwnerProfile {
   channelId?: string;
   channelName?: string;
   expiresAt?: string;
+  refreshed?: boolean;
   message?: string;
 }
 
@@ -120,50 +121,127 @@ export default function ChannelDashboard({
   const [ownerChannelId, setOwnerChannelId] = useState("");
   const [ownerProfile, setOwnerProfile] = useState<OwnerProfile>(EMPTY_OWNER_PROFILE);
   const [authLoading, setAuthLoading] = useState(true);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
 
   const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    const fetchOwnerProfile = async () => {
+    let disposed = false;
+
+    const fetchOwnerProfile = async (silent = false) => {
       try {
-        setAuthLoading(true);
+        if (!silent) {
+          setAuthLoading(true);
+        }
         const response = await fetch("http://localhost:8081/api/v1/chzzk/me", {
           credentials: "include",
         });
         const profile = (await response.json()) as OwnerProfile;
 
+        if (disposed) {
+          return;
+        }
+
         if (!response.ok || !profile.authenticated) {
           setOwnerProfile(profile);
           setOwnerChannelId("");
+          setSessionNotice(profile.message || "Sign in again to continue.");
           return;
         }
 
         setOwnerProfile(profile);
         setOwnerChannelId(profile.channelId ?? "");
+        if (profile.refreshed) {
+          setSessionNotice("Your CHZZK session was refreshed automatically.");
+        }
       } catch {
-        setOwnerProfile(EMPTY_OWNER_PROFILE);
-        setOwnerChannelId("");
+        if (!disposed) {
+          setOwnerProfile(EMPTY_OWNER_PROFILE);
+          setOwnerChannelId("");
+          setSessionNotice("Could not verify your CHZZK session.");
+        }
       } finally {
-        setAuthLoading(false);
+        if (!disposed) {
+          setAuthLoading(false);
+        }
       }
     };
 
     fetchOwnerProfile();
+
+    const intervalId = window.setInterval(() => {
+      fetchOwnerProfile(true);
+    }, 60_000);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+    };
   }, []);
+
+  useEffect(() => {
+    if (!sessionNotice) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setSessionNotice(null), 5000);
+    return () => window.clearTimeout(timeoutId);
+  }, [sessionNotice]);
 
   const hasOwnerIdentity = !!ownerChannelId;
   const isAuthorizedChannel = ownerChannelId === channelId;
+
+  const handleUnauthorizedSession = (message = "Your CHZZK session expired. Please sign in again.") => {
+    eventSourceRef.current?.close();
+    eventSourceRef.current = null;
+    setOwnerProfile({
+      authenticated: false,
+      message,
+    });
+    setOwnerChannelId("");
+    setIsSessionActive(false);
+    setIsConnected(false);
+    setSessionNotice(message);
+  };
+
+  const fetchOwned = async (url: string, init?: RequestInit) => {
+    const response = await fetch(appendOwnerId(url, ownerChannelId), {
+      credentials: "include",
+      ...init,
+      headers: {
+        ...buildOwnerHeaders(ownerChannelId),
+        ...(init?.headers ?? {}),
+      },
+    });
+
+    if (response.status === 401) {
+      handleUnauthorizedSession();
+      return null;
+    }
+
+    return response;
+  };
+
+  const fetchOwnedJson = async <T,>(url: string, init?: RequestInit): Promise<T | null> => {
+    const response = await fetchOwned(url, init);
+    if (!response) {
+      return null;
+    }
+    if (!response.ok) {
+      throw new Error(`Request failed: ${response.status}`);
+    }
+    return (await response.json()) as T;
+  };
 
   useEffect(() => {
     if (!channelId || !isAuthorizedChannel) return;
 
     const fetchHistory = async () => {
       try {
-        const res = await fetch(appendOwnerId(`http://localhost:8083/api/v1/stream/${channelId}/history`, ownerChannelId), {
-          credentials: "include",
-          headers: buildOwnerHeaders(ownerChannelId),
-        });
-        const data = await res.json();
+        const data = await fetchOwnedJson<any[]>(`http://localhost:8083/api/v1/stream/${channelId}/history`);
+        if (!data) {
+          return;
+        }
         setHistory(data);
 
         if (data.length > 0) {
@@ -290,23 +368,17 @@ export default function ChannelDashboard({
 
     const fetchPollState = async () => {
       try {
-        const sessionRes = await fetch(appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}/session`, ownerChannelId), {
-          credentials: "include",
-          headers: buildOwnerHeaders(ownerChannelId),
-        });
-        setIsSessionActive(await sessionRes.json());
+        const sessionState = await fetchOwnedJson<boolean>(`http://localhost:8083/api/v1/poll/${channelId}/session`);
+        if (sessionState === null) return;
+        setIsSessionActive(sessionState);
 
-        const pollRes = await fetch(appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}/results`, ownerChannelId), {
-          credentials: "include",
-          headers: buildOwnerHeaders(ownerChannelId),
-        });
-        setPollResults(await pollRes.json());
+        const nextPollResults = await fetchOwnedJson<Record<string, number>>(`http://localhost:8083/api/v1/poll/${channelId}/results`);
+        if (nextPollResults === null) return;
+        setPollResults(nextPollResults);
 
-        const itemsRes = await fetch(appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}/items`, ownerChannelId), {
-          credentials: "include",
-          headers: buildOwnerHeaders(ownerChannelId),
-        });
-        setPollItems(await itemsRes.json());
+        const nextPollItems = await fetchOwnedJson<string[]>(`http://localhost:8083/api/v1/poll/${channelId}/items`);
+        if (nextPollItems === null) return;
+        setPollItems(nextPollItems);
       } catch {}
     };
 
@@ -316,20 +388,12 @@ export default function ChannelDashboard({
 
     const pollInterval = setInterval(async () => {
       try {
-        const results = await (
-          await fetch(appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}/results`, ownerChannelId), {
-            credentials: "include",
-            headers: buildOwnerHeaders(ownerChannelId),
-          })
-        ).json();
+        const results = await fetchOwnedJson<Record<string, number>>(`http://localhost:8083/api/v1/poll/${channelId}/results`);
+        if (results === null) return;
         setPollResults(results);
 
-        const voterData = await (
-          await fetch(appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}/voters`, ownerChannelId), {
-            credentials: "include",
-            headers: buildOwnerHeaders(ownerChannelId),
-          })
-        ).json();
+        const voterData = await fetchOwnedJson<Record<string, string>>(`http://localhost:8083/api/v1/poll/${channelId}/voters`);
+        if (voterData === null) return;
         setVoters(voterData);
       } catch {}
     }, 3000);
@@ -411,21 +475,28 @@ export default function ChannelDashboard({
           return;
         }
         if (!response.ok) {
+          if (response.status === 401) {
+            handleUnauthorizedSession();
+            return;
+          }
           throw new Error("Collector subscription failed");
         }
       } else {
-        await fetch(`http://localhost:8081/api/v1/channels/${channelId}/subscribe`, {
+        const response = await fetch(`http://localhost:8081/api/v1/channels/${channelId}/subscribe`, {
           method: "DELETE",
           credentials: "include",
           headers: buildOwnerHeaders(ownerChannelId),
         });
+        if (response.status === 401) {
+          handleUnauthorizedSession();
+          return;
+        }
       }
 
-      await fetch(appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}/session?active=${nextState}`, ownerChannelId), {
+      const pollSessionResponse = await fetchOwned(`http://localhost:8083/api/v1/poll/${channelId}/session?active=${nextState}`, {
         method: "POST",
-        credentials: "include",
-        headers: buildOwnerHeaders(ownerChannelId),
       });
+      if (!pollSessionResponse) return;
       setIsSessionActive(nextState);
     } catch (error) {
       console.error("Failed to toggle session:", error);
@@ -436,11 +507,10 @@ export default function ChannelDashboard({
   const handleClearPoll = async () => {
     if (!confirm("Reset the current poll?")) return;
     try {
-      await fetch(appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}`, ownerChannelId), {
+      const response = await fetchOwned(`http://localhost:8083/api/v1/poll/${channelId}`, {
         method: "DELETE",
-        credentials: "include",
-        headers: buildOwnerHeaders(ownerChannelId),
       });
+      if (!response) return;
       setPollResults({});
       setVoters({});
     } catch {}
@@ -454,22 +524,21 @@ export default function ChannelDashboard({
     }
 
     try {
-      await fetch(appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}/items`, ownerChannelId), {
+      const saveItemsResponse = await fetchOwned(`http://localhost:8083/api/v1/poll/${channelId}/items`, {
         method: "POST",
-        credentials: "include",
         headers: {
           "Content-Type": "application/json",
           ...buildOwnerHeaders(ownerChannelId),
         },
         body: JSON.stringify(items),
       });
+      if (!saveItemsResponse) return;
       setPollItems(items);
       setShowPollCreator(false);
-      await fetch(appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}`, ownerChannelId), {
+      const resetPollResponse = await fetchOwned(`http://localhost:8083/api/v1/poll/${channelId}`, {
         method: "DELETE",
-        credentials: "include",
-        headers: buildOwnerHeaders(ownerChannelId),
       });
+      if (!resetPollResponse) return;
       setPollResults({});
       setVoters({});
     } catch {}
@@ -477,14 +546,11 @@ export default function ChannelDashboard({
 
   const openVoterHistory = async (userId: string) => {
     setSelectedVoter(userId);
-    const response = await fetch(
-      appendOwnerId(`http://localhost:8083/api/v1/poll/${channelId}/voters/${userId}/history`, ownerChannelId),
-      {
-        credentials: "include",
-        headers: buildOwnerHeaders(ownerChannelId),
-      },
+    const history = await fetchOwnedJson<AnalyzedChatMessage[]>(
+      `http://localhost:8083/api/v1/poll/${channelId}/voters/${userId}/history`,
     );
-    setVoterHistory(await response.json());
+    if (!history) return;
+    setVoterHistory(history);
   };
 
   const renderMetric = (
@@ -575,6 +641,19 @@ export default function ChannelDashboard({
                     <div className="mt-2 text-sm text-slate-600">
                       owner channel id <span className="font-mono text-slate-800">{ownerChannelId}</span>
                     </div>
+                    <div className="mt-2 text-sm text-slate-600">
+                      session expires{" "}
+                      <span className="font-semibold text-slate-800">
+                        {ownerProfile.expiresAt
+                          ? new Date(ownerProfile.expiresAt).toLocaleString()
+                          : "soon"}
+                      </span>
+                    </div>
+                    {sessionNotice ? (
+                      <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+                        {sessionNotice}
+                      </div>
+                    ) : null}
                   </>
                 ) : (
                   <>
@@ -582,6 +661,11 @@ export default function ChannelDashboard({
                     <div className="mt-2 text-sm text-slate-600">
                       {ownerProfile.message || "Only the verified streamer can open this dashboard."}
                     </div>
+                    {sessionNotice ? (
+                      <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+                        {sessionNotice}
+                      </div>
+                    ) : null}
                   </>
                 )}
               </div>

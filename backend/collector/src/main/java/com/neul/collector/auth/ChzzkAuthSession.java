@@ -2,11 +2,13 @@ package com.neul.collector.auth;
 
 import lombok.Builder;
 import lombok.Getter;
+import lombok.extern.jackson.Jacksonized;
 
 import java.time.Instant;
 
 @Getter
 @Builder
+@Jacksonized
 public class ChzzkAuthSession {
     private final String sessionId;
     private final String accessToken;

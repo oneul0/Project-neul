@@ -7,15 +7,18 @@ spring:
       - optional:file:../.env[.properties]
       - optional:file:../../.env[.properties]
   kafka:
-    bootstrap-servers: 127.0.0.1:9092 # Docker에서 설정한 외부 포트
+    bootstrap-servers: 127.0.0.1:9092
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
 
 server:
   port: 8081
 
-# Chzzk Open API 설정 (환경변수로 주입: 코드/Git에 직접 기재 금지)
 chzzk:
   api:
     base-url: https://openapi.chzzk.naver.com
@@ -24,7 +27,6 @@ chzzk:
     client-secret: ${CHZZK_CLIENT_SECRET}
     redirect-uri: ${CHZZK_REDIRECT_URI:http://localhost:8081/api/v1/chzzk/callback}
 
-# Resilience4j Retry 설정 (Chzzk Socket.IO 재연결)
 resilience4j:
   retry:
     instances:
