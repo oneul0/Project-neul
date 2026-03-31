@@ -146,20 +146,20 @@ export default function V2InsightsPanel({ roomId, ownerId, onFrame }: Props) {
     <section className="mb-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-black uppercase tracking-[0.25em] text-slate-500">V2 Guardrail</h2>
+          <h2 className="text-sm font-black tracking-[0.25em] text-slate-500">심리 가드레일</h2>
           <p className="mt-2 text-sm text-slate-600">
-            v2 insights for mental buffering, audience balance, and representative context.
+            지금 꼭 봐야 할 민심 흐름과 대표 반응만 빠르게 정리합니다.
           </p>
           {frame.topicLabel ? (
-            <div className="mt-3 inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600">
-              Topic {frame.topicLabel}
+            <div className="mt-3 inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[10px] font-black tracking-[0.2em] text-indigo-600">
+              현재 주제 {frame.topicLabel}
             </div>
           ) : null}
         </div>
         <div className="flex items-center gap-2 text-xs font-bold">
           <span className={`w-2.5 h-2.5 rounded-full ${connected ? "bg-emerald-500" : "bg-rose-500 animate-pulse"}`} />
           <span className={connected ? "text-emerald-600" : "text-rose-500"}>
-            {connected ? "v2 stream connected" : "v2 reconnecting"}
+            {connected ? "실시간 연결됨" : "다시 연결 중"}
           </span>
         </div>
       </div>

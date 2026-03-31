@@ -2,7 +2,9 @@ package com.neul.analyzer.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.neul.common.dto.VodCrawlCompletedEvent;
 import com.neul.common.dto.VodHighlightPoint;
+import com.neul.common.dto.VodTimelinePoint;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -11,111 +13,542 @@ import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * VOD 채팅 데이터를 분석하여 하이라이트 구간을 추출하는 서비스.
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class VodHighlightAnalyzer {
 
+    private static final int WINDOW_SECONDS = 30;
+    private static final int MIN_HIGHLIGHTS = 5;
+    private static final int MAX_HIGHLIGHTS = 18;
+
+    private static final List<String> LAUGH_TOKENS = List.of("\u314b\u314b", "\u314e\u314e", "lol", "lmao", "rofl");
+    private static final List<String> SURPRISE_TOKENS = List.of("\uc640", "\ud5c9", "\ub300\ubc15", "omg", "wtf");
+    private static final List<String> HYPE_TOKENS = List.of("\ub808\uc804\ub4dc", "goat", "\uc9c0\ub9b0", "\ubbf8\uccd0", "\uc18c\ub984");
+    private static final List<String> TENSION_TOKENS = List.of("\uc5b5\uae4c", "\uc2f8\uc6c0", "\ubd88\uc548", "\uc9d1\uc911", "\ubd84\ub178");
+
     private final ObjectMapper objectMapper;
     private final KafkaTemplate<String, String> kafkaTemplate;
+    private final Map<String, VideoAggregate> aggregates = new ConcurrentHashMap<>();
 
-    @KafkaListener(topics = "vod-raw-chat-topic", groupId = "neul-analyzer-vod-group", containerFactory = "vodKafkaListenerContainerFactory")
+    @KafkaListener(
+            topics = "vod-raw-chat-topic",
+            groupId = "neul-analyzer-vod-group",
+            containerFactory = "vodKafkaListenerContainerFactory"
+    )
     public void consumeVodChunks(String json, @Header(KafkaHeaders.RECEIVED_KEY) String videoNo) {
-        log.info("[Vod-Analyzer] Processing VOD chunk for videoNo: {}", videoNo);
         try {
             JsonNode chats = objectMapper.readTree(json);
-            if (!chats.isArray()) return;
-
-            // 1. 30초 단위 윈도우로 채팅 그룹화 (시간축 분석)
-            Map<Integer, List<JsonNode>> windows = new TreeMap<>(); // 시간순 정렬 위해 TreeMap 사용
-            for (JsonNode chat : chats) {
-                int seconds = chat.path("videoInSeconds").asInt();
-                int windowKey = (seconds / 30) * 30;
-                windows.computeIfAbsent(windowKey, k -> new ArrayList<>()).add(chat);
+            if (!chats.isArray()) {
+                return;
             }
 
-            // 2. 윈도우별 하이라이트 점수 계산 및 필터링
-            for (Map.Entry<Integer, List<JsonNode>> entry : windows.entrySet()) {
-                int startSec = entry.getKey();
-                List<JsonNode> windowChats = entry.getValue();
-                
-                double score = calculateHighlightScore(windowChats);
-                
-                // 점수가 일정 임계값(예: 10.0)을 넘는 경우만 하이라이트로 간주
-                if (score >= 10.0) {
-                    String topMsg = findTopMessage(windowChats);
-                    String category = determineCategory(windowChats, topMsg);
-
-                    VodHighlightPoint point = VodHighlightPoint.builder()
-                            .videoNo(videoNo)
-                            .startSeconds(startSec)
-                            .endSeconds(startSec + 30)
-                            .highlightScore(score)
-                            .category(category)
-                            .description(generateDescription(category, score))
-                            .topMessage(topMsg)
-                            .build();
-
-                    kafkaTemplate.send("vod-analyzed-topic", videoNo, objectMapper.writeValueAsString(point));
-                    log.info("[Vod-Analyzer] Found highlight: videoNo={}, time={}s, score={}, category={}", 
-                            videoNo, startSec, String.format("%.2f", score), category);
+            VideoAggregate aggregate = aggregates.computeIfAbsent(videoNo, ignored -> new VideoAggregate());
+            synchronized (aggregate) {
+                for (JsonNode chat : chats) {
+                    aggregate.addChat(chat);
                 }
             }
-
         } catch (Exception e) {
-            log.error("[Vod-Analyzer] Failed to process VOD chunk", e);
+            log.error("[Vod-Analyzer] Failed to consume VOD chunk for videoNo={}", videoNo, e);
         }
     }
 
-    private double calculateHighlightScore(List<JsonNode> chats) {
-        // 기본 점수: 채팅 밀도 (채팅 개수)
-        double densityScore = chats.size();
-        
-        // 가중치 점수: 'ㅋ' 또는 '?' 포함 여부
-        long laughCount = chats.stream()
-                .filter(c -> {
-                    String msg = c.path("message").asText("");
-                    return msg.contains("ㅋ") || msg.contains("ㅎ") || msg.contains("LUL") || msg.contains("Grass");
-                })
-                .count();
+    @KafkaListener(topics = "vod-crawl-complete-topic", groupId = "neul-analyzer-vod-complete-group")
+    public void consumeCompletion(String json, @Header(KafkaHeaders.RECEIVED_KEY) String videoNo) {
+        try {
+            VodCrawlCompletedEvent event = objectMapper.readValue(json, VodCrawlCompletedEvent.class);
+            VideoAggregate aggregate = aggregates.remove(event.getVideoNo());
+            if (aggregate == null || aggregate.windows().isEmpty()) {
+                log.warn("[Vod-Analyzer] No aggregated VOD chats for videoNo={}", event.getVideoNo());
+                return;
+            }
 
-        long surpriseCount = chats.stream()
-                .filter(c -> {
-                    String msg = c.path("message").asText("");
-                    return msg.contains("?") || msg.contains("!") || msg.contains("ㄷㄷ") || msg.contains("왓");
-                })
-                .count();
+            List<WindowStats> windows;
+            List<WindowScore> highlights;
+            synchronized (aggregate) {
+                windows = new ArrayList<>(aggregate.windows().values());
+                highlights = rankWindows(event.getVideoNo(), windows);
+            }
 
-        return (densityScore * 0.5) + (laughCount * 1.5) + (surpriseCount * 2.0);
-    }
+            publishTimeline(event.getVideoNo(), windows);
+            publishHighlights(event.getVideoNo(), highlights);
 
-    private String determineCategory(List<JsonNode> chats, String topMsg) {
-        long laugh = chats.stream().filter(c -> c.path("message").asText("").contains("ㅋ")).count();
-        long surprise = chats.stream().filter(c -> c.path("message").asText("").contains("?")).count();
-
-        if (laugh > surprise && laugh > 5) return "LAUGH";
-        if (surprise > laugh && surprise > 3) return "WONDER";
-        return "HOT_MOMENT";
-    }
-
-    private String findTopMessage(List<JsonNode> chats) {
-        // 가장 긴 메시지 또는 첫 번째 메시지 (단순화)
-        return chats.stream()
-                .map(c -> c.path("message").asText(""))
-                .max(Comparator.comparingInt(String::length))
-                .orElse("");
-    }
-
-    private String generateDescription(String category, double score) {
-        switch (category) {
-            case "LAUGH": return "시청자들이 박장대소한 구간 (점수: " + String.format("%.1f", score) + ")";
-            case "WONDER": return "놀라운 반응이 쏟아진 구간 (점수: " + String.format("%.1f", score) + ")";
-            default: return "채팅 화력이 집중된 구간 (점수: " + String.format("%.1f", score) + ")";
+            log.info(
+                    "[Vod-Analyzer] Finalized videoNo={}, pages={}, chats={}, windows={}, highlights={}",
+                    event.getVideoNo(),
+                    event.getPagesProcessed(),
+                    event.getChatsCollected(),
+                    windows.size(),
+                    highlights.size()
+            );
+            if (!highlights.isEmpty()) {
+                WindowScore top = highlights.stream()
+                        .max(Comparator.comparingDouble(WindowScore::score))
+                        .orElse(highlights.get(0));
+                int firstStart = windows.stream().mapToInt(WindowStats::startSeconds).min().orElse(0);
+                int lastStart = windows.stream().mapToInt(WindowStats::startSeconds).max().orElse(0);
+                log.info(
+                        "[Vod-Analyzer] Timeline range videoNo={}, first={}s, last={}s, topScore={}",
+                        event.getVideoNo(),
+                        firstStart,
+                        lastStart,
+                        top.score()
+                );
+            }
+        } catch (Exception e) {
+            log.error("[Vod-Analyzer] Failed to finalize VOD highlights for videoNo={}", videoNo, e);
         }
+    }
+
+    private void publishTimeline(String videoNo, List<WindowStats> windows) throws Exception {
+        for (WindowStats window : windows.stream().sorted(Comparator.comparingInt(WindowStats::startSeconds)).toList()) {
+            VodTimelinePoint point = VodTimelinePoint.builder()
+                    .videoNo(videoNo)
+                    .startSeconds(window.startSeconds())
+                    .endSeconds(window.startSeconds() + WINDOW_SECONDS)
+                    .messageCount(window.messageCount())
+                    .participantCount(window.uniqueUsers())
+                    .activityScore(window.activityScore())
+                    .category(determineCategory(window))
+                    .topMessage(window.representativeMessage())
+                    .build();
+
+            kafkaTemplate.send("vod-window-summary-topic", videoNo, objectMapper.writeValueAsString(point));
+        }
+    }
+
+    private void publishHighlights(String videoNo, List<WindowScore> highlights) throws Exception {
+        for (WindowScore ranked : highlights) {
+            VodHighlightPoint point = VodHighlightPoint.builder()
+                    .videoNo(videoNo)
+                    .startSeconds(ranked.startSeconds())
+                    .endSeconds(ranked.endSeconds())
+                    .highlightScore(ranked.score())
+                    .category(ranked.category())
+                    .description(ranked.description())
+                    .topMessage(ranked.topMessage())
+                    .build();
+
+            kafkaTemplate.send("vod-analyzed-topic", videoNo, objectMapper.writeValueAsString(point));
+        }
+    }
+
+    private List<WindowScore> rankWindows(String videoNo, List<WindowStats> windows) {
+        if (windows.isEmpty()) {
+            return List.of();
+        }
+
+        double averageMessages = windows.stream().mapToInt(WindowStats::messageCount).average().orElse(0.0);
+        double averageUsers = windows.stream().mapToInt(WindowStats::uniqueUsers).average().orElse(0.0);
+        double averageBursts = windows.stream().mapToDouble(WindowStats::burstSignal).average().orElse(0.0);
+        int maxMessages = windows.stream().mapToInt(WindowStats::messageCount).max().orElse(1);
+        int maxUsers = windows.stream().mapToInt(WindowStats::uniqueUsers).max().orElse(1);
+        double maxBurst = windows.stream().mapToDouble(WindowStats::burstSignal).max().orElse(1.0);
+
+        List<WindowScore> scored = new ArrayList<>();
+        for (int index = 0; index < windows.size(); index++) {
+            WindowStats previous = index > 0 ? windows.get(index - 1) : null;
+            WindowStats current = windows.get(index);
+            WindowStats next = index < windows.size() - 1 ? windows.get(index + 1) : null;
+            scored.add(scoreWindow(
+                    videoNo,
+                    current,
+                    previous,
+                    next,
+                    averageMessages,
+                    averageUsers,
+                    averageBursts,
+                    maxMessages,
+                    maxUsers,
+                    maxBurst
+            ));
+        }
+
+        scored = scored.stream()
+                .sorted(Comparator.comparingDouble(WindowScore::score).reversed())
+                .toList();
+
+        int targetCount = Math.min(MAX_HIGHLIGHTS, Math.max(MIN_HIGHLIGHTS, (int) Math.ceil(windows.size() * 0.1)));
+        List<WindowScore> selected = selectDistributedHighlights(scored, targetCount);
+
+        if (selected.size() < Math.min(MIN_HIGHLIGHTS, scored.size())) {
+            selected = mergeUniqueByStartSeconds(selected, scored.subList(0, Math.min(MIN_HIGHLIGHTS, scored.size())));
+        }
+
+        return selected.stream()
+                .sorted(Comparator.comparingInt(WindowScore::startSeconds))
+                .toList();
+    }
+
+    private List<WindowScore> selectDistributedHighlights(List<WindowScore> scored, int targetCount) {
+        if (scored.isEmpty()) {
+            return List.of();
+        }
+
+        List<WindowScore> selected = new ArrayList<>();
+        List<WindowScore> globalTop = scored.subList(0, Math.min(targetCount, scored.size()));
+        selected.addAll(globalTop);
+
+        int bucketCount = Math.min(6, Math.max(3, targetCount / 2));
+        int maxStart = scored.stream().mapToInt(WindowScore::startSeconds).max().orElse(0);
+        int bucketSize = Math.max(1, (maxStart + WINDOW_SECONDS) / bucketCount);
+
+        for (int bucket = 0; bucket < bucketCount; bucket++) {
+            int bucketStart = bucket * bucketSize;
+            int bucketEnd = bucket == bucketCount - 1 ? Integer.MAX_VALUE : bucketStart + bucketSize;
+
+            scored.stream()
+                    .filter(candidate -> candidate.startSeconds() >= bucketStart && candidate.startSeconds() < bucketEnd)
+                    .findFirst()
+                    .ifPresent(candidate -> {
+                        if (selected.stream().noneMatch(existing -> existing.startSeconds() == candidate.startSeconds())) {
+                            selected.add(candidate);
+                        }
+                    });
+        }
+
+        return selected.stream()
+                .sorted(Comparator.comparingDouble(WindowScore::score).reversed())
+                .limit(targetCount)
+                .toList();
+    }
+
+    private List<WindowScore> mergeUniqueByStartSeconds(List<WindowScore> first, List<WindowScore> second) {
+        Map<Integer, WindowScore> merged = new LinkedHashMap<>();
+        for (WindowScore item : first) {
+            merged.putIfAbsent(item.startSeconds(), item);
+        }
+        for (WindowScore item : second) {
+            merged.putIfAbsent(item.startSeconds(), item);
+        }
+        return new ArrayList<>(merged.values());
+    }
+
+    private WindowScore scoreWindow(
+            String videoNo,
+            WindowStats window,
+            WindowStats previous,
+            WindowStats next,
+            double averageMessages,
+            double averageUsers,
+            double averageBursts,
+            int maxMessages,
+            int maxUsers,
+            double maxBurst
+    ) {
+        double densityFactor = averageMessages == 0 ? 1.0 : ((double) window.messageCount() / averageMessages);
+        double userFactor = averageUsers == 0 ? 1.0 : ((double) window.uniqueUsers() / averageUsers);
+        double burstFactor = averageBursts == 0 ? 1.0 : (window.burstSignal() / averageBursts);
+
+        double densityScore = Math.min(14.0, densityFactor * 4.4 + ((double) window.messageCount() / Math.max(1, maxMessages)) * 5.0);
+        double userScore = Math.min(9.0, userFactor * 3.4 + ((double) window.uniqueUsers() / Math.max(1, maxUsers)) * 3.0);
+        double burstScore = Math.min(8.0, burstFactor * 3.4 + (window.burstSignal() / Math.max(1.0, maxBurst)) * 2.6);
+        double laughScore = Math.min(5.0, window.laughCount() * 0.9);
+        double surpriseScore = Math.min(5.0, window.surpriseCount() * 1.0);
+        double hypeScore = Math.min(5.0, window.hypeCount() * 1.0);
+        double tensionScore = Math.min(4.0, window.tensionCount() * 0.8);
+        double repetitionScore = Math.min(4.0, window.repeatedMessageCount() * 0.6);
+        double punctuationScore = Math.min(3.0, window.punctuationBurstCount() * 0.5);
+        double messageVarietyScore = Math.min(4.0, window.messageVariety() * 2.0);
+        double balanceScore = Math.min(3.0, window.userCoverageRatio() * 3.0);
+        double transitionScore = calculateTransitionScore(window, previous, next, averageMessages, averageUsers);
+
+        double totalScore = densityScore + userScore + burstScore + laughScore + surpriseScore + hypeScore + tensionScore
+                + repetitionScore + punctuationScore + messageVarietyScore + balanceScore + transitionScore;
+        String category = determineCategory(window);
+        String description = String.format(
+                "%s \ubc18\uc751\uc774 \uc0c1\ub300\uc801\uc73c\ub85c \ud06c\uac8c \ubaa8\uc778 \uad6c\uac04 \u00b7 \uac15\ub3c4 %.1f \u00b7 \ucc44\ud305 %d\uac1c \u00b7 \ucc38\uc5ec\uc790 %d\uba85",
+                categoryLabel(category),
+                totalScore,
+                window.messageCount(),
+                window.uniqueUsers()
+        );
+
+        return new WindowScore(
+                videoNo,
+                window.startSeconds(),
+                window.startSeconds() + WINDOW_SECONDS,
+                totalScore,
+                category,
+                description,
+                window.representativeMessage()
+        );
+    }
+
+    private double calculateTransitionScore(
+            WindowStats current,
+            WindowStats previous,
+            WindowStats next,
+            double averageMessages,
+            double averageUsers
+    ) {
+        if (previous == null) {
+            return 0.0;
+        }
+
+        double previousMessages = Math.max(previous.messageCount(), 1);
+        double previousUsers = Math.max(previous.uniqueUsers(), 1);
+        double messageJump = current.messageCount() / previousMessages;
+        double userJump = current.uniqueUsers() / previousUsers;
+
+        double quietBaseline = previous.messageCount() < Math.max(averageMessages * 0.65, 4.0) ? 1.0 : 0.0;
+        double burstFromQuiet = quietBaseline * Math.max(0.0, messageJump - 1.0) * 2.2;
+        double userSurge = quietBaseline * Math.max(0.0, userJump - 1.0) * 1.6;
+
+        double sustainedBonus = 0.0;
+        if (next != null) {
+            double nextMessages = Math.max(next.messageCount(), 1);
+            double nextUsers = Math.max(next.uniqueUsers(), 1);
+            if (current.messageCount() >= averageMessages && nextMessages >= averageMessages * 0.8) {
+                sustainedBonus += 1.5;
+            }
+            if (current.uniqueUsers() >= averageUsers && nextUsers >= averageUsers * 0.8) {
+                sustainedBonus += 1.0;
+            }
+        }
+
+        return Math.min(7.0, burstFromQuiet + userSurge + sustainedBonus);
+    }
+
+    private String determineCategory(WindowStats window) {
+        Map<String, Integer> categories = new LinkedHashMap<>();
+        categories.put("LAUGH", window.laughCount());
+        categories.put("WONDER", window.surpriseCount());
+        categories.put("HYPE", window.hypeCount());
+        categories.put("TENSION", window.tensionCount());
+
+        return categories.entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .filter(entry -> entry.getValue() > 0)
+                .map(Map.Entry::getKey)
+                .orElse("HOT_MOMENT");
+    }
+
+    private String categoryLabel(String category) {
+        return switch (category) {
+            case "LAUGH" -> "\uc6c3\uc74c";
+            case "WONDER" -> "\ub180\ub78c";
+            case "HYPE" -> "\uace0\uc870";
+            case "TENSION" -> "\uae34\uc7a5";
+            default -> "\ubc18\uc751";
+        };
+    }
+
+    private static int countMatches(String text, List<String> tokens) {
+        int count = 0;
+        for (String token : tokens) {
+            if (text.contains(token)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static String normalizeMessage(String message) {
+        return message.toLowerCase(Locale.ROOT)
+                .replaceAll("\\s+", "")
+                .replaceAll("[!?.~]+", "");
+    }
+
+    private static int extractVideoSeconds(JsonNode chat) {
+        JsonNode videoInSeconds = chat.path("videoInSeconds");
+        if (videoInSeconds.isNumber()) {
+            return Math.max(videoInSeconds.asInt(), 0);
+        }
+
+        JsonNode playerMessageTime = chat.path("playerMessageTime");
+        if (playerMessageTime.isNumber()) {
+            return (int) Math.max(playerMessageTime.asLong() / 1000L, 0);
+        }
+
+        JsonNode messageTime = chat.path("messageTime");
+        if (messageTime.isNumber()) {
+            return (int) Math.max(messageTime.asLong() / 1000L, 0);
+        }
+
+        return 0;
+    }
+
+    private static String extractMessage(JsonNode chat) {
+        String message = chat.path("message").asText("").trim();
+        if (!message.isBlank()) {
+            return message;
+        }
+
+        String msg = chat.path("msg").asText("").trim();
+        if (!msg.isBlank()) {
+            return msg;
+        }
+
+        String content = chat.path("content").asText("").trim();
+        if (!content.isBlank()) {
+            return content;
+        }
+
+        return "";
+    }
+
+    private static final class VideoAggregate {
+        private final Map<Integer, WindowStats> windows = new TreeMap<>();
+
+        void addChat(JsonNode chat) {
+            int seconds = extractVideoSeconds(chat);
+            int windowKey = (seconds / WINDOW_SECONDS) * WINDOW_SECONDS;
+            WindowStats window = windows.computeIfAbsent(windowKey, WindowStats::new);
+            window.record(chat);
+        }
+
+        Map<Integer, WindowStats> windows() {
+            return windows;
+        }
+    }
+
+    private static final class WindowStats {
+        private final int startSeconds;
+        private int messageCount;
+        private int uniqueUsers;
+        private int laughCount;
+        private int surpriseCount;
+        private int hypeCount;
+        private int tensionCount;
+        private int punctuationBurstCount;
+        private int repeatedMessageCount;
+        private final Set<String> seenUsers = ConcurrentHashMap.newKeySet();
+        private final Map<String, Integer> normalizedCounts = new HashMap<>();
+        private final Map<String, String> originalMessages = new HashMap<>();
+        private String latestMessage = "";
+
+        private WindowStats(int startSeconds) {
+            this.startSeconds = startSeconds;
+        }
+
+        private void record(JsonNode chat) {
+            messageCount++;
+
+            String senderId = chat.path("userIdHash").asText(chat.path("senderId").asText(""));
+            if (!senderId.isBlank() && seenUsers.add(senderId)) {
+                uniqueUsers++;
+            }
+
+            String message = extractMessage(chat);
+            String lower = message.toLowerCase(Locale.ROOT);
+            String normalized = normalizeMessage(message);
+            if (!normalized.isBlank()) {
+                int next = normalizedCounts.merge(normalized, 1, Integer::sum);
+                if (next >= 3) {
+                    repeatedMessageCount++;
+                }
+                originalMessages.putIfAbsent(normalized, message);
+                latestMessage = message;
+            }
+
+            laughCount += countMatches(lower, LAUGH_TOKENS);
+            surpriseCount += countMatches(lower, SURPRISE_TOKENS);
+            hypeCount += countMatches(lower, HYPE_TOKENS);
+            tensionCount += countMatches(lower, TENSION_TOKENS);
+
+            if (message.contains("!!") || message.contains("??") || message.contains("!?")) {
+                punctuationBurstCount++;
+                surpriseCount++;
+            }
+        }
+
+        private String representativeMessage() {
+            String representative = normalizedCounts.entrySet().stream()
+                    .max(Comparator.<Map.Entry<String, Integer>>comparingInt(Map.Entry::getValue)
+                            .thenComparing(entry -> originalMessages.getOrDefault(entry.getKey(), "").length()))
+                    .map(entry -> originalMessages.get(entry.getKey()))
+                    .orElse("");
+
+            if (!representative.isBlank()) {
+                return representative;
+            }
+            return latestMessage;
+        }
+
+        private double burstSignal() {
+            return laughCount + surpriseCount + hypeCount + tensionCount + punctuationBurstCount + (repeatedMessageCount * 0.5);
+        }
+
+        private double messageVariety() {
+            if (messageCount == 0) {
+                return 0;
+            }
+            return (double) normalizedCounts.size() / messageCount;
+        }
+
+        private double userCoverageRatio() {
+            if (messageCount == 0) {
+                return 0;
+            }
+            return (double) uniqueUsers / messageCount;
+        }
+
+        private double activityScore() {
+            return (messageCount * 1.2)
+                    + (uniqueUsers * 2.1)
+                    + burstSignal()
+                    + (messageVariety() * 8.0)
+                    + (userCoverageRatio() * 6.0);
+        }
+
+        private int startSeconds() {
+            return startSeconds;
+        }
+
+        private int messageCount() {
+            return messageCount;
+        }
+
+        private int uniqueUsers() {
+            return uniqueUsers;
+        }
+
+        private int laughCount() {
+            return laughCount;
+        }
+
+        private int surpriseCount() {
+            return surpriseCount;
+        }
+
+        private int hypeCount() {
+            return hypeCount;
+        }
+
+        private int tensionCount() {
+            return tensionCount;
+        }
+
+        private int punctuationBurstCount() {
+            return punctuationBurstCount;
+        }
+
+        private int repeatedMessageCount() {
+            return repeatedMessageCount;
+        }
+    }
+
+    private record WindowScore(
+            String videoNo,
+            int startSeconds,
+            int endSeconds,
+            double score,
+            String category,
+            String description,
+            String topMessage
+    ) {
     }
 }

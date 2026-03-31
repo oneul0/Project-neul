@@ -9,12 +9,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class VodHighlightPoint {
+public class VodCrawlCompletedEvent {
     private String videoNo;
-    private int startSeconds;
-    private int endSeconds;
-    private double highlightScore;
-    private String category;
-    private String description;
-    private String topMessage;
+    private int pagesProcessed;
+    private int chatsCollected;
 }

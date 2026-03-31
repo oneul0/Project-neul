@@ -1,15 +1,19 @@
 package com.neul.collector.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.neul.collector.service.ChatCollector;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.util.HashMap;
@@ -29,6 +33,26 @@ import java.util.Map;
 public class ChzzkChannelController {
 
         private final ChatCollector chatCollector;
+        private final WebClient chzzkWebClient;
+
+        @GetMapping("/{channelId}/status")
+        public Mono<ResponseEntity<Map<String, Object>>> getChannelStatus(@PathVariable String channelId) {
+                return chzzkWebClient.get()
+                                .uri("https://api.chzzk.naver.com/polling/v2/channels/" + channelId + "/live-status")
+                                .retrieve()
+                                .bodyToMono(ObjectNode.class)
+                                .map(node -> ResponseEntity.ok(buildStatusResponse(channelId, node)))
+                                .onErrorResume(e -> {
+                                        log.error("[Chzzk] Failed to fetch live status for channel {}: {}", channelId,
+                                                        e.getMessage());
+                                        return Mono.just(ResponseEntity.internalServerError()
+                                                        .body(Map.of(
+                                                                        "channelId", channelId,
+                                                                        "live", false,
+                                                                        "status", "failed",
+                                                                        "message", e.getMessage())));
+                                });
+        }
 
         @PostMapping("/{channelId}/subscribe")
         public Mono<ResponseEntity<Map<String, Object>>> subscribe(@PathVariable String channelId) {
@@ -67,6 +91,43 @@ public class ChzzkChannelController {
                 if (error != null) {
                         map.put("error", error);
                 }
+                return map;
+        }
+
+        private Map<String, Object> buildStatusResponse(String channelId, ObjectNode node) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("channelId", channelId);
+
+                JsonNode content = node.path("content");
+                boolean hasContent = !content.isMissingNode() && !content.isNull();
+                String chatChannelId = hasContent ? content.path("chatChannelId").asText("") : "";
+                boolean live = !chatChannelId.isBlank();
+
+                map.put("live", live);
+                map.put("status", live ? "live" : "offline");
+                map.put("chatChannelId", chatChannelId);
+
+                if (hasContent) {
+                        String liveTitle = content.path("liveTitle").asText("");
+                        if (!liveTitle.isBlank()) {
+                                map.put("liveTitle", liveTitle);
+                        }
+
+                        String status = content.path("status").asText("");
+                        if (!status.isBlank()) {
+                                map.put("rawStatus", status);
+                        }
+
+                        int concurrentUserCount = content.path("concurrentUserCount").asInt(-1);
+                        if (concurrentUserCount >= 0) {
+                                map.put("viewerCount", concurrentUserCount);
+                        }
+                }
+
+                if (!live) {
+                        map.put("message", "현재 라이브 상태가 아니어서 채팅 분석을 시작할 수 없습니다.");
+                }
+
                 return map;
         }
 }

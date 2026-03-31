@@ -19,12 +19,12 @@ export default function AudienceBalanceCard({
     <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
       <div className="flex items-center justify-between mb-5">
         <div>
-          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Audience Balance</div>
+          <div className="text-[10px] font-black tracking-[0.2em] text-slate-500">민심 밸런스</div>
           <div className="mt-1 text-3xl font-black text-slate-950">{balancePercent}%</div>
         </div>
         <div className="text-right">
-          <div className="text-xs font-bold text-emerald-400">Positive {(positiveAverage * 100).toFixed(0)}%</div>
-          <div className="text-xs font-bold text-rose-400">Negative {(negativeAverage * 100).toFixed(0)}%</div>
+          <div className="text-xs font-bold text-emerald-400">긍정 {(positiveAverage * 100).toFixed(0)}%</div>
+          <div className="text-xs font-bold text-rose-400">부정 {(negativeAverage * 100).toFixed(0)}%</div>
         </div>
       </div>
 

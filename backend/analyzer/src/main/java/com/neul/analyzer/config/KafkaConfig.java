@@ -50,6 +50,14 @@ public class KafkaConfig {
     }
 
     @Bean
+    public NewTopic vodWindowSummaryTopic() {
+        return TopicBuilder.name("vod-window-summary-topic")
+                .partitions(5)
+                .replicas(1)
+                .build();
+    }
+
+    @Bean
     public NewTopic v2RawChatTopic() {
         return TopicBuilder.name("v2-raw-chat")
                 .partitions(5)

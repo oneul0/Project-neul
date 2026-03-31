@@ -9,12 +9,13 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class VodHighlightPoint {
+public class VodTimelinePoint {
     private String videoNo;
-    private int startSeconds;
-    private int endSeconds;
-    private double highlightScore;
+    private Integer startSeconds;
+    private Integer endSeconds;
+    private Integer messageCount;
+    private Integer participantCount;
+    private Double activityScore;
     private String category;
-    private String description;
     private String topMessage;
 }
