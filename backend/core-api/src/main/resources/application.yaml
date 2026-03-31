@@ -6,6 +6,14 @@ spring:
     url: r2dbc:postgresql://127.0.0.1:5432/neul_db
     username: neul_user
     password: neul_password
+  flyway:
+    enabled: true
+    url: jdbc:postgresql://127.0.0.1:5432/neul_db
+    user: neul_user
+    password: neul_password
+    baseline-on-migrate: true
+    baseline-version: 1
+    locations: classpath:db/migration
   sql:
     init:
       mode: never
