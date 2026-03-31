@@ -3,6 +3,7 @@ package com.neul.analyzer.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.neul.common.dto.VodCrawlCompletedEvent;
+import com.neul.common.dto.VodAnalysisCompletedEvent;
 import com.neul.common.dto.VodHighlightPoint;
 import com.neul.common.dto.VodTimelinePoint;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +32,7 @@ public class VodHighlightAnalyzer {
 
     private static final int WINDOW_SECONDS = 30;
     private static final int MIN_HIGHLIGHTS = 5;
-    private static final int MAX_HIGHLIGHTS = 18;
+    private static final int MAX_HIGHLIGHTS = 24;
 
     private static final List<String> LAUGH_TOKENS = List.of("\u314b\u314b", "\u314e\u314e", "lol", "lmao", "rofl");
     private static final List<String> SURPRISE_TOKENS = List.of("\uc640", "\ud5c9", "\ub300\ubc15", "omg", "wtf");
@@ -84,6 +85,7 @@ public class VodHighlightAnalyzer {
 
             publishTimeline(event.getVideoNo(), windows);
             publishHighlights(event.getVideoNo(), highlights);
+            publishCompletion(event.getVideoNo(), windows.size(), highlights.size());
 
             log.info(
                     "[Vod-Analyzer] Finalized videoNo={}, pages={}, chats={}, windows={}, highlights={}",
@@ -145,6 +147,16 @@ public class VodHighlightAnalyzer {
         }
     }
 
+    private void publishCompletion(String videoNo, int timelinePointsCount, int highlightsCount) throws Exception {
+        VodAnalysisCompletedEvent event = VodAnalysisCompletedEvent.builder()
+                .videoNo(videoNo)
+                .timelinePointsCount(timelinePointsCount)
+                .highlightsCount(highlightsCount)
+                .build();
+
+        kafkaTemplate.send("vod-analysis-complete-topic", videoNo, objectMapper.writeValueAsString(event));
+    }
+
     private List<WindowScore> rankWindows(String videoNo, List<WindowStats> windows) {
         if (windows.isEmpty()) {
             return List.of();
@@ -180,7 +192,7 @@ public class VodHighlightAnalyzer {
                 .sorted(Comparator.comparingDouble(WindowScore::score).reversed())
                 .toList();
 
-        int targetCount = Math.min(MAX_HIGHLIGHTS, Math.max(MIN_HIGHLIGHTS, (int) Math.ceil(windows.size() * 0.1)));
+        int targetCount = Math.min(MAX_HIGHLIGHTS, Math.max(MIN_HIGHLIGHTS, (int) Math.ceil(windows.size() * 0.12)));
         List<WindowScore> selected = selectDistributedHighlights(scored, targetCount);
 
         if (selected.size() < Math.min(MIN_HIGHLIGHTS, scored.size())) {
@@ -197,13 +209,12 @@ public class VodHighlightAnalyzer {
             return List.of();
         }
 
-        List<WindowScore> selected = new ArrayList<>();
-        List<WindowScore> globalTop = scored.subList(0, Math.min(targetCount, scored.size()));
-        selected.addAll(globalTop);
-
-        int bucketCount = Math.min(6, Math.max(3, targetCount / 2));
+        int bucketCount = Math.min(targetCount, Math.min(8, Math.max(4, targetCount / 2)));
         int maxStart = scored.stream().mapToInt(WindowScore::startSeconds).max().orElse(0);
         int bucketSize = Math.max(1, (maxStart + WINDOW_SECONDS) / bucketCount);
+        int globalQuota = Math.max(0, targetCount - bucketCount);
+
+        Map<Integer, WindowScore> selectedByStart = new LinkedHashMap<>();
 
         for (int bucket = 0; bucket < bucketCount; bucket++) {
             int bucketStart = bucket * bucketSize;
@@ -212,17 +223,31 @@ public class VodHighlightAnalyzer {
             scored.stream()
                     .filter(candidate -> candidate.startSeconds() >= bucketStart && candidate.startSeconds() < bucketEnd)
                     .findFirst()
-                    .ifPresent(candidate -> {
-                        if (selected.stream().noneMatch(existing -> existing.startSeconds() == candidate.startSeconds())) {
-                            selected.add(candidate);
-                        }
-                    });
+                    .ifPresent(candidate -> selectedByStart.putIfAbsent(candidate.startSeconds(), candidate));
         }
 
-        return selected.stream()
-                .sorted(Comparator.comparingDouble(WindowScore::score).reversed())
-                .limit(targetCount)
-                .toList();
+        if (globalQuota > 0) {
+            for (WindowScore candidate : scored) {
+                if (selectedByStart.size() >= targetCount) {
+                    break;
+                }
+                if (selectedByStart.containsKey(candidate.startSeconds())) {
+                    continue;
+                }
+                selectedByStart.put(candidate.startSeconds(), candidate);
+            }
+        }
+
+        if (selectedByStart.size() < targetCount) {
+            for (WindowScore candidate : scored) {
+                if (selectedByStart.size() >= targetCount) {
+                    break;
+                }
+                selectedByStart.putIfAbsent(candidate.startSeconds(), candidate);
+            }
+        }
+
+        return new ArrayList<>(selectedByStart.values());
     }
 
     private List<WindowScore> mergeUniqueByStartSeconds(List<WindowScore> first, List<WindowScore> second) {

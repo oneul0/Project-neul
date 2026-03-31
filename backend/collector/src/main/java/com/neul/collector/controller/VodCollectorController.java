@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 @RestController
@@ -19,6 +21,7 @@ public class VodCollectorController {
 
     private final VodChatCrawlerService vodChatCrawlerService;
     private final VodAnalysisStatusService vodAnalysisStatusService;
+    private final WebClient coreApiWebClient = WebClient.builder().baseUrl("http://localhost:8083").build();
 
     @GetMapping("/{videoNo}/metadata")
     public Mono<VodMetadataResponse> getMetadata(@PathVariable String videoNo) {
@@ -27,7 +30,33 @@ public class VodCollectorController {
 
     @GetMapping("/{videoNo}/status")
     public Mono<VodAnalysisStatusResponse> getStatus(@PathVariable String videoNo) {
-        return Mono.just(vodAnalysisStatusService.getStatus(videoNo));
+        VodAnalysisStatusResponse current = vodAnalysisStatusService.getStatus(videoNo);
+        if (!"ANALYZING".equals(current.status())) {
+            return Mono.just(current);
+        }
+
+        return coreApiWebClient.get()
+                .uri("/api/v1/vod/{videoNo}/highlights", videoNo)
+                .retrieve()
+                .bodyToFlux(Object.class)
+                .take(1)
+                .hasElements()
+                .map(hasHighlights -> {
+                    if (hasHighlights) {
+                        vodAnalysisStatusService.markCompleted(
+                                videoNo,
+                                current.pagesProcessed(),
+                                current.chatsCollected()
+                        );
+                        log.info("[VOD-Crawler] Marking videoNo={} as completed from highlight fallback", videoNo);
+                        return vodAnalysisStatusService.getStatus(videoNo);
+                    }
+                    return current;
+                })
+                .onErrorResume(error -> {
+                    log.warn("[VOD-Crawler] Failed to verify fallback completion for videoNo={}", videoNo, error);
+                    return Mono.just(current);
+                });
     }
 
     @PostMapping("/{videoNo}/crawl")

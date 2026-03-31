@@ -58,6 +58,14 @@ public class KafkaConfig {
     }
 
     @Bean
+    public NewTopic vodAnalysisCompleteTopic() {
+        return TopicBuilder.name("vod-analysis-complete-topic")
+                .partitions(5)
+                .replicas(1)
+                .build();
+    }
+
+    @Bean
     public NewTopic v2RawChatTopic() {
         return TopicBuilder.name("v2-raw-chat")
                 .partitions(5)
