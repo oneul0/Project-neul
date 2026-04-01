@@ -14,7 +14,12 @@ public class VodHighlightPoint {
     private int startSeconds;
     private int endSeconds;
     private double highlightScore;
+    private double intensityScore;
+    private double transitionScore;
+    private double editabilityScore;
     private String category;
+    private String reactionLabel;
     private String description;
+    private String reasonSummary;
     private String topMessage;
 }

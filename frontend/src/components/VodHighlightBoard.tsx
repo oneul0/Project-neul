@@ -26,8 +26,13 @@ interface VodHighlight {
   startSeconds: number;
   endSeconds: number;
   highlightScore: number;
+  intensityScore?: number | null;
+  transitionScore?: number | null;
+  editabilityScore?: number | null;
   category: string;
+  reactionLabel?: string | null;
   description: string;
+  reasonSummary?: string | null;
   topMessage: string;
 }
 
@@ -80,6 +85,7 @@ const categoryLabel: Record<string, string> = {
   WONDER: "놀람",
   HYPE: "고조",
   TENSION: "긴장",
+  HOT_MOMENT: "핫 모먼트",
 };
 
 function formatSeconds(seconds: number) {
@@ -120,8 +126,14 @@ function deriveTimeline(highlights: VodHighlight[]): VodTimelinePoint[] {
     videoNo: highlight.videoNo,
     startSeconds: highlight.startSeconds,
     endSeconds: highlight.endSeconds,
-    messageCount: Math.max(1, Math.round(highlight.highlightScore * 2)),
-    participantCount: Math.max(1, Math.round(highlight.highlightScore)),
+    messageCount: Math.max(
+      1,
+      Math.round((highlight.intensityScore ?? highlight.highlightScore) * 1.6),
+    ),
+    participantCount: Math.max(
+      1,
+      Math.round((highlight.editabilityScore ?? highlight.highlightScore) * 0.9),
+    ),
   }));
 }
 
@@ -336,14 +348,14 @@ export default function VodHighlightBoard() {
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-black tracking-[0.18em] text-indigo-700">
               <Film className="h-3.5 w-3.5" />
-              VOD 하이라이트
+              VOD 편집 후보 탐색
             </div>
             <h3 className="text-2xl font-black text-slate-950">
-              다시보기를 확인하고 전체 흐름으로 분석하세요
+              다시보기를 확인하고 편집 포인트를 빠르게 찾으세요
             </h3>
             <p className="max-w-2xl text-sm leading-6 text-slate-600">
-              조회는 VOD 존재 여부와 기본 정보를 확인합니다. 분석 시작을 눌렀을
-              때만 백엔드가 전체 채팅을 읽고 방송 흐름과 하이라이트를 계산합니다.
+              조회는 VOD 존재 여부와 기본 정보를 확인합니다. 분석 시작을 누르면
+              전체 채팅 흐름을 바탕으로 편집 후보 구간과 추천 이유를 계산합니다.
             </p>
           </div>
 
@@ -482,7 +494,7 @@ export default function VodHighlightBoard() {
               </h4>
             </div>
             <div className="text-sm font-semibold text-slate-500">
-              {Math.max(timeline.length, highlights.length)}개 구간 · 하이라이트{" "}
+              {Math.max(timeline.length, highlights.length)}개 구간 · 편집 후보{" "}
               {highlights.length}개
             </div>
           </div>
@@ -544,7 +556,7 @@ export default function VodHighlightBoard() {
                             markers.find((item) => item.id === selectedHighlightId)
                               ?.startSeconds ?? 0,
                           )} 선택됨`
-                        : "하이라이트를 선택해 주세요"}
+                        : "편집 후보를 선택해 주세요"}
                     </div>
                   </div>
 
@@ -565,14 +577,19 @@ export default function VodHighlightBoard() {
                         >
                           {selected ? (
                             <div
-                              className="absolute left-1/2 min-w-[148px] -translate-x-1/2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-left shadow-sm"
+                              className="absolute left-1/2 min-w-[168px] -translate-x-1/2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-left shadow-sm"
                               style={{ top: `${item.lane}px` }}
                             >
                               <div className="text-[10px] font-black tracking-[0.14em] text-rose-600">
                                 {formatSeconds(item.startSeconds)}
                               </div>
+                              <div className="mt-1 text-xs font-bold text-slate-800">
+                                {item.reactionLabel ||
+                                  categoryLabel[item.category] ||
+                                  "편집 후보"}
+                              </div>
                               <div className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-700">
-                                {item.description}
+                                {item.reasonSummary || item.description}
                               </div>
                             </div>
                           ) : null}
@@ -600,11 +617,11 @@ export default function VodHighlightBoard() {
                     Highlights
                   </div>
                   <div className="mt-2 text-lg font-black text-slate-950">
-                    구간 상세
+                    편집 후보 상세
                   </div>
                 </div>
                 <div className="text-xs font-semibold text-slate-500">
-                  {highlights.length}개 하이라이트
+                  {highlights.length}개 후보
                 </div>
               </div>
 
@@ -613,7 +630,7 @@ export default function VodHighlightBoard() {
                   <div className="rounded-2xl border border-slate-200 bg-white px-5 py-10 text-center">
                     <Clock3 className="mx-auto h-8 w-8 text-slate-400" />
                     <div className="mt-3 text-base font-black text-slate-900">
-                      아직 생성된 하이라이트가 없습니다.
+                      아직 생성된 편집 후보가 없습니다.
                     </div>
                   </div>
                 ) : (
@@ -648,25 +665,40 @@ export default function VodHighlightBoard() {
                         </div>
                       </div>
 
-                      <div>
-                        <div className="flex flex-wrap gap-2">
-                          <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-indigo-700">
-                            {categoryLabel[item.category] || "반응"}
-                          </span>
-                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-amber-700">
-                            <Zap className="h-3.5 w-3.5" />
-                            {item.highlightScore.toFixed(2)}
-                          </span>
-                        </div>
+                      <div className="flex flex-wrap gap-2">
+                        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-indigo-700">
+                          {item.reactionLabel ||
+                            categoryLabel[item.category] ||
+                            "편집 후보"}
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-amber-700">
+                          <Zap className="h-3.5 w-3.5" />
+                          추천 강도 {item.highlightScore.toFixed(1)}
+                        </span>
+                      </div>
 
-                        <div className="mt-2 text-base font-black text-slate-950">
+                      <div>
+                        <div className="text-base font-black text-slate-950">
                           {item.description}
                         </div>
-                        <p className="mt-1 text-sm text-slate-600">
-                          "
-                          {item.topMessage ||
-                            "대표 채팅이 없는 구간입니다."}
-                          "
+                        <p className="mt-1 text-sm leading-6 text-slate-600">
+                          {item.reasonSummary || "추천 이유를 계산 중입니다."}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-600">
+                          {typeof item.intensityScore === "number" ? (
+                            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                              반응 밀집도 {item.intensityScore.toFixed(1)}
+                            </span>
+                          ) : null}
+                          {typeof item.transitionScore === "number" &&
+                          item.transitionScore > 0 ? (
+                            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                              흐름 전환 {item.transitionScore.toFixed(1)}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                          "{item.topMessage || "대표 채팅이 없는 구간입니다."}"
                         </p>
                       </div>
                     </div>

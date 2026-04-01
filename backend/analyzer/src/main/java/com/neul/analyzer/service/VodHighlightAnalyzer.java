@@ -138,8 +138,13 @@ public class VodHighlightAnalyzer {
                     .startSeconds(ranked.startSeconds())
                     .endSeconds(ranked.endSeconds())
                     .highlightScore(ranked.score())
+                    .intensityScore(ranked.intensityScore())
+                    .transitionScore(ranked.transitionScore())
+                    .editabilityScore(ranked.editabilityScore())
                     .category(ranked.category())
+                    .reactionLabel(ranked.reactionLabel())
                     .description(ranked.description())
+                    .reasonSummary(ranked.reasonSummary())
                     .topMessage(ranked.topMessage())
                     .build();
 
@@ -289,14 +294,33 @@ public class VodHighlightAnalyzer {
         double messageVarietyScore = Math.min(4.0, window.messageVariety() * 2.0);
         double balanceScore = Math.min(3.0, window.userCoverageRatio() * 3.0);
         double transitionScore = calculateTransitionScore(window, previous, next, averageMessages, averageUsers);
-
-        double totalScore = densityScore + userScore + burstScore + laughScore + surpriseScore + hypeScore + tensionScore
-                + repetitionScore + punctuationScore + messageVarietyScore + balanceScore + transitionScore;
         String category = determineCategory(window);
+        String reactionLabel = categoryLabel(category);
+
+        double intensityScore = densityScore
+                + userScore
+                + burstScore
+                + laughScore
+                + surpriseScore
+                + hypeScore
+                + tensionScore
+                + repetitionScore
+                + punctuationScore;
+
+        double editabilityScore = Math.min(
+                20.0,
+                (messageVarietyScore * 2.2)
+                        + (balanceScore * 1.8)
+                        + Math.min(4.0, window.representativeMessage().isBlank() ? 0.0 : 4.0)
+                        + Math.min(5.0, transitionScore * 0.65)
+        );
+
+        double totalScore = (intensityScore * 0.55) + (transitionScore * 0.20) + (editabilityScore * 0.25);
+
+        String reasonSummary = buildReasonSummary(window, reactionLabel, intensityScore, transitionScore, editabilityScore);
         String description = String.format(
-                "%s \ubc18\uc751\uc774 \uc0c1\ub300\uc801\uc73c\ub85c \ud06c\uac8c \ubaa8\uc778 \uad6c\uac04 \u00b7 \uac15\ub3c4 %.1f \u00b7 \ucc44\ud305 %d\uac1c \u00b7 \ucc38\uc5ec\uc790 %d\uba85",
-                categoryLabel(category),
-                totalScore,
+                "%s 반응이 몰린 구간이에요. 채팅 %d개와 참여자 %d명이 함께 반응했어요.",
+                reactionLabel,
                 window.messageCount(),
                 window.uniqueUsers()
         );
@@ -306,10 +330,50 @@ public class VodHighlightAnalyzer {
                 window.startSeconds(),
                 window.startSeconds() + WINDOW_SECONDS,
                 totalScore,
+                intensityScore,
+                transitionScore,
+                editabilityScore,
                 category,
+                reactionLabel,
                 description,
+                reasonSummary,
                 window.representativeMessage()
         );
+    }
+
+    private String buildReasonSummary(
+            WindowStats window,
+            String reactionLabel,
+            double intensityScore,
+            double transitionScore,
+            double editabilityScore
+    ) {
+        List<String> reasons = new ArrayList<>();
+
+        reasons.add(String.format("이 구간에서 채팅 %d개, 참여자 %d명이 반응했어요.", window.messageCount(), window.uniqueUsers()));
+
+        if (window.burstSignal() >= 3.0) {
+            reasons.add("감탄이나 반복 반응이 눈에 띄게 몰렸어요.");
+        }
+        if (window.repeatedMessageCount() >= 2) {
+            reasons.add("비슷한 메시지가 여러 번 반복돼서 장면 반응이 또렷했어요.");
+        }
+        if (transitionScore >= 4.5) {
+            reasons.add("직전 구간보다 분위기가 확 바뀌는 편집 포인트예요.");
+        }
+        if (editabilityScore >= 8.0) {
+            reasons.add("짧게 잘라 하이라이트로 쓰기 좋은 흐름이에요.");
+        }
+
+        if (intensityScore >= 12.0) {
+            reasons.add("반응 강도가 높아서 먼저 확인해볼 만해요.");
+        } else if (transitionScore >= 3.5) {
+            reasons.add("큰 폭발 구간은 아니어도 편집 포인트로 보기 좋아요.");
+        } else {
+            reasons.add("조용한 흐름 속에서도 상대적으로 반응이 살아난 구간이에요.");
+        }
+
+        return String.join(" | ", reasons);
     }
 
     private double calculateTransitionScore(
@@ -571,8 +635,13 @@ public class VodHighlightAnalyzer {
             int startSeconds,
             int endSeconds,
             double score,
+            double intensityScore,
+            double transitionScore,
+            double editabilityScore,
             String category,
+            String reactionLabel,
             String description,
+            String reasonSummary,
             String topMessage
     ) {
     }

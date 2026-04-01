@@ -25,9 +25,14 @@ public class VodHighlight {
     private Integer startSeconds;
     private Integer endSeconds;
     private Double highlightScore;
+    private Double intensityScore;
+    private Double transitionScore;
+    private Double editabilityScore;
     
     private String category;
+    private String reactionLabel;
     private String description;
+    private String reasonSummary;
     private String topMessage;
     
     @Builder.Default

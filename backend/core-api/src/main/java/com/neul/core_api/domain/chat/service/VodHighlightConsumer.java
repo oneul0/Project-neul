@@ -30,8 +30,13 @@ public class VodHighlightConsumer {
                     .startSeconds(point.getStartSeconds())
                     .endSeconds(point.getEndSeconds())
                     .highlightScore(point.getHighlightScore())
+                    .intensityScore(point.getIntensityScore())
+                    .transitionScore(point.getTransitionScore())
+                    .editabilityScore(point.getEditabilityScore())
                     .category(point.getCategory())
+                    .reactionLabel(point.getReactionLabel())
                     .description(point.getDescription())
+                    .reasonSummary(point.getReasonSummary())
                     .topMessage(point.getTopMessage())
                     .build();
 
