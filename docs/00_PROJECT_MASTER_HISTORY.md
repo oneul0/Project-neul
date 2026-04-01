@@ -24,6 +24,7 @@
 | 13 | `13_owner_auth_revision.md` | owner 인증 구조 변경 메모 |
 | 14 | `14_vod_concurrency_plan.md` | VOD 동시성 및 안정성 계획 |
 | 15 | `15_emotion_analysis_experiment_plan.md` | 편집 후보 중심 감정 분석 실험 계획 |
+| 16 | `16_personalized_vod_highlight_plan.md` | 개인화 가능한 VOD 편집 후보 확장 계획 |
 
 ## 이번 정리에서 병합/정리된 문서
 
@@ -71,6 +72,7 @@
 - VOD 하이라이트를 "감정 점수 출력"이 아니라 "편집 후보 탐색" 기준으로 재정의
 - `intensityScore`, `transitionScore`, `editabilityScore`, `reactionLabel`, `reasonSummary` 도입
 - frontend에서 내부 점수명을 직접 노출하지 않고 `추천 강도`, `추천 이유`, `대표 채팅` 중심으로 단순화
+- 같은 VOD를 사용자 취향에 따라 다시 정렬하고 마이페이지에서 재사용할 수 있도록 개인화 확장 계획 문서 추가
 - 문서 구조 정리:
   - 중복 로그/체크리스트/핸드오버 문서 병합
   - 오래된 `schema.sql`, 공개 대시보드 전제, 예전 배치 설명 등 최신화
