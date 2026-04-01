@@ -67,6 +67,17 @@ interface VodAnalysisStatus {
   chatsCollected?: number | null;
 }
 
+interface UserVodLibraryEntry {
+  id: number;
+  ownerId: string;
+  videoNo: string;
+  status?: string | null;
+  lastViewedAt?: string | null;
+  lastAnalyzedAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
 interface HighlightMarker extends VodHighlight {
   left: number;
 }
@@ -267,6 +278,8 @@ export default function VodHighlightBoard() {
   const [status, setStatus] = useState<VodAnalysisStatus>(EMPTY_STATUS);
   const [highlights, setHighlights] = useState<VodHighlight[]>([]);
   const [timeline, setTimeline] = useState<VodTimelinePoint[]>([]);
+  const [library, setLibrary] = useState<UserVodLibraryEntry[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(true);
   const [selectedVideoNo, setSelectedVideoNo] = useState<string | null>(null);
   const [selectedHighlightId, setSelectedHighlightId] = useState<number | null>(
     null,
@@ -304,6 +317,27 @@ export default function VodHighlightBoard() {
     [],
   );
 
+  const fetchLibrary = useCallback(async () => {
+    try {
+      setLibraryLoading(true);
+      const response = await fetch("/api/me/vod-library", {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        setLibrary([]);
+        return;
+      }
+
+      const data = await response.json();
+      setLibrary(Array.isArray(data) ? (data as UserVodLibraryEntry[]) : []);
+    } catch {
+      setLibrary([]);
+    } finally {
+      setLibraryLoading(false);
+    }
+  }, []);
+
   const syncData = useCallback(
     async (videoNo: string) => {
       const [nextStatus, highlightsResponse, timelineResponse] =
@@ -336,6 +370,34 @@ export default function VodHighlightBoard() {
     },
     [fetchStatus],
   );
+
+  const lookupVideo = useCallback(
+    async (videoNo: string) => {
+      setLookupLoading(true);
+      try {
+        const [metadataResponse, nextStatus] = await Promise.all([
+          fetch(`/api/vod/${videoNo}/metadata`, { cache: "no-store" }),
+          fetchStatus(videoNo),
+        ]);
+
+        const nextMetadata = (await metadataResponse.json()) as VodMetadata;
+        setMetadata(nextMetadata);
+        setStatus(nextStatus);
+        setSelectedVideoNo(null);
+        setHighlights([]);
+        setTimeline([]);
+        setSelectedHighlightId(null);
+        setVideoInput(videoNo);
+      } finally {
+        setLookupLoading(false);
+      }
+    },
+    [fetchStatus],
+  );
+
+  useEffect(() => {
+    void fetchLibrary();
+  }, [fetchLibrary]);
 
   useEffect(() => {
     if (!selectedVideoNo) return;
@@ -423,23 +485,7 @@ export default function VodHighlightBoard() {
       return;
     }
 
-    setLookupLoading(true);
-    try {
-      const [metadataResponse, nextStatus] = await Promise.all([
-        fetch(`/api/vod/${videoNo}/metadata`, { cache: "no-store" }),
-        fetchStatus(videoNo),
-      ]);
-
-      const nextMetadata = (await metadataResponse.json()) as VodMetadata;
-      setMetadata(nextMetadata);
-      setStatus(nextStatus);
-      setSelectedVideoNo(null);
-      setHighlights([]);
-      setTimeline([]);
-      setSelectedHighlightId(null);
-    } finally {
-      setLookupLoading(false);
-    }
+    await lookupVideo(videoNo);
   };
 
   const handleAnalyze = async () => {
@@ -468,6 +514,7 @@ export default function VodHighlightBoard() {
         message: "분석 요청이 접수되었습니다.",
       });
       await syncData(metadata.videoNo);
+      await fetchLibrary();
     } catch (error) {
       alert(
         error instanceof Error ? error.message : "분석 요청에 실패했습니다.",
@@ -481,6 +528,7 @@ export default function VodHighlightBoard() {
     if (!metadata?.exists || !metadata.videoNo) return;
     setSelectedVideoNo(metadata.videoNo);
     await syncData(metadata.videoNo);
+    await fetchLibrary();
   };
 
   const moveToCard = (id: number) => {
@@ -531,6 +579,69 @@ export default function VodHighlightBoard() {
             </button>
           </div>
         </div>
+      </section>
+
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mb-5 flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+              My VOD Library
+            </div>
+            <div className="mt-2 text-xl font-black text-slate-950">
+              최근에 본 다시보기
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => void fetchLibrary()}
+            className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700"
+          >
+            새로고침
+          </button>
+        </div>
+
+        {libraryLoading ? (
+          <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-8 text-sm font-semibold text-slate-500">
+            최근 VOD를 불러오는 중입니다.
+          </div>
+        ) : library.length === 0 ? (
+          <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-sm font-semibold text-slate-500">
+            아직 저장된 VOD가 없습니다. 조회하거나 분석한 VOD가 여기에 쌓입니다.
+          </div>
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+            {library.slice(0, 6).map((item) => {
+              const statusLabel =
+                item.status === "READY"
+                  ? "분석 완료"
+                  : item.status === "ANALYZING"
+                    ? "분석 중"
+                    : "최근 열람";
+
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => void lookupVideo(item.videoNo)}
+                  className="rounded-[24px] border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-black text-slate-950">
+                      VOD {item.videoNo}
+                    </div>
+                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-black text-slate-600">
+                      {statusLabel}
+                    </span>
+                  </div>
+                  <div className="mt-3 space-y-1 text-xs text-slate-500">
+                    <div>최근 열람 {formatDateTime(item.lastViewedAt)}</div>
+                    <div>최근 분석 {formatDateTime(item.lastAnalyzedAt)}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       {metadata?.exists ? (
