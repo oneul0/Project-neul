@@ -23,6 +23,8 @@ chzzk:
   api:
     base-url: https://openapi.chzzk.naver.com
     auth-url: https://chzzk.naver.com
+    vod-chat-url: https://api.chzzk.naver.com/service/v1/videos/{videoNo}/chats
+    vod-metadata-url: https://api.chzzk.naver.com/service/v2/videos/{videoNo}
     client-id: ${CHZZK_CLIENT_ID}
     client-secret: ${CHZZK_CLIENT_SECRET}
     redirect-uri: ${CHZZK_REDIRECT_URI:http://localhost:8081/api/v1/chzzk/callback}

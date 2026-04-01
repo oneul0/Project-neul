@@ -6,4 +6,6 @@ import reactor.core.publisher.Flux;
 
 public interface UserVodActivityRepository extends ReactiveCrudRepository<UserVodActivity, Long> {
     Flux<UserVodActivity> findAllByOwnerIdOrderByCreatedAtDesc(String ownerId);
+
+    Flux<UserVodActivity> findAllByOwnerIdAndVideoNoOrderByCreatedAtDesc(String ownerId, String videoNo);
 }

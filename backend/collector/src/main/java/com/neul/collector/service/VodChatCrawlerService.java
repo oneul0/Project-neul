@@ -2,6 +2,7 @@ package com.neul.collector.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.neul.collector.config.ChzzkProperties;
 import com.neul.collector.controller.VodMetadataResponse;
 import com.neul.common.dto.VodCrawlCompletedEvent;
 import lombok.RequiredArgsConstructor;
@@ -21,8 +22,6 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class VodChatCrawlerService {
 
-    private static final String CHZZK_VOD_CHAT_URL = "https://api.chzzk.naver.com/service/v1/videos/{videoNo}/chats";
-    private static final String CHZZK_VOD_METADATA_URL = "https://api.chzzk.naver.com/service/v2/videos/{videoNo}";
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(12);
     private static final int MAX_RETRIES = 2;
 
@@ -30,6 +29,7 @@ public class VodChatCrawlerService {
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
     private final VodAnalysisStatusService vodAnalysisStatusService;
+    private final ChzzkProperties chzzkProperties;
 
     public Mono<CrawlProgress> crawlFullVodChat(String videoNo) {
         log.info("[VOD-Crawler] Starting full chat crawl for videoNo={}", videoNo);
@@ -50,7 +50,7 @@ public class VodChatCrawlerService {
     }
 
     public Mono<VodMetadataResponse> fetchVideoMetadata(String videoNo) {
-        String uri = CHZZK_VOD_METADATA_URL.replace("{videoNo}", videoNo);
+        String uri = chzzkProperties.getVodMetadataUrl().replace("{videoNo}", videoNo);
 
         return webClient.get()
                 .uri(uri)
@@ -99,7 +99,7 @@ public class VodChatCrawlerService {
             Set<String> visitedCursors,
             int retryCount
     ) {
-        String uri = CHZZK_VOD_CHAT_URL.replace("{videoNo}", videoNo) + "?playerType=VOD";
+        String uri = chzzkProperties.getVodChatUrl().replace("{videoNo}", videoNo) + "?playerType=VOD";
         if (cursor != null && !cursor.isBlank()) {
             uri += "&playerMessageTime=" + cursor;
         }

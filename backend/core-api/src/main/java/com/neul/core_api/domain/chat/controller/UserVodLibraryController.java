@@ -1,5 +1,6 @@
 package com.neul.core_api.domain.chat.controller;
 
+import com.neul.core_api.domain.chat.dto.UserVodPreferenceProfile;
 import com.neul.core_api.domain.chat.entity.UserVodActivity;
 import com.neul.core_api.domain.chat.entity.UserVodLibraryEntry;
 import com.neul.core_api.domain.chat.service.OwnerIdentityResolver;
@@ -30,6 +31,21 @@ public class UserVodLibraryController {
     public Flux<UserVodLibraryEntry> getVodLibrary(ServerHttpRequest request) {
         String ownerId = requireOwnerId(request);
         return userVodLibraryService.getLibrary(ownerId);
+    }
+
+    @GetMapping("/vod-preferences")
+    public Mono<UserVodPreferenceProfile> getVodPreferences(ServerHttpRequest request) {
+        String ownerId = requireOwnerId(request);
+        return userVodLibraryService.getPreferenceProfile(ownerId);
+    }
+
+    @GetMapping("/vod/{videoNo}/activity")
+    public Flux<UserVodActivity> getVodActivity(
+            @PathVariable String videoNo,
+            ServerHttpRequest request
+    ) {
+        String ownerId = requireOwnerId(request);
+        return userVodLibraryService.getActivities(ownerId, videoNo);
     }
 
     @PostMapping("/vod/{videoNo}/activity")

@@ -15,6 +15,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class ChzzkProperties {
     private String baseUrl;
     private String authUrl;
+    private String vodChatUrl;
+    private String vodMetadataUrl;
     private String clientId;
     private String clientSecret;
     private String redirectUri;
