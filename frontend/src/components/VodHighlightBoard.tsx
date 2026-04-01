@@ -1,8 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bookmark,
   CheckCircle2,
   Clock3,
   Film,
@@ -22,6 +21,9 @@ type VodStatus =
   | "ANALYZING"
   | "COMPLETED"
   | "FAILED";
+
+type HighlightFilter = "ACTIVE" | "ALL" | "PINNED" | "GOOD";
+type ChartMode = "RESPONSIVE" | "DETAIL";
 
 interface VodHighlight {
   id: number;
@@ -90,6 +92,13 @@ interface UserVodActivity {
   createdAt?: string | null;
 }
 
+interface UserVodPreferenceProfile {
+  topCategories: string[];
+  topReactionLabels: string[];
+  categoryAffinity: Record<string, number>;
+  reactionAffinity: Record<string, number>;
+}
+
 interface HighlightMarker extends VodHighlight {
   left: number;
 }
@@ -113,12 +122,18 @@ const ACTIVE_STATUSES: VodStatus[] = [
   "ANALYZING",
 ];
 
+function normalizeHighlightAction(action?: string | null) {
+  if (action === "SAVE") return "GOOD";
+  if (action === "SKIP") return "BAD";
+  return action ?? null;
+}
+
 const categoryLabel: Record<string, string> = {
   LAUGH: "웃음",
   WONDER: "놀람",
   HYPE: "고조",
   TENSION: "긴장",
-  HOT_MOMENT: "핫 모먼트",
+  HOT_MOMENT: "핫모먼트",
 };
 
 function formatSeconds(seconds: number) {
@@ -170,6 +185,35 @@ function deriveTimeline(highlights: VodHighlight[]): VodTimelinePoint[] {
   }));
 }
 
+function aggregateTimelineForChart(
+  source: VodTimelinePoint[],
+  maxBars = 120,
+): VodTimelinePoint[] {
+  if (source.length <= maxBars) {
+    return source;
+  }
+
+  const itemsPerBucket = Math.ceil(source.length / maxBars);
+  const buckets: VodTimelinePoint[] = [];
+
+  for (let index = 0; index < source.length; index += itemsPerBucket) {
+    const chunk = source.slice(index, index + itemsPerBucket);
+    const first = chunk[0];
+    const last = chunk[chunk.length - 1];
+
+    buckets.push({
+      id: first.id,
+      videoNo: first.videoNo,
+      startSeconds: first.startSeconds,
+      endSeconds: last.endSeconds,
+      messageCount: chunk.reduce((sum, item) => sum + item.messageCount, 0),
+      participantCount: Math.max(...chunk.map((item) => item.participantCount), 1),
+    });
+  }
+
+  return buckets;
+}
+
 function toReadablePoints(...values: Array<string | null | undefined>) {
   return values
     .flatMap((value) =>
@@ -190,12 +234,12 @@ function toCompactReasonTags(highlight: VodHighlight) {
     source.includes("놀람") ||
     highlight.category === "WONDER"
   ) {
-    tags.add("놀라서 반응이 커진 장면");
+    tags.add("놀람 반응이 큰 장면");
   }
   if (
     source.includes("웃음") ||
     highlight.category === "LAUGH" ||
-    (highlight.reactionLabel ?? "").includes("웃")
+    (highlight.reactionLabel ?? "").includes("웃음")
   ) {
     tags.add("웃음이 터진 장면");
   }
@@ -204,7 +248,7 @@ function toCompactReasonTags(highlight: VodHighlight) {
     source.includes("열기") ||
     highlight.category === "HYPE"
   ) {
-    tags.add("분위기가 달아오른 장면");
+    tags.add("분위기가 올라간 장면");
   }
   if (
     source.includes("긴장") ||
@@ -213,21 +257,25 @@ function toCompactReasonTags(highlight: VodHighlight) {
   ) {
     tags.add("긴장감이 높은 장면");
   }
-  if (source.includes("흐름") || source.includes("전환") || source.includes("직전 구간")) {
+  if (
+    source.includes("흐름") ||
+    source.includes("전환") ||
+    source.includes("직전 구간")
+  ) {
     tags.add("분위기가 바뀌는 장면");
   }
-  if (source.includes("짧게 잘라") || source.includes("하이라이트로 쓰기 좋은")) {
-    tags.add("짧게 잘라 쓰기 좋은 장면");
+  if (source.includes("짧게 잘라") || source.includes("하이라이트로 쓰기 좋")) {
+    tags.add("짧게 편집하기 좋은 장면");
   }
   if (source.includes("반응 강도") || source.includes("먼저 확인")) {
-    tags.add("먼저 확인할 장면");
+    tags.add("먼저 볼 장면");
   }
 
   if (typeof highlight.intensityScore === "number" && highlight.intensityScore >= 7) {
     tags.add("반응이 크게 몰린 장면");
   }
   if (typeof highlight.transitionScore === "number" && highlight.transitionScore >= 4) {
-    tags.add("전환점으로 보기 좋은 장면");
+    tags.add("편집점으로 보기 좋은 장면");
   }
 
   if (tags.size === 0) {
@@ -293,14 +341,24 @@ export default function VodHighlightBoard() {
   const [library, setLibrary] = useState<UserVodLibraryEntry[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [highlightActions, setHighlightActions] = useState<Record<number, string>>({});
+  const [preferenceProfile, setPreferenceProfile] = useState<UserVodPreferenceProfile>({
+    topCategories: [],
+    topReactionLabels: [],
+    categoryAffinity: {},
+    reactionAffinity: {},
+  });
   const [selectedVideoNo, setSelectedVideoNo] = useState<string | null>(null);
   const [selectedHighlightId, setSelectedHighlightId] = useState<number | null>(
     null,
   );
   const [lookupLoading, setLookupLoading] = useState(false);
   const [analysisSubmitting, setAnalysisSubmitting] = useState(false);
+  const [highlightFilter, setHighlightFilter] = useState<HighlightFilter>("ACTIVE");
+  const [chartMode, setChartMode] = useState<ChartMode>("RESPONSIVE");
+  const [chartWidth, setChartWidth] = useState(0);
 
   const cardRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const chartViewportRef = useRef<HTMLDivElement | null>(null);
 
   const fetchStatus = useCallback(async (videoNo: string) => {
     const response = await fetch(`/api/vod/${videoNo}/status`, {
@@ -348,6 +406,47 @@ export default function VodHighlightBoard() {
       setLibrary([]);
     } finally {
       setLibraryLoading(false);
+    }
+  }, []);
+
+  const fetchPreferenceProfile = useCallback(async () => {
+    try {
+      const response = await fetch("/api/me/vod-preferences", {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        setPreferenceProfile({
+          topCategories: [],
+          topReactionLabels: [],
+          categoryAffinity: {},
+          reactionAffinity: {},
+        });
+        return;
+      }
+
+      const data = await response.json();
+      setPreferenceProfile({
+        topCategories: Array.isArray(data?.topCategories) ? data.topCategories : [],
+        topReactionLabels: Array.isArray(data?.topReactionLabels)
+          ? data.topReactionLabels
+          : [],
+        categoryAffinity:
+          typeof data?.categoryAffinity === "object" && data.categoryAffinity
+            ? (data.categoryAffinity as Record<string, number>)
+            : {},
+        reactionAffinity:
+          typeof data?.reactionAffinity === "object" && data.reactionAffinity
+            ? (data.reactionAffinity as Record<string, number>)
+            : {},
+      });
+    } catch {
+      setPreferenceProfile({
+        topCategories: [],
+        topReactionLabels: [],
+        categoryAffinity: {},
+        reactionAffinity: {},
+      });
     }
   }, []);
 
@@ -464,6 +563,10 @@ export default function VodHighlightBoard() {
   }, [fetchLibrary]);
 
   useEffect(() => {
+    void fetchPreferenceProfile();
+  }, [fetchPreferenceProfile]);
+
+  useEffect(() => {
     if (!selectedVideoNo) return;
     if (!ACTIVE_STATUSES.includes(status.status)) return;
 
@@ -488,6 +591,21 @@ export default function VodHighlightBoard() {
     });
   }, [highlights]);
 
+  useEffect(() => {
+    const node = chartViewportRef.current;
+    if (!node) return;
+
+    const updateWidth = () => setChartWidth(node.clientWidth);
+    updateWidth();
+
+    const observer = new ResizeObserver(() => {
+      updateWidth();
+    });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [selectedVideoNo, timeline.length, highlights.length, chartMode]);
+
   const duration = useMemo(() => {
     if (metadata?.duration && metadata.duration > 0) {
       return metadata.duration;
@@ -499,8 +617,26 @@ export default function VodHighlightBoard() {
     return Math.max(...source.map((item) => item.endSeconds), 1);
   }, [highlights, metadata?.duration, timeline]);
 
+  const timelineSource = useMemo(
+    () => (timeline.length > 0 ? timeline : deriveTimeline(highlights)),
+    [highlights, timeline],
+  );
+
+  const responsiveMaxBars = useMemo(() => {
+    if (chartWidth <= 0) return 120;
+    return Math.max(24, Math.floor(chartWidth / 6));
+  }, [chartWidth]);
+
+  const chartTimeline = useMemo(() => {
+    if (chartMode === "DETAIL") {
+      return timelineSource;
+    }
+
+    return aggregateTimelineForChart(timelineSource, responsiveMaxBars);
+  }, [chartMode, responsiveMaxBars, timelineSource]);
+
   const chartBars = useMemo(() => {
-    const source = timeline.length > 0 ? timeline : deriveTimeline(highlights);
+    const source = chartTimeline;
     const maxMessages = Math.max(...source.map((item) => item.messageCount), 1);
     const maxParticipants = Math.max(
       ...source.map((item) => item.participantCount),
@@ -515,7 +651,31 @@ export default function VodHighlightBoard() {
         4,
       ),
     }));
-  }, [highlights, timeline]);
+  }, [chartTimeline]);
+
+  const chartMinWidth = useMemo(() => {
+    if (chartMode !== "DETAIL") {
+      return undefined;
+    }
+
+    return `${Math.max(chartBars.length * 10, chartWidth)}px`;
+  }, [chartBars.length, chartMode, chartWidth]);
+
+  const selectedTimelinePoint = useMemo(() => {
+    const source = timelineSource;
+    if (source.length === 0) return null;
+
+    const selectedHighlight = highlights.find((item) => item.id === selectedHighlightId);
+    if (!selectedHighlight) {
+      return source[0];
+    }
+
+    return source.reduce((closest, current) => {
+      const currentGap = Math.abs(current.startSeconds - selectedHighlight.startSeconds);
+      const closestGap = Math.abs(closest.startSeconds - selectedHighlight.startSeconds);
+      return currentGap < closestGap ? current : closest;
+    }, source[0]);
+  }, [highlights, selectedHighlightId, timelineSource]);
 
   const markerClusters = useMemo(
     () => buildMarkerClusters(highlights, duration),
@@ -542,6 +702,54 @@ export default function VodHighlightBoard() {
     return toCompactReasonTags(activeItem);
   }, [selectedCluster, selectedHighlightId]);
 
+  const goodHighlights = useMemo(
+    () =>
+      highlights.filter(
+        (item) => normalizeHighlightAction(highlightActions[item.id]) === "GOOD",
+      ),
+    [highlightActions, highlights],
+  );
+
+  const pinnedHighlights = useMemo(
+    () =>
+      highlights.filter(
+        (item) => normalizeHighlightAction(highlightActions[item.id]) === "PIN",
+      ),
+    [highlightActions, highlights],
+  );
+
+  const badHighlights = useMemo(
+    () =>
+      highlights.filter(
+        (item) => normalizeHighlightAction(highlightActions[item.id]) === "BAD",
+      ),
+    [highlightActions, highlights],
+  );
+
+  const rankedHighlights = useMemo(() => highlights, [highlights]);
+
+  const filteredHighlights = useMemo(() => {
+    if (highlightFilter === "PINNED") {
+      return rankedHighlights.filter(
+        (item) => normalizeHighlightAction(highlightActions[item.id]) === "PIN",
+      );
+    }
+
+    if (highlightFilter === "GOOD") {
+      return rankedHighlights.filter(
+        (item) => normalizeHighlightAction(highlightActions[item.id]) === "GOOD",
+      );
+    }
+
+    if (highlightFilter === "ACTIVE") {
+      return rankedHighlights.filter(
+        (item) => normalizeHighlightAction(highlightActions[item.id]) !== "BAD",
+      );
+    }
+
+    return rankedHighlights;
+  }, [highlightActions, highlightFilter, rankedHighlights]);
+
   const handleLookup = async () => {
     const videoNo = resolveVideoNo(videoInput);
     if (!videoNo) {
@@ -554,7 +762,7 @@ export default function VodHighlightBoard() {
 
   const handleAnalyze = async () => {
     if (!metadata?.exists || !metadata.videoNo) {
-      alert("먼저 조회로 유효한 VOD를 확인해 주세요.");
+      alert("먼저 조회해서 유효한 VOD인지 확인해 주세요.");
       return;
     }
 
@@ -608,7 +816,7 @@ export default function VodHighlightBoard() {
 
   const handleHighlightAction = async (
     highlightId: number,
-    actionType: "SAVE" | "PIN" | "SKIP",
+    actionType: "GOOD" | "PIN" | "BAD",
   ) => {
     if (!selectedVideoNo) {
       return;
@@ -621,15 +829,16 @@ export default function VodHighlightBoard() {
 
     try {
       await recordHighlightActivity(selectedVideoNo, highlightId, actionType);
-      await fetchHighlightActions(selectedVideoNo);
+      await syncData(selectedVideoNo);
       await fetchLibrary();
+      await fetchPreferenceProfile();
     } catch {
       // Keep the optimistic action and retry on the next refresh.
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 overflow-x-hidden">
       <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-2">
@@ -641,7 +850,7 @@ export default function VodHighlightBoard() {
               다시보기를 확인하고 편집 포인트를 빠르게 찾으세요
             </h3>
             <p className="max-w-2xl text-sm leading-6 text-slate-600">
-              조회는 VOD 존재 여부와 기본 정보를 확인합니다. 분석 시작을 누르면
+              조회로 VOD 존재 여부와 기본 정보를 확인합니다. 분석 시작을 누르면
               전체 채팅 흐름을 바탕으로 편집 후보 구간과 추천 이유를 계산합니다.
             </p>
           </div>
@@ -692,7 +901,7 @@ export default function VodHighlightBoard() {
           </div>
         ) : library.length === 0 ? (
           <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-sm font-semibold text-slate-500">
-            아직 저장된 VOD가 없습니다. 조회하거나 분석한 VOD가 여기에 쌓입니다.
+            아직 확인한 VOD가 없습니다. 조회하거나 분석한 VOD가 여기에 쌓입니다.
           </div>
         ) : (
           <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
@@ -730,6 +939,63 @@ export default function VodHighlightBoard() {
         )}
       </section>
 
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mb-4">
+          <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+            Preference Profile
+          </div>
+          <div className="mt-2 text-xl font-black text-slate-950">
+            지금 반영 중인 내 취향
+          </div>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+              선호 카테고리
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {preferenceProfile.topCategories.length === 0 ? (
+                <span className="text-sm font-semibold text-slate-500">
+                  아직 활동 데이터가 부족해서 기본 정렬로 보여주고 있어요.
+                </span>
+              ) : (
+                preferenceProfile.topCategories.map((category) => (
+                  <span
+                    key={category}
+                    className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-black text-indigo-700"
+                  >
+                    {category}
+                  </span>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+              선호 반응
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {preferenceProfile.topReactionLabels.length === 0 ? (
+                <span className="text-sm font-semibold text-slate-500">
+                  좋아요와 별로예요 이력이 쌓이면 여기에 반영돼요.
+                </span>
+              ) : (
+                preferenceProfile.topReactionLabels.map((label) => (
+                  <span
+                    key={label}
+                    className="rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-700"
+                  >
+                    {label}
+                  </span>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {metadata?.exists ? (
         <section className="space-y-5 rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
           <div
@@ -756,7 +1022,7 @@ export default function VodHighlightBoard() {
                   {metadata.title || "제목 없음"}
                 </h4>
                 <p className="mt-2 text-sm text-slate-600">
-                  {metadata.channelName || "채널 정보 없음"} · 생성 시각{" "}
+                  {metadata.channelName || "채널명 정보 없음"} · 생성 시각{" "}
                   {formatDateTime(metadata.publishDateAt ?? metadata.publishDate)}
                 </p>
                 <p className="mt-1 text-sm text-slate-500">
@@ -772,7 +1038,7 @@ export default function VodHighlightBoard() {
                   }}
                   className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700"
                 >
-                  흐름 보기
+                  분석 열기
                 </button>
                 <button
                   onClick={(event) => {
@@ -834,6 +1100,72 @@ export default function VodHighlightBoard() {
 
       {selectedVideoNo ? (
         <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-6 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 p-4">
+              <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">
+                <CheckCircle2 className="h-4 w-4" />
+                좋아요 표시
+              </div>
+              <div className="mt-3 text-sm font-bold text-slate-900">
+                {goodHighlights.length === 0
+                  ? "좋아요를 남긴 장면이 아직 없어요."
+                  : `${goodHighlights.length}개 장면을 좋은 반응으로 표시했어요.`}
+              </div>
+              {goodHighlights.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {goodHighlights.slice(0, 4).map((item) => (
+                    <button
+                      key={`good-${item.id}`}
+                      type="button"
+                      onClick={() => moveToCard(item.id)}
+                      className="rounded-full border border-emerald-200 bg-white px-3 py-2 text-xs font-black text-emerald-700"
+                    >
+                      {formatSeconds(item.startSeconds)}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="rounded-[24px] border border-indigo-200 bg-indigo-50 p-4">
+              <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.18em] text-indigo-700">
+                <Pin className="h-4 w-4" />
+                편집점 보관함
+              </div>
+              <div className="mt-3 text-sm font-bold text-slate-900">
+                {pinnedHighlights.length === 0
+                  ? "편집점으로 고정한 장면이 아직 없어요."
+                  : `${pinnedHighlights.length}개 장면을 편집점으로 고정했어요.`}
+              </div>
+              {pinnedHighlights.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {pinnedHighlights.slice(0, 4).map((item) => (
+                    <button
+                      key={`pinned-${item.id}`}
+                      type="button"
+                      onClick={() => moveToCard(item.id)}
+                      className="rounded-full border border-indigo-200 bg-white px-3 py-2 text-xs font-black text-indigo-700"
+                    >
+                      {formatSeconds(item.startSeconds)}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          {badHighlights.length > 0 ? (
+            <div className="mb-6 rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.18em] text-slate-600">
+                <XCircle className="h-4 w-4" />
+                낮은 우선순위
+              </div>
+              <div className="mt-3 text-sm font-bold text-slate-900">
+                {badHighlights.length}개 장면은 이 영상에서 우선순위를 낮게 반영하고 있어요.
+              </div>
+            </div>
+          ) : null}
+
           <div className="mb-5 flex items-center justify-between">
             <div>
               <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
@@ -844,13 +1176,13 @@ export default function VodHighlightBoard() {
               </h4>
             </div>
             <div className="text-sm font-semibold text-slate-500">
-              {Math.max(timeline.length, highlights.length)}개 구간 · 편집 후보{" "}
+              {Math.max(timeline.length, highlights.length)}개 구간 중 편집 후보{" "}
               {highlights.length}개
             </div>
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.95fr)]">
-            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,380px)]">
+            <div className="min-w-0 rounded-[24px] border border-slate-200 bg-slate-50 p-5 overflow-hidden">
               <div className="mb-4 flex flex-wrap items-center gap-3 text-xs font-bold tracking-[0.14em] text-slate-500">
                 <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
                   00:00
@@ -858,6 +1190,30 @@ export default function VodHighlightBoard() {
                 <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
                   {formatSeconds(duration)}
                 </span>
+                <div className="ml-auto inline-flex rounded-full border border-slate-200 bg-white p-1 text-[11px] font-black tracking-[0.08em] text-slate-500">
+                  <button
+                    type="button"
+                    onClick={() => setChartMode("RESPONSIVE")}
+                    className={`rounded-full px-3 py-1.5 transition ${
+                      chartMode === "RESPONSIVE"
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    자동 요약
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChartMode("DETAIL")}
+                    className={`rounded-full px-3 py-1.5 transition ${
+                      chartMode === "DETAIL"
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    상세 보기
+                  </button>
+                </div>
                 <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700">
                   <Zap className="h-3.5 w-3.5" />
                   채팅량
@@ -868,17 +1224,26 @@ export default function VodHighlightBoard() {
                 </span>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div
+                ref={chartViewportRef}
+                className={`rounded-2xl border border-slate-200 bg-white p-4 ${
+                  chartMode === "DETAIL" ? "overflow-x-auto overflow-y-hidden" : "overflow-hidden"
+                }`}
+              >
                 {chartBars.length === 0 ? (
                   <div className="flex h-[280px] items-center justify-center text-sm font-semibold text-slate-500">
                     아직 전체 흐름 데이터가 없습니다.
                   </div>
                 ) : (
-                  <div className="flex h-[280px] items-end gap-1">
+                  <div
+                    className="grid h-[280px] grid-flow-col auto-cols-fr items-end gap-px"
+                    style={chartMinWidth ? { minWidth: chartMinWidth } : undefined}
+                  >
                     {chartBars.map((item) => (
                       <div
                         key={item.id}
-                        className="flex h-full min-w-0 flex-1 items-end gap-[2px]"
+                        className="flex h-full min-w-0 items-end gap-px"
+                        title={`${formatSeconds(item.startSeconds)} ~ ${formatSeconds(item.endSeconds)} · 채팅 ${item.messageCount}개 · 참여자 ${item.participantCount}명`}
                       >
                         <div
                           className="w-1/2 rounded-t bg-emerald-300/70"
@@ -894,8 +1259,44 @@ export default function VodHighlightBoard() {
                 )}
               </div>
 
+              <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                초록 막대는 채팅량, 파란 막대는 참여자 수를 뜻합니다.
+                {chartMode === "DETAIL"
+                  ? " 상세 보기에서는 긴 방송도 가로 스크롤로 끝까지 확인할 수 있어요."
+                  : " 자동 요약에서는 화면 폭에 맞춰 구간을 묶어서 보여줍니다."}
+              </div>
+
+              {selectedTimelinePoint ? (
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+                      선택 구간
+                    </div>
+                    <div className="mt-1 text-lg font-black text-slate-950">
+                      {formatSeconds(selectedTimelinePoint.startSeconds)}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">
+                      채팅량
+                    </div>
+                    <div className="mt-1 text-lg font-black text-emerald-900">
+                      {selectedTimelinePoint.messageCount}개
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3">
+                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-indigo-700">
+                      참여자 수
+                    </div>
+                    <div className="mt-1 text-lg font-black text-indigo-900">
+                      {selectedTimelinePoint.participantCount}명
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               {markerClusters.length > 0 ? (
-                <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-5">
+                <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-5">
                   <div className="mb-3 flex items-center justify-between">
                     <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
                       Highlight Rail
@@ -903,11 +1304,11 @@ export default function VodHighlightBoard() {
                     <div className="text-xs font-semibold text-slate-500">
                       {selectedCluster
                         ? `${selectedCluster.items.length}개 후보 묶음`
-                        : "편집 후보를 선택해 주세요"}
+                        : "하이라이트를 선택해 주세요."}
                     </div>
                   </div>
 
-                  <div className="relative h-[84px]">
+                  <div className="relative h-[84px] overflow-hidden">
                     <div className="absolute left-0 right-0 top-[36px] h-[8px] rounded-full bg-slate-200" />
 
                     {markerClusters.map((cluster) => {
@@ -975,7 +1376,7 @@ export default function VodHighlightBoard() {
 
                         <div className="text-xs font-semibold text-slate-500">
                           {selectedCluster.items.length > 1
-                            ? "시간이 가까운 후보는 한 묶음으로 보여드려요."
+                            ? "시간이 가까운 후보들은 묶음으로 보여드려요."
                             : "마커를 누르면 오른쪽 카드로 이동해요."}
                         </div>
                       </div>
@@ -1006,14 +1407,14 @@ export default function VodHighlightBoard() {
               ) : null}
             </div>
 
-            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5">
+            <div className="min-w-0 rounded-[24px] border border-slate-200 bg-slate-50 p-5">
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
                     Highlights
                   </div>
                   <div className="mt-2 text-lg font-black text-slate-950">
-                    편집 후보 상세
+                    하이라이트 상세
                   </div>
                 </div>
                 <div className="text-xs font-semibold text-slate-500">
@@ -1021,8 +1422,39 @@ export default function VodHighlightBoard() {
                 </div>
               </div>
 
+              <div className="mb-3 flex flex-wrap gap-2">
+                {[
+                  { key: "ACTIVE", label: "추천만" },
+                  { key: "ALL", label: "전체" },
+                  { key: "PINNED", label: "편집점" },
+                  { key: "GOOD", label: "좋아요" },
+                ].map((filter) => {
+                  const active = highlightFilter === filter.key;
+                  return (
+                    <button
+                      key={filter.key}
+                      type="button"
+                      onClick={() => setHighlightFilter(filter.key as HighlightFilter)}
+                      className={`rounded-full border px-3 py-2 text-xs font-black transition ${
+                        active
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-200 bg-white text-slate-600"
+                      }`}
+                    >
+                      {filter.key === "ACTIVE"
+                        ? "추천만"
+                        : filter.key === "ALL"
+                          ? "전체"
+                          : filter.key === "PINNED"
+                            ? "편집점"
+                            : "좋아요"}
+                    </button>
+                  );
+                })}
+              </div>
+
               <div className="max-h-[720px] space-y-3 overflow-y-auto pr-1">
-                {highlights.length === 0 ? (
+                {filteredHighlights.length === 0 ? (
                   <div className="rounded-2xl border border-slate-200 bg-white px-5 py-10 text-center">
                     <Clock3 className="mx-auto h-8 w-8 text-slate-400" />
                     <div className="mt-3 text-base font-black text-slate-900">
@@ -1030,7 +1462,7 @@ export default function VodHighlightBoard() {
                     </div>
                   </div>
                 ) : (
-                  highlights.map((item) => (
+                  filteredHighlights.map((item) => (
                     <div
                       key={item.id}
                       ref={(element) => {
@@ -1045,7 +1477,9 @@ export default function VodHighlightBoard() {
                     >
                       {(() => {
                         const readablePoints = toCompactReasonTags(item);
-                        const currentAction = highlightActions[item.id];
+                        const currentAction = normalizeHighlightAction(
+                          highlightActions[item.id],
+                        );
 
                         return (
                           <>
@@ -1082,15 +1516,15 @@ export default function VodHighlightBoard() {
                             <div className="flex flex-wrap gap-2">
                               <button
                                 type="button"
-                                onClick={() => void handleHighlightAction(item.id, "SAVE")}
+                                onClick={() => void handleHighlightAction(item.id, "GOOD")}
                                 className={`inline-flex items-center gap-1 rounded-full border px-3 py-2 text-xs font-black transition ${
-                                  currentAction === "SAVE"
+                                  currentAction === "GOOD"
                                     ? "border-emerald-300 bg-emerald-50 text-emerald-700"
                                     : "border-slate-200 bg-white text-slate-600"
                                 }`}
                               >
-                                <Bookmark className="h-3.5 w-3.5" />
-                                저장
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                좋아요
                               </button>
                               <button
                                 type="button"
@@ -1102,19 +1536,19 @@ export default function VodHighlightBoard() {
                                 }`}
                               >
                                 <Pin className="h-3.5 w-3.5" />
-                                핀
+                                편집점
                               </button>
                               <button
                                 type="button"
-                                onClick={() => void handleHighlightAction(item.id, "SKIP")}
+                                onClick={() => void handleHighlightAction(item.id, "BAD")}
                                 className={`inline-flex items-center gap-1 rounded-full border px-3 py-2 text-xs font-black transition ${
-                                  currentAction === "SKIP"
+                                  currentAction === "BAD"
                                     ? "border-slate-300 bg-slate-100 text-slate-700"
                                     : "border-slate-200 bg-white text-slate-600"
                                 }`}
                               >
                                 <XCircle className="h-3.5 w-3.5" />
-                                넘기기
+                                별로예요
                               </button>
                             </div>
 
@@ -1137,7 +1571,7 @@ export default function VodHighlightBoard() {
 
                               <div className="flex flex-wrap gap-2 text-xs font-bold text-slate-600">
                                 {typeof item.intensityScore === "number" ? (
-                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                                    <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
                                     반응 밀집도 {item.intensityScore.toFixed(1)}
                                   </span>
                                 ) : null}
@@ -1172,3 +1606,5 @@ export default function VodHighlightBoard() {
     </div>
   );
 }
+
+

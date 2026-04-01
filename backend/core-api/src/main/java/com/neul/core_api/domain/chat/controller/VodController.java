@@ -38,7 +38,7 @@ public class VodController {
             ServerHttpRequest request
     ) {
         String ownerId = ownerIdentityResolver.resolveOwnerId(request);
-        return vodHighlightRepository.findAllByVideoNoOrderByStartSecondsAsc(videoNo)
+        return userVodLibraryService.getPersonalizedHighlights(ownerId, videoNo)
                 .collectList()
                 .flatMapMany(highlights -> syncOwnerLibrary(
                                 ownerId,
@@ -46,7 +46,11 @@ public class VodController {
                                 !highlights.isEmpty() ? "READY" : "VIEWED",
                                 !highlights.isEmpty()
                         )
-                        .thenMany(Flux.fromIterable(highlights)));
+                        .thenMany(Flux.fromIterable(highlights)))
+                .onErrorResume(error -> {
+                    log.warn("[VodController] Failed to personalize highlights for videoNo={}, falling back to default order", videoNo, error);
+                    return vodHighlightRepository.findAllByVideoNoOrderByStartSecondsAsc(videoNo);
+                });
     }
 
     @GetMapping("/{videoNo}/timeline")
