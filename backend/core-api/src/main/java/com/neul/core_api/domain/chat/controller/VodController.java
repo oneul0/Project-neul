@@ -1,19 +1,23 @@
 package com.neul.core_api.domain.chat.controller;
 
 import com.neul.core_api.domain.chat.entity.VodHighlight;
-import com.neul.core_api.domain.chat.repository.VodHighlightRepository;
 import com.neul.core_api.domain.chat.entity.VodTimelinePointEntity;
+import com.neul.core_api.domain.chat.repository.VodHighlightRepository;
 import com.neul.core_api.domain.chat.repository.VodTimelinePointRepository;
+import com.neul.core_api.domain.chat.service.OwnerIdentityResolver;
+import com.neul.core_api.domain.chat.service.UserVodLibraryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-/**
- * VOD 하이라이트 조회 및 분석 트리거 API.
- */
 @RestController
 @RequestMapping("/api/v1/vod")
 @RequiredArgsConstructor
@@ -22,19 +26,37 @@ public class VodController {
 
     private final VodHighlightRepository vodHighlightRepository;
     private final VodTimelinePointRepository vodTimelinePointRepository;
-    private final WebClient collectorWebClient = WebClient.builder().baseUrl("http://localhost:8081").build();
+    private final OwnerIdentityResolver ownerIdentityResolver;
+    private final UserVodLibraryService userVodLibraryService;
+    private final WebClient collectorWebClient = WebClient.builder()
+            .baseUrl("http://localhost:8081")
+            .build();
 
-    /**
-     * 특정 VOD의 하이라이트 타임라인 조회.
-     */
     @GetMapping("/{videoNo}/highlights")
-    public Flux<VodHighlight> getHighlights(@PathVariable String videoNo) {
-        return vodHighlightRepository.findAllByVideoNoOrderByStartSecondsAsc(videoNo);
+    public Flux<VodHighlight> getHighlights(
+            @PathVariable String videoNo,
+            ServerHttpRequest request
+    ) {
+        String ownerId = ownerIdentityResolver.resolveOwnerId(request);
+        return vodHighlightRepository.findAllByVideoNoOrderByStartSecondsAsc(videoNo)
+                .collectList()
+                .flatMapMany(highlights -> syncOwnerLibrary(
+                                ownerId,
+                                videoNo,
+                                !highlights.isEmpty() ? "READY" : "VIEWED",
+                                !highlights.isEmpty()
+                        )
+                        .thenMany(Flux.fromIterable(highlights)));
     }
 
     @GetMapping("/{videoNo}/timeline")
-    public Flux<VodTimelinePointEntity> getTimeline(@PathVariable String videoNo) {
-        return vodTimelinePointRepository.findAllByVideoNoOrderByStartSecondsAsc(videoNo)
+    public Flux<VodTimelinePointEntity> getTimeline(
+            @PathVariable String videoNo,
+            ServerHttpRequest request
+    ) {
+        String ownerId = ownerIdentityResolver.resolveOwnerId(request);
+        return syncOwnerLibrary(ownerId, videoNo, "VIEWED", false)
+                .thenMany(vodTimelinePointRepository.findAllByVideoNoOrderByStartSecondsAsc(videoNo))
                 .collectList()
                 .flatMapMany(points -> {
                     if (!points.isEmpty()) {
@@ -56,11 +78,12 @@ public class VodController {
                 });
     }
 
-    /**
-     * VOD 분석 시작 트리거 (collector 호출).
-     */
     @PostMapping("/{videoNo}/analyze")
-    public Mono<String> triggerAnalysis(@PathVariable String videoNo) {
+    public Mono<String> triggerAnalysis(
+            @PathVariable String videoNo,
+            ServerHttpRequest request
+    ) {
+        String ownerId = ownerIdentityResolver.resolveOwnerId(request);
         return vodHighlightRepository.deleteAllByVideoNo(videoNo)
                 .onErrorResume(error -> {
                     log.warn("[VodController] Failed to clear existing highlights for videoNo={}, continuing anyway", videoNo, error);
@@ -77,8 +100,35 @@ public class VodController {
                                 .retrieve()
                                 .bodyToMono(String.class)
                 )
-                .map(res -> "VOD analysis request sent: " + res)
+                .flatMap(response -> syncOwnerLibrary(ownerId, videoNo, "ANALYZING", false)
+                        .thenReturn("VOD analysis request sent: " + response))
                 .doOnError(error -> log.error("[VodController] Failed to trigger analysis for videoNo={}", videoNo, error));
+    }
+
+    private Mono<Void> syncOwnerLibrary(
+            String ownerId,
+            String videoNo,
+            String status,
+            boolean analyzed
+    ) {
+        if (ownerId == null || ownerId.isBlank()) {
+            return Mono.empty();
+        }
+
+        Mono<?> update = analyzed
+                ? userVodLibraryService.markAnalyzed(ownerId, videoNo, status)
+                : userVodLibraryService.touchVideo(ownerId, videoNo, status);
+
+        return update
+                .doOnError(error -> log.warn(
+                        "[VodController] Failed to sync user VOD library ownerId={}, videoNo={}, status={}",
+                        ownerId,
+                        videoNo,
+                        status,
+                        error
+                ))
+                .onErrorResume(error -> Mono.empty())
+                .then();
     }
 
     private VodTimelinePointEntity toFallbackTimelinePoint(VodHighlight highlight) {

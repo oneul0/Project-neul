@@ -1,23 +1,16 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ videoNo: string }> },
-) {
-  const { videoNo } = await params;
+export async function GET() {
   const cookieStore = await cookies();
 
   try {
-    const response = await fetch(`http://localhost:8083/api/v1/vod/${videoNo}/timeline`, {
+    const response = await fetch("http://localhost:8083/api/v1/me/vod-library", {
       headers: {
         cookie: cookieStore.toString(),
       },
       cache: "no-store",
     });
-    if (!response.ok) {
-      return NextResponse.json([], { status: 200 });
-    }
 
     const text = await response.text();
 
@@ -28,6 +21,6 @@ export async function GET(
       },
     });
   } catch {
-    return NextResponse.json([], { status: 200 });
+    return NextResponse.json([], { status: 502 });
   }
 }

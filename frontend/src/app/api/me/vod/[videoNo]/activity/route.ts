@@ -1,23 +1,23 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-export async function GET(
-  _request: Request,
+export async function POST(
+  request: Request,
   { params }: { params: Promise<{ videoNo: string }> },
 ) {
   const { videoNo } = await params;
   const cookieStore = await cookies();
+  const body = await request.text();
 
   try {
-    const response = await fetch(`http://localhost:8083/api/v1/vod/${videoNo}/timeline`, {
+    const response = await fetch(`http://localhost:8083/api/v1/me/vod/${videoNo}/activity`, {
+      method: "POST",
       headers: {
         cookie: cookieStore.toString(),
+        "Content-Type": "application/json",
       },
-      cache: "no-store",
+      body,
     });
-    if (!response.ok) {
-      return NextResponse.json([], { status: 200 });
-    }
 
     const text = await response.text();
 
@@ -28,6 +28,9 @@ export async function GET(
       },
     });
   } catch {
-    return NextResponse.json([], { status: 200 });
+    return NextResponse.json(
+      { message: "사용자 활동을 기록하지 못했습니다." },
+      { status: 502 },
+    );
   }
 }
