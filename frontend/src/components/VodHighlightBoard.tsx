@@ -67,6 +67,16 @@ interface VodAnalysisStatus {
   chatsCollected?: number | null;
 }
 
+interface HighlightMarker extends VodHighlight {
+  left: number;
+}
+
+interface MarkerCluster {
+  id: string;
+  left: number;
+  items: HighlightMarker[];
+}
+
 const EMPTY_STATUS: VodAnalysisStatus = {
   videoNo: "",
   status: "IDLE",
@@ -137,6 +147,120 @@ function deriveTimeline(highlights: VodHighlight[]): VodTimelinePoint[] {
   }));
 }
 
+function toReadablePoints(...values: Array<string | null | undefined>) {
+  return values
+    .flatMap((value) =>
+      (value ?? "")
+        .split(/(?<=[.!?])\s+/)
+        .map((part) => part.trim())
+        .filter(Boolean),
+    )
+    .filter((value, index, array) => array.indexOf(value) === index);
+}
+
+function toCompactReasonTags(highlight: VodHighlight) {
+  const source = `${highlight.description} ${highlight.reasonSummary ?? ""}`;
+  const tags = new Set<string>();
+
+  if (
+    source.includes("감탄") ||
+    source.includes("놀람") ||
+    highlight.category === "WONDER"
+  ) {
+    tags.add("놀라서 반응이 커진 장면");
+  }
+  if (
+    source.includes("웃음") ||
+    highlight.category === "LAUGH" ||
+    (highlight.reactionLabel ?? "").includes("웃")
+  ) {
+    tags.add("웃음이 터진 장면");
+  }
+  if (
+    source.includes("고조") ||
+    source.includes("열기") ||
+    highlight.category === "HYPE"
+  ) {
+    tags.add("분위기가 달아오른 장면");
+  }
+  if (
+    source.includes("긴장") ||
+    source.includes("몰입") ||
+    highlight.category === "TENSION"
+  ) {
+    tags.add("긴장감이 높은 장면");
+  }
+  if (source.includes("흐름") || source.includes("전환") || source.includes("직전 구간")) {
+    tags.add("분위기가 바뀌는 장면");
+  }
+  if (source.includes("짧게 잘라") || source.includes("하이라이트로 쓰기 좋은")) {
+    tags.add("짧게 잘라 쓰기 좋은 장면");
+  }
+  if (source.includes("반응 강도") || source.includes("먼저 확인")) {
+    tags.add("먼저 확인할 장면");
+  }
+
+  if (typeof highlight.intensityScore === "number" && highlight.intensityScore >= 7) {
+    tags.add("반응이 크게 몰린 장면");
+  }
+  if (typeof highlight.transitionScore === "number" && highlight.transitionScore >= 4) {
+    tags.add("전환점으로 보기 좋은 장면");
+  }
+
+  if (tags.size === 0) {
+    tags.add("편집 후보");
+  }
+
+  return Array.from(tags).slice(0, 4);
+}
+
+function buildMarkerClusters(
+  highlights: VodHighlight[],
+  duration: number,
+): MarkerCluster[] {
+  const markers = highlights
+    .map((item) => ({
+      ...item,
+      left: (item.startSeconds / duration) * 100,
+    }))
+    .sort((a, b) => a.startSeconds - b.startSeconds);
+
+  if (markers.length === 0) return [];
+
+  const clusters: MarkerCluster[] = [];
+  const threshold = 3.5;
+  let currentItems: HighlightMarker[] = [markers[0]];
+
+  for (let index = 1; index < markers.length; index += 1) {
+    const marker = markers[index];
+    const last = currentItems[currentItems.length - 1];
+
+    if (Math.abs(marker.left - last.left) <= threshold) {
+      currentItems.push(marker);
+      continue;
+    }
+
+    clusters.push({
+      id: currentItems.map((item) => item.id).join("-"),
+      left:
+        currentItems.reduce((sum, item) => sum + item.left, 0) /
+        currentItems.length,
+      items: currentItems,
+    });
+    currentItems = [marker];
+  }
+
+  clusters.push({
+    id: currentItems.map((item) => item.id).join("-"),
+    left:
+      currentItems.reduce((sum, item) => sum + item.left, 0) /
+      currentItems.length,
+    items: currentItems,
+  });
+
+  return clusters;
+}
+
 export default function VodHighlightBoard() {
   const [videoInput, setVideoInput] = useState("");
   const [metadata, setMetadata] = useState<VodMetadata | null>(null);
@@ -159,6 +283,26 @@ export default function VodHighlightBoard() {
     const data = (await response.json()) as VodAnalysisStatus;
     return data.videoNo ? data : { ...EMPTY_STATUS, videoNo };
   }, []);
+
+  const recordHighlightActivity = useCallback(
+    async (videoNo: string, highlightId: number, actionType: string) => {
+      try {
+        await fetch(`/api/me/vod/${videoNo}/activity`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            highlightId,
+            actionType,
+          }),
+        });
+      } catch {
+        // Activity tracking should never block the viewing flow.
+      }
+    },
+    [],
+  );
 
   const syncData = useCallback(
     async (videoNo: string) => {
@@ -247,24 +391,30 @@ export default function VodHighlightBoard() {
     }));
   }, [highlights, timeline]);
 
-  const markers = useMemo(() => {
-    return highlights.map((item, index, all) => {
-      const left = (item.startSeconds / duration) * 100;
-      const previousLeft =
-        index > 0 ? (all[index - 1].startSeconds / duration) * 100 : null;
+  const markerClusters = useMemo(
+    () => buildMarkerClusters(highlights, duration),
+    [duration, highlights],
+  );
 
-      return {
-        ...item,
-        left,
-        lane:
-          previousLeft !== null &&
-          Math.abs(left - previousLeft) < 6 &&
-          index % 2 === 1
-            ? 18
-            : 0,
-      };
-    });
-  }, [duration, highlights]);
+  const selectedCluster = useMemo(() => {
+    if (markerClusters.length === 0) return null;
+
+    const found = markerClusters.find((cluster) =>
+      cluster.items.some((item) => item.id === selectedHighlightId),
+    );
+
+    return found ?? markerClusters[0];
+  }, [markerClusters, selectedHighlightId]);
+
+  const selectedClusterPoints = useMemo(() => {
+    if (!selectedCluster) return [];
+
+    const activeItem =
+      selectedCluster.items.find((item) => item.id === selectedHighlightId) ??
+      selectedCluster.items[0];
+
+    return toCompactReasonTags(activeItem);
+  }, [selectedCluster, selectedHighlightId]);
 
   const handleLookup = async () => {
     const videoNo = resolveVideoNo(videoInput);
@@ -335,6 +485,9 @@ export default function VodHighlightBoard() {
 
   const moveToCard = (id: number) => {
     setSelectedHighlightId(id);
+    if (selectedVideoNo) {
+      void recordHighlightActivity(selectedVideoNo, id, "OPEN");
+    }
     cardRefs.current[id]?.scrollIntoView({
       behavior: "smooth",
       block: "center",
@@ -544,68 +697,114 @@ export default function VodHighlightBoard() {
                 )}
               </div>
 
-              {markers.length > 0 ? (
+              {markerClusters.length > 0 ? (
                 <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-5">
                   <div className="mb-3 flex items-center justify-between">
                     <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
                       Highlight Rail
                     </div>
                     <div className="text-xs font-semibold text-slate-500">
-                      {selectedHighlightId
-                        ? `${formatSeconds(
-                            markers.find((item) => item.id === selectedHighlightId)
-                              ?.startSeconds ?? 0,
-                          )} 선택됨`
+                      {selectedCluster
+                        ? `${selectedCluster.items.length}개 후보 묶음`
                         : "편집 후보를 선택해 주세요"}
                     </div>
                   </div>
 
-                  <div className="relative h-[92px]">
-                    <div className="absolute left-0 right-0 top-[54px] h-[6px] rounded-full bg-slate-200" />
+                  <div className="relative h-[84px]">
+                    <div className="absolute left-0 right-0 top-[36px] h-[8px] rounded-full bg-slate-200" />
 
-                    {markers.map((item) => {
-                      const selected = selectedHighlightId === item.id;
+                    {markerClusters.map((cluster) => {
+                      const lead = cluster.items[0];
+                      const selected = cluster.items.some(
+                        (item) => item.id === selectedHighlightId,
+                      );
 
                       return (
                         <button
-                          key={item.id}
+                          key={cluster.id}
                           type="button"
-                          onClick={() => moveToCard(item.id)}
-                          onMouseEnter={() => setSelectedHighlightId(item.id)}
-                          className="absolute top-0 -translate-x-1/2"
-                          style={{ left: `${item.left}%` }}
+                          onClick={() => moveToCard(lead.id)}
+                          className="absolute top-0 -translate-x-1/2 transition"
+                          style={{ left: `${cluster.left}%` }}
                         >
-                          {selected ? (
-                            <div
-                              className="absolute left-1/2 min-w-[168px] -translate-x-1/2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-left shadow-sm"
-                              style={{ top: `${item.lane}px` }}
-                            >
-                              <div className="text-[10px] font-black tracking-[0.14em] text-rose-600">
-                                {formatSeconds(item.startSeconds)}
-                              </div>
-                              <div className="mt-1 text-xs font-bold text-slate-800">
-                                {item.reactionLabel ||
-                                  categoryLabel[item.category] ||
-                                  "편집 후보"}
-                              </div>
-                              <div className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-700">
-                                {item.reasonSummary || item.description}
-                              </div>
-                            </div>
-                          ) : null}
-
-                          <div className="absolute left-1/2 top-[44px] h-[10px] w-[2px] -translate-x-1/2 bg-rose-300" />
+                          <div className="absolute left-1/2 top-[22px] h-[14px] w-[2px] -translate-x-1/2 bg-rose-300" />
                           <div
-                            className={`absolute left-1/2 top-[50px] -translate-x-1/2 rounded-full border-2 ${
+                            className={`absolute left-1/2 top-[28px] -translate-x-1/2 rounded-full border-2 transition ${
                               selected
-                                ? "h-4 w-4 border-rose-500 bg-rose-500 shadow-[0_0_0_6px_rgba(244,63,94,0.14)]"
-                                : "h-3 w-3 border-rose-300 bg-white"
+                                ? "h-5 w-5 border-rose-500 bg-rose-500 shadow-[0_0_0_8px_rgba(244,63,94,0.16)]"
+                                : cluster.items.length > 1
+                                  ? "h-4 w-4 border-rose-400 bg-rose-100"
+                                  : "h-3.5 w-3.5 border-rose-300 bg-white"
                             }`}
                           />
+                          <div className="absolute left-1/2 top-[52px] -translate-x-1/2 whitespace-nowrap text-[10px] font-black tracking-[0.12em] text-slate-500">
+                            {formatSeconds(lead.startSeconds)}
+                          </div>
+                          {cluster.items.length > 1 ? (
+                            <div className="absolute left-1/2 top-[2px] -translate-x-1/2 rounded-full border border-rose-200 bg-white px-2 py-0.5 text-[10px] font-black text-rose-600 shadow-sm">
+                              +{cluster.items.length}
+                            </div>
+                          ) : null}
                         </button>
                       );
                     })}
                   </div>
+
+                  {selectedCluster ? (
+                    <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <div className="text-[11px] font-black tracking-[0.18em] text-rose-600">
+                            {selectedCluster.items.length > 1
+                              ? "가까운 후보 묶음"
+                              : "선택한 편집 후보"}
+                          </div>
+                          <div className="mt-1 text-base font-black text-slate-950">
+                            {selectedCluster.items[0].reactionLabel ||
+                              categoryLabel[selectedCluster.items[0].category] ||
+                              "편집 후보"}
+                          </div>
+                          <div className="mt-3 flex max-w-xl flex-wrap gap-2">
+                            {selectedClusterPoints.map((point) => (
+                              <span
+                                key={point}
+                                className="rounded-full border border-rose-200 bg-white px-3 py-2 text-xs font-bold leading-5 text-slate-700"
+                              >
+                                {point}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="text-xs font-semibold text-slate-500">
+                          {selectedCluster.items.length > 1
+                            ? "시간이 가까운 후보는 한 묶음으로 보여드려요."
+                            : "마커를 누르면 오른쪽 카드로 이동해요."}
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {selectedCluster.items.map((item) => {
+                          const active = selectedHighlightId === item.id;
+
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => moveToCard(item.id)}
+                              className={`rounded-full border px-3 py-2 text-xs font-black transition ${
+                                active
+                                  ? "border-rose-400 bg-rose-500 text-white"
+                                  : "border-rose-200 bg-white text-rose-700"
+                              }`}
+                            >
+                              {formatSeconds(item.startSeconds)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -647,60 +846,84 @@ export default function VodHighlightBoard() {
                           : "border-slate-200 bg-white"
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                          <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
-                            구간
-                          </div>
-                          <div className="mt-1 text-lg font-black text-slate-950">
-                            {formatSeconds(item.startSeconds)}
-                          </div>
-                          <div className="text-xs font-semibold text-slate-500">
-                            ~ {formatSeconds(item.endSeconds)}
-                          </div>
-                        </div>
+                      {(() => {
+                        const readablePoints = toCompactReasonTags(item);
 
-                        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700">
-                          타임스탬프 {formatSeconds(item.startSeconds)}
-                        </div>
-                      </div>
+                        return (
+                          <>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+                                  구간
+                                </div>
+                                <div className="mt-1 text-lg font-black text-slate-950">
+                                  {formatSeconds(item.startSeconds)}
+                                </div>
+                                <div className="text-xs font-semibold text-slate-500">
+                                  ~ {formatSeconds(item.endSeconds)}
+                                </div>
+                              </div>
 
-                      <div className="flex flex-wrap gap-2">
-                        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-indigo-700">
-                          {item.reactionLabel ||
-                            categoryLabel[item.category] ||
-                            "편집 후보"}
-                        </span>
-                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-amber-700">
-                          <Zap className="h-3.5 w-3.5" />
-                          추천 강도 {item.highlightScore.toFixed(1)}
-                        </span>
-                      </div>
+                              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700">
+                                타임스탬프 {formatSeconds(item.startSeconds)}
+                              </div>
+                            </div>
 
-                      <div>
-                        <div className="text-base font-black text-slate-950">
-                          {item.description}
-                        </div>
-                        <p className="mt-1 text-sm leading-6 text-slate-600">
-                          {item.reasonSummary || "추천 이유를 계산 중입니다."}
-                        </p>
-                        <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-600">
-                          {typeof item.intensityScore === "number" ? (
-                            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
-                              반응 밀집도 {item.intensityScore.toFixed(1)}
-                            </span>
-                          ) : null}
-                          {typeof item.transitionScore === "number" &&
-                          item.transitionScore > 0 ? (
-                            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
-                              흐름 전환 {item.transitionScore.toFixed(1)}
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                          "{item.topMessage || "대표 채팅이 없는 구간입니다."}"
-                        </p>
-                      </div>
+                            <div className="flex flex-wrap gap-2">
+                              <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-indigo-700">
+                                {item.reactionLabel ||
+                                  categoryLabel[item.category] ||
+                                  "편집 후보"}
+                              </span>
+                              <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-amber-700">
+                                <Zap className="h-3.5 w-3.5" />
+                                추천 강도 {item.highlightScore.toFixed(1)}
+                              </span>
+                            </div>
+
+                            <div className="space-y-3">
+                              <div>
+                                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+                                  한눈에 보기
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {readablePoints.map((point) => (
+                                    <span
+                                      key={point}
+                                      className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold leading-5 text-slate-700"
+                                    >
+                                      {point}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap gap-2 text-xs font-bold text-slate-600">
+                                {typeof item.intensityScore === "number" ? (
+                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                                    반응 밀집도 {item.intensityScore.toFixed(1)}
+                                  </span>
+                                ) : null}
+                                {typeof item.transitionScore === "number" &&
+                                item.transitionScore > 0 ? (
+                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                                    흐름 전환 {item.transitionScore.toFixed(1)}
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+                                  대표 채팅
+                                </div>
+                                <p className="mt-2 text-sm leading-6 text-slate-700">
+                                  "{item.topMessage || "대표 채팅이 없는 구간입니다."}"
+                                </p>
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   ))
                 )}
