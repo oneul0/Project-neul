@@ -22,6 +22,10 @@ public class UserVodLibraryService {
         return userVodLibraryRepository.findAllByOwnerIdOrderByUpdatedAtDesc(ownerId);
     }
 
+    public Flux<UserVodActivity> getActivities(String ownerId, String videoNo) {
+        return userVodActivityRepository.findAllByOwnerIdAndVideoNoOrderByCreatedAtDesc(ownerId, videoNo);
+    }
+
     public Mono<UserVodLibraryEntry> touchVideo(String ownerId, String videoNo, String status) {
         LocalDateTime now = LocalDateTime.now();
         return userVodLibraryRepository.findByOwnerIdAndVideoNo(ownerId, videoNo)

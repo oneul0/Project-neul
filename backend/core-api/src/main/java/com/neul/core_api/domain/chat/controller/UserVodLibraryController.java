@@ -32,6 +32,15 @@ public class UserVodLibraryController {
         return userVodLibraryService.getLibrary(ownerId);
     }
 
+    @GetMapping("/vod/{videoNo}/activity")
+    public Flux<UserVodActivity> getVodActivity(
+            @PathVariable String videoNo,
+            ServerHttpRequest request
+    ) {
+        String ownerId = requireOwnerId(request);
+        return userVodLibraryService.getActivities(ownerId, videoNo);
+    }
+
     @PostMapping("/vod/{videoNo}/activity")
     public Mono<UserVodActivity> recordActivity(
             @PathVariable String videoNo,

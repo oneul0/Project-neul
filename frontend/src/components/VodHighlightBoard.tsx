@@ -2,13 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Bookmark,
   CheckCircle2,
   Clock3,
   Film,
   LoaderCircle,
+  Pin,
   Search,
   Users,
   Zap,
+  XCircle,
 } from "lucide-react";
 
 type VodStatus =
@@ -76,6 +79,15 @@ interface UserVodLibraryEntry {
   lastAnalyzedAt?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+}
+
+interface UserVodActivity {
+  id: number;
+  ownerId: string;
+  videoNo: string;
+  highlightId?: number | null;
+  actionType: string;
+  createdAt?: string | null;
 }
 
 interface HighlightMarker extends VodHighlight {
@@ -280,6 +292,7 @@ export default function VodHighlightBoard() {
   const [timeline, setTimeline] = useState<VodTimelinePoint[]>([]);
   const [library, setLibrary] = useState<UserVodLibraryEntry[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(true);
+  const [highlightActions, setHighlightActions] = useState<Record<number, string>>({});
   const [selectedVideoNo, setSelectedVideoNo] = useState<string | null>(null);
   const [selectedHighlightId, setSelectedHighlightId] = useState<number | null>(
     null,
@@ -338,9 +351,40 @@ export default function VodHighlightBoard() {
     }
   }, []);
 
+  const fetchHighlightActions = useCallback(async (videoNo: string) => {
+    try {
+      const response = await fetch(`/api/me/vod/${videoNo}/activity`, {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        setHighlightActions({});
+        return;
+      }
+
+      const data = await response.json();
+      const activities = Array.isArray(data) ? (data as UserVodActivity[]) : [];
+      const latestByHighlight = activities.reduce<Record<number, string>>((acc, activity) => {
+        if (typeof activity.highlightId !== "number") {
+          return acc;
+        }
+
+        if (!(activity.highlightId in acc)) {
+          acc[activity.highlightId] = activity.actionType;
+        }
+
+        return acc;
+      }, {});
+
+      setHighlightActions(latestByHighlight);
+    } catch {
+      setHighlightActions({});
+    }
+  }, []);
+
   const syncData = useCallback(
     async (videoNo: string) => {
-      const [nextStatus, highlightsResponse, timelineResponse] =
+      const [nextStatus, highlightsResponse, timelineResponse, activityResponse] =
         await Promise.all([
           fetchStatus(videoNo),
           fetch(`/api/vod/${videoNo}/highlights`, {
@@ -352,6 +396,11 @@ export default function VodHighlightBoard() {
             cache: "no-store",
           })
             .then((res) => res.json())
+            .catch(() => []),
+          fetch(`/api/me/vod/${videoNo}/activity`, {
+            cache: "no-store",
+          })
+            .then((res) => (res.ok ? res.json() : []))
             .catch(() => []),
         ]);
 
@@ -367,6 +416,21 @@ export default function VodHighlightBoard() {
       setTimeline(
         nextTimeline.length > 0 ? nextTimeline : deriveTimeline(nextHighlights),
       );
+      const activities = Array.isArray(activityResponse)
+        ? (activityResponse as UserVodActivity[])
+        : [];
+      const latestByHighlight = activities.reduce<Record<number, string>>((acc, activity) => {
+        if (typeof activity.highlightId !== "number") {
+          return acc;
+        }
+
+        if (!(activity.highlightId in acc)) {
+          acc[activity.highlightId] = activity.actionType;
+        }
+
+        return acc;
+      }, {});
+      setHighlightActions(latestByHighlight);
     },
     [fetchStatus],
   );
@@ -540,6 +604,28 @@ export default function VodHighlightBoard() {
       behavior: "smooth",
       block: "center",
     });
+  };
+
+  const handleHighlightAction = async (
+    highlightId: number,
+    actionType: "SAVE" | "PIN" | "SKIP",
+  ) => {
+    if (!selectedVideoNo) {
+      return;
+    }
+
+    setHighlightActions((prev) => ({
+      ...prev,
+      [highlightId]: actionType,
+    }));
+
+    try {
+      await recordHighlightActivity(selectedVideoNo, highlightId, actionType);
+      await fetchHighlightActions(selectedVideoNo);
+      await fetchLibrary();
+    } catch {
+      // Keep the optimistic action and retry on the next refresh.
+    }
   };
 
   return (
@@ -959,6 +1045,7 @@ export default function VodHighlightBoard() {
                     >
                       {(() => {
                         const readablePoints = toCompactReasonTags(item);
+                        const currentAction = highlightActions[item.id];
 
                         return (
                           <>
@@ -990,6 +1077,45 @@ export default function VodHighlightBoard() {
                                 <Zap className="h-3.5 w-3.5" />
                                 추천 강도 {item.highlightScore.toFixed(1)}
                               </span>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void handleHighlightAction(item.id, "SAVE")}
+                                className={`inline-flex items-center gap-1 rounded-full border px-3 py-2 text-xs font-black transition ${
+                                  currentAction === "SAVE"
+                                    ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                                    : "border-slate-200 bg-white text-slate-600"
+                                }`}
+                              >
+                                <Bookmark className="h-3.5 w-3.5" />
+                                저장
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleHighlightAction(item.id, "PIN")}
+                                className={`inline-flex items-center gap-1 rounded-full border px-3 py-2 text-xs font-black transition ${
+                                  currentAction === "PIN"
+                                    ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                                    : "border-slate-200 bg-white text-slate-600"
+                                }`}
+                              >
+                                <Pin className="h-3.5 w-3.5" />
+                                핀
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleHighlightAction(item.id, "SKIP")}
+                                className={`inline-flex items-center gap-1 rounded-full border px-3 py-2 text-xs font-black transition ${
+                                  currentAction === "SKIP"
+                                    ? "border-slate-300 bg-slate-100 text-slate-700"
+                                    : "border-slate-200 bg-white text-slate-600"
+                                }`}
+                              >
+                                <XCircle className="h-3.5 w-3.5" />
+                                넘기기
+                              </button>
                             </div>
 
                             <div className="space-y-3">
