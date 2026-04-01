@@ -1,103 +1,93 @@
-# 늘(Neul) 프로젝트 마스터 히스토리 (Master History)
+# Project Neul 문서 인덱스 및 변경 이력
 
-이 문서는 "늘(Neul)" 프로젝트의 시작부터 현재까지의 모든 개발 진행 상황, 이슈 해결, 아키텍처 결정을 일자별로 통합하여 기록합니다.
+최종 업데이트: 2026-04-01
 
----
+이 문서는 현재 프로젝트 문서의 진입점입니다.
+이전에는 이력, 핸드오버, 트러블슈팅 로그, 구현 체크리스트가 여러 파일로 흩어져 있었고 일부 문서는 중복되거나 최신 구조와 맞지 않았습니다.
+2026-04-01 기준으로 문서 구조를 정리했고, 중복 문서는 병합했습니다.
 
-## 📂 프로젝트 문서 색인 (Documentation Index)
+## 현재 문서 구조
 
-| 번호 | 문서명 | 주요 내용 |
-|:---:|---|---|
-| 00 | [마스터 히스토리](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/00_PROJECT_MASTER_HISTORY.md) | 프로젝트 전체 진행 현황 및 타임라인 |
-| 01 | [ADR (의사결정 기록)](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/01_ADR.md) | 주요 설계 결정 사항 (Kafka, WebFlux, JNI 등) |
-| 02 | [트러블슈팅 로그](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/02_troubleshooting_log.md) | 장애 상황 및 버그 해결 기록 |
-| 03 | [로컬 실행 가이드](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/03_run_guide.md) | 환경 설정, 서비스 실행 및 E2E 테스트 방법 |
-| 04 | [기술 개념 가이드](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/04_technical_concepts.md) | 사용된 기술 스택(Reactor, Redis 등) 심층 분석 |
-| 05 | [개발자 인수인계서](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/05_developer_handover.md) | 신규 개발자를 위한 온보딩 및 구조 가이드 |
-| 06 | [테스트 자동화 전략](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/06_testing_strategy.md) | E2E 테스트 시나리오 및 검증 전략 |
-| 07 | [네이티브 최적화 가이드](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/07_native_optimization_guide.md) | Java → Rust 전환/최적화 표준 가이드 |
-| 08 | [성능 전이 로그](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/08_performance_migration_log.md) | 최적화 세션별 성능 개선 데이터 기록 |
+| 번호 | 문서 | 용도 |
+|---|---|---|
+| 00 | `00_PROJECT_MASTER_HISTORY.md` | 문서 인덱스, 큰 흐름의 변경 이력 |
+| 01 | `01_ADR.md` | 아키텍처 결정 기록 |
+| 02 | `02_troubleshooting.md` | 통합 트러블슈팅 가이드 및 이력 |
+| 03 | `03_run_guide.md` | 현재 기준 실행 순서와 운영 체크 |
+| 04 | `04_technical_concepts.md` | 기술 개념 설명용 문서 |
+| 05 | `05_developer_handover.md` | 현재 구조 기준 핸드오버 문서 |
+| 06 | `06_testing_strategy.md` | 테스트 전략 및 E2E 방향 |
+| 07 | `07_native_optimization_guide.md` | Java/Rust 최적화 방향 |
+| 08 | `08_performance_migration_log.md` | 성능 이전 로그 템플릿 |
+| 09 | `09_evolution_roadmap.md` | 로드맵 + 구현 체크리스트 통합본 |
+| 12 | `12_neul_v2_implementation_plan.md` | v2 장기 구현 계획 |
+| 13 | `13_owner_auth_revision.md` | owner 인증 구조 변경 메모 |
+| 14 | `14_vod_concurrency_plan.md` | VOD 동시성 및 안정성 계획 |
+| 15 | `15_emotion_analysis_experiment_plan.md` | 편집 후보 중심 감정 분석 실험 계획 |
 
----
+## 이번 정리에서 병합/정리된 문서
 
-## 📅 2026-02-27: 프로젝트 스캐폴딩 및 기초 파이프라인 구축
+- `02_troubleshooting_log.md` → `02_troubleshooting.md`로 병합
+- `06_troubleshooting_guide.md` → `02_troubleshooting.md`로 병합
+- `11_spec_handover_report.md` → `05_developer_handover.md`로 병합
+- `10_implementation_checklist.md` → `09_evolution_roadmap.md`로 병합
 
-### [완료된 작업]
-- **백엔드 마이크로서비스 3종 스캐폴딩**: `collector`, `analyzer`, `core-api` 모듈 생성.
-- **로컬 인프라 구성**: Docker Compose를 이용한 PostgreSQL, Redis, Kafka 환경 구축.
-- **기초 파이프라인**: 
-  - `collector`: 더미 채팅 생성 및 Kafka 전송.
-  - `analyzer`: WebFlux 기반 마이크로배칭 및 감정 분석 시뮬레이션.
-  - `core-api`: Kafka 소비, DB 저장, Redis 통계 집계 및 SSE 푸시.
-- **ADR 수립**: ADR-001(Kafka), ADR-002(WebFlux), ADR-003(Resilience4j), ADR-004(R2DBC+Redis).
+## 운영 기준 현재 상태
 
-### [이슈 해결 (Troubleshooting)]
-- **Gradle Wrapper**: `gradlew` 파일 미생성 문제 해결을 위해 수동 생성 및 배포.
-- **Library Conflict**: `reactor-kafka`와 `kafka-clients 4.x` 버전 불일치 해결을 위해 `spring-kafka` 배치 리스너로 전환.
-- **Redis Conflict**: AutoConfiguration 중복 빈 충돌 해결.
-- **SSE Issue**: `multicast()`를 `replay()`로 변경하여 데이터 유실 방지.
+- 인증 구조는 공개 탐색형이 아니라 owner 전용 대시보드 기준입니다.
+- CHZZK 로그인은 `frontend -> Next API proxy -> collector` 흐름으로 처리합니다.
+- 세션 저장은 Redis 기반입니다.
+- core-api 스키마는 `schema.sql` 수동 반영이 아니라 Flyway 마이그레이션으로 관리합니다.
+- VOD 분석은 `조회`와 `분석 시작`이 분리되어 있습니다.
+- VOD 분석 결과는 단순 감정 점수보다 "편집 후보 탐색" 관점으로 고도화 중입니다.
 
----
+## 날짜별 기록
 
-## 📅 2026-03-04: 데이터 최적화 레이어 (Chat Optimizer) 설계
+### 2026-02 ~ 2026-03 중순
 
-### [완료된 작업]
-- **Optimization Layer**: Gemini API 호출 비용 절감을 위한 필터링 및 압축 로직 구현.
-- **JNI 준비**: 추후 Rust 모듈 교체를 위해 Port & Adapter 패턴 적용 (`ChatOptimizer` 인터페이스).
-- **테스트**: `JavaChatOptimizer` 단위 테스트 9종 통과.
+- collector / analyzer / core-api 3개 백엔드 서비스와 frontend 기본 골격 구성
+- Kafka, Redis, PostgreSQL 기반 실시간 파이프라인 구성
+- CHZZK 실시간 채팅 수집, 분석, SSE 스트리밍 기본 구조 정착
+- 감정 분석, 하이라이트 감지, Redis 집계, 대시보드 시각화 초안 구현
 
-### [이슈 해결 (Troubleshooting)]
-- **Gradle Test Engine**: JUnit 5 엔진 명시적 활성화 (`useJUnitPlatform()`).
-- **Signature Mismatch**: `CompressedChat` 도입에 따른 서비스 시그니처 정비.
+### 2026-03-30
 
----
+- owner 인증 요구사항 반영 시작
+- 공개 채널 탐색형 화면에서 "로그인한 스트리머 본인 채널 중심" 구조로 전환
+- collector/core-api/frontend 모두 owner assertion 기준으로 접근 제어 정리
 
-## 📅 2026-03-05 ~ 2026-03-06: 치지직(Chzzk) 연동 및 프론트엔드 시작
+### 2026-03-31
 
-### [완료된 작업]
-- **Chzzk API 연동**: Client Auth 기반 세션 발급 및 소켓(Socket.IO) 수집기 구현.
-- **실시간 채팅 수집기**: `NidChatCollector` 구축을 통해 `wss://kr-ss1.chat.naver.com/chat` 실시간 데이터 수집 시작.
-- **이벤트 라우팅**: 후원/구독 이벤트는 분석 없이 즉시 통과(Passthrough) 처리.
-- **프론트엔드 스캐폴딩**: Next.js 16 + Tailwind CSS v4 환경 구성.
-- **ADR 수립**: ADR-005 (Chzzk API 서버 통합 인증 도입).
+- CHZZK 로그인 흐름과 owner 대시보드 UX 정리
+- 브라우저가 backend를 직접 치지 않도록 Next API proxy 도입
+- VOD 조회와 분석 시작을 분리
+- VOD 메타데이터 카드, 분석 상태, 하이라이트 보드 구성
+- mock chat 주입 API 추가로 라이브 방송 없이도 파이프라인 검증 가능하게 변경
+- `vod_timeline_points` 추가 및 이후 Flyway 전환 필요성 명확화
+- VOD 분석 완료 이벤트와 collector 상태 보정 흐름 정리
 
----
+### 2026-04-01
 
-## 📅 2026-03-09 ~ 2026-03-10: 런타임 안정화 및 인증 로직 재작성
+- VOD 하이라이트를 "감정 점수 출력"이 아니라 "편집 후보 탐색" 기준으로 재정의
+- `intensityScore`, `transitionScore`, `editabilityScore`, `reactionLabel`, `reasonSummary` 도입
+- frontend에서 내부 점수명을 직접 노출하지 않고 `추천 강도`, `추천 이유`, `대표 채팅` 중심으로 단순화
+- 문서 구조 정리:
+  - 중복 로그/체크리스트/핸드오버 문서 병합
+  - 오래된 `schema.sql`, 공개 대시보드 전제, 예전 배치 설명 등 최신화
 
-### [완료된 작업]
-- **안정화**: Redis 다운 시에도 Core API가 동작하도록 Fallback 로직 강화.
-- **인증 리팩토링**: 치지직 공식 API 스펙(Server-to-Server)에 맞춰 OAuth Flow 대신 헤더 기반 Client Auth로 전면 수정.
-- **UI 픽스**: 프론트엔드 API 매핑 에러(Optional Chaining) 수정.
+## 문서 사용 우선순위
 
----
+새로 합류하거나 전체 구조를 이해할 때:
 
-## 📅 2026-03-14: 고성능 NID 웹소켓 도입 및 1분 배치 아키텍처 (Sprint 1)
+1. `00_PROJECT_MASTER_HISTORY.md`
+2. `05_developer_handover.md`
+3. `03_run_guide.md`
+4. `02_troubleshooting.md`
+5. 필요 시 `13`, `14`, `15`
 
-### [완료된 작업]
-- **Collection**: 공식 API의 한계를 넘기 위해 브라우저 내부 웹소켓(NID Chat) 직접 연동 성공.
-- **Micro-batching**: 초당 수천 건 처리를 위해 기존 1분 단위를 **2초 단위(`window(Duration.ofSeconds(2))`)** 고속 마이크로배칭으로 고도화.
-- **Emotion Analysis**: Ollama를 통한 **7가지 감정 모델**(JOY, HOPE, NEUTRAL, SADNESS, ANGER, WONDER, DISGUST) 분석 기능 추가.
-- **Highlight Engine**: 0.8 이상의 감정 스파이크를 실시간 감지하여 하이라이트 이벤트 발행 기능 구현.
-- **Common Module**: 데이터 일관성을 위해 모든 DTO를 `common` 모듈로 통합 및 전수 리팩토링.
-- **JNI Foundation**: `NativeBridge` 구현 및 성능 측정을 위한 `PerformanceProfiler` 유틸리티 추가.
-- **Documentation**: ADR-001~003(신규), 성능 전이 로그, JNI 가이드 등 문서 체계화.
+기술적 판단의 근거를 볼 때:
 
-### [이슈 해결 (Troubleshooting)]
-- **Port Conflict**: 8082 포트 점유 프로세스 정리.
-- **Import Hell**: `common` 모듈 통합 후 발생한 수백 개의 Import 오류 일괄 수정.
-
----
-
-## 📅 2026-03-17: 데이터 처리 기술 정리 및 E2E 학습 가이드 통합
-
-### [완료된 작업]
-- **Technical Summary**: 대용량 데이터 대응을 위한 5대 핵심 전략(리액티브, 카프카 배치, 최적화 엔진, 패스스루, Redis 집계) 정리.
-- **Run Guide Integration**: E2E 테스트 실습 가이드를 [03_run_guide.md](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/03_run_guide.md) 내 '섹션 5'로 통합.
-
----
-
-## 🚀 향후 로드맵 (Next Steps)
-1. **Frontend UI**: 1분 배치 데이터 시각화 및 실시간 차트 고도화.
-2. **Rust Native**: `NativeBridge`를 실제 Rust(.so/.dll) 모듈과 연결하여 성능 개선 수치 확보.
-3. **Load Test**: 실제 대규모 채널 환경에서 1분 배칭 파이프라인의 안정성 검증.
+1. `01_ADR.md`
+2. `04_technical_concepts.md`
+3. `07_native_optimization_guide.md`
+4. `08_performance_migration_log.md`

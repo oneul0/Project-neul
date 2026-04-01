@@ -1,163 +1,135 @@
-# 늘(Neul) 프로젝트 — 로컬 실행 가이드
+# Project Neul 실행 가이드
 
-> **작성일:** 2026-02-27  
-> **대상:** 프로젝트 최초 실행 또는 환경 재구성 시 참고
+최종 업데이트: 2026-04-01
 
----
+이 문서는 현재 코드 기준 실행 순서를 정리한 문서입니다.
+예전 문서에 있던 `schema.sql` 수동 반영, 공개 대시보드 전제, 오래된 배치 설명은 모두 제외했습니다.
 
-## 1. 아키텍처 한눈에 보기
+## 1. 서비스 구성
 
-```
-[collector :8081]
-  NidChatCollector (Chzzk WebSocket) → KafkaProducer → raw-chat-batch-topic
-                                               │
-                                               ▼
-[analyzer :8082]
-  @KafkaListener(batch) → GeminiAnalyzerService → KafkaTemplate → analyzed-chat-topic
-                                                                         │
-                                                                         ▼
-[core-api :8083]
-  @KafkaListener → PostgreSQL(R2DBC) + Redis(HINCRBY) → Sinks → SSE /api/v1/stream/{roomId}
-```
-
-모든 서비스는 **독립적인 Spring Boot 앱**이며, Docker로 올라오는 인프라(Kafka, PostgreSQL, Redis)를 공유합니다.
-
----
+- `frontend` : Next.js, 3000
+- `collector` : CHZZK 로그인/실시간 채팅/VOD 크롤링, 8081
+- `analyzer` : 채팅 분석 및 VOD 편집 후보 계산, 8082
+- `core-api` : 저장/조회/SSE, 8083
+- `postgres` : 분석 결과 저장
+- `redis` : 세션 및 일부 상태 저장
+- `kafka` : 서비스 간 이벤트 전달
 
 ## 2. 사전 준비
 
-| 항목 | 확인 명령 | 필수 버전 |
-|------|-----------|-----------|
-| Docker Desktop | `docker --version` | 실행 중이어야 함 |
-| JDK | `java -version` | 17 이상 |
-| gradlew.bat | 프로젝트 루트에 파일 존재 여부 확인 | — |
+확인 항목:
 
-> **gradlew.bat이 없으면?** `gradle-wrapper.jar`와 `gradle-wrapper.properties`가 `gradle/wrapper/`에 있다면  
-> `gradlew.bat` 배치 스크립트만 추가하면 됩니다. → [02_troubleshooting_log.md](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/02_troubleshooting_log.md) 참고
+- Docker Desktop 실행 중
+- JDK 17 이상
+- Node.js / npm 사용 가능
+- `backend/.env`에 CHZZK 관련 값 존재
 
----
+## 3. 권장 실행 순서
 
-## 3. 실행 순서
-
-### Step 1 — 인프라 실행
+### 3-1. 인프라 실행
 
 ```powershell
-# backend 폴더에서
+cd C:\Users\Oneul\Desktop\Projects\Project-neul\backend
 docker-compose up -d
+```
 
-# 상태 확인 (4개 컨테이너가 Up이어야 함)
+확인:
+
+```powershell
 docker ps
 ```
 
-| 컨테이너 | 역할 | 포트 |
-|----------|------|------|
-| neul-postgres | 채팅 영구 저장 | 5432 |
-| neul-redis | 실시간 통계 집계 | 6379 |
-| neul-zookeeper | Kafka 코디네이터 | 2181 |
-| neul-kafka | 메시지 브로커 | 9092 |
+### 3-2. core-api 실행
 
-> ⚠️ Kafka는 기동까지 약 15~30초 소요됩니다. 컨테이너 `Up` 표시 후 잠시 기다렸다가 앱을 실행하세요.
+중요:
 
-### Step 2 — Spring Boot 서비스 실행 (순서 중요!)
+- core-api 시작 시 Flyway가 DB 스키마를 최신 상태로 맞춥니다.
 
-**터미널 A** — analyzer 먼저 (raw-chat-topic 소비자)
 ```powershell
-.\gradlew.bat :analyzer:bootRun
-```
-`Started AnalyzerApplication` 로그 확인 후 다음 단계 진행.
-
-**터미널 B** — core-api
-```powershell
+cd C:\Users\Oneul\Desktop\Projects\Project-neul\backend
 .\gradlew.bat :core-api:bootRun
 ```
 
-**터미널 C** — collector (마지막)
+### 3-3. analyzer 실행
+
 ```powershell
+cd C:\Users\Oneul\Desktop\Projects\Project-neul\backend
+.\gradlew.bat :analyzer:bootRun
+```
+
+### 3-4. collector 실행
+
+```powershell
+cd C:\Users\Oneul\Desktop\Projects\Project-neul\backend
 .\gradlew.bat :collector:bootRun
 ```
 
-### Step 3 — 수집 시작 (Collector 트리거)
-
-구독(Subscribe)만 해서는 데이터가 흐르지 않습니다. 먼저 `collector`에게 어떤 채널을 수집할지 알려줘야 합니다.
-
-**터미널 D** (또는 새 터미널)
-```powershell
-# 실제 치지직 채널 ID 사용 (예: 458f6ec20b034f49e0fc6d03921646d2)
-curl.exe -X POST http://localhost:8081/api/v1/channels/458f6ec20b034f49e0fc6d03921646d2/subscribe
-```
-`{"channelId":"...","status":"subscribed"}` 응답이 오면 정상입니다.
-
-### Step 4 — SSE 스트림 구독 (데이터 확인)
-
-이제 분석된 데이터를 실시간으로 받아봅니다.
-
-**터미널 E** (수신 대기)
-
-> ⚠️ PowerShell에서는 반드시 `curl.exe`를 사용하세요.  
-> `curl`은 `Invoke-WebRequest`의 별칭이라 `-H` 옵션 처리 방식이 다릅니다.
+### 3-5. frontend 실행
 
 ```powershell
-curl.exe -N -H "Accept: text/event-stream" http://localhost:8083/api/v1/stream/458f6ec20b034f49e0fc6d03921646d2
+cd C:\Users\Oneul\Desktop\Projects\Project-neul\frontend
+npm run dev
 ```
 
-### Step 4 — 데이터 수신 확인
+## 4. 로그인 및 owner 대시보드 진입
 
-터미널 D에 아래처럼 스트리밍되면 전체 파이프라인이 정상입니다.
+현재 구조는 공개 탐색형이 아니라 owner 전용 대시보드 기준입니다.
 
-```
-event:chat_analyzed
-data:{"messageId":"...","roomId":"{channelId}","content":"...","emotion":{"type":"POSITIVE","score":0.87},"analyzedAt":"..."}
+흐름:
 
-event:stats_update
-data:{"POSITIVE":"14","TOTAL_COUNT":"20","NEGATIVE":"2","NEUTRAL":"4"}
+1. 브라우저에서 frontend 접속
+2. 로그인 버튼 클릭
+3. Next API proxy를 통해 collector의 CHZZK 로그인 시작
+4. callback 후 Redis 세션/owner assertion 쿠키 발급
+5. `/api/chzzk/me`로 로그인 상태 확인
+6. 본인 채널 대시보드 진입
 
-event:ping
-data:keep-alive   ← 15초마다 연결 유지용
-```
+## 5. 라이브 채팅 분석 테스트
 
-### Step 5 — 종료
+실제 방송 없이 테스트하려면 mock chat 주입 API를 사용할 수 있습니다.
 
 ```powershell
-# 각 터미널에서 Ctrl+C 후:
+curl.exe -X POST "http://localhost:8081/api/v1/dev/mock-chat/채널ID?count=10"
+```
+
+## 6. VOD 분석 테스트
+
+현재 UX는 다음과 같습니다.
+
+1. VOD 번호 또는 전체 URL 입력
+2. `조회`
+3. 메타데이터 카드 확인
+4. `분석 시작`
+5. 상태가 `요청 접수 -> 채팅 수집 중 -> 하이라이트 계산 중 -> 완료됨`으로 진행
+6. 완료 후 타임라인과 하이라이트 카드 확인
+
+## 7. 상태가 이상할 때 바로 볼 것
+
+- `collector`에서 `VOD-Crawler` 로그
+- `analyzer`에서 finalize 로그
+- `core-api`에서 Flyway 및 timeline/highlight consumer 로그
+
+## 8. 자주 하는 실수
+
+- 로컬 PostgreSQL이 5432를 잡고 있어 Docker DB 대신 그쪽으로 붙는 경우
+- core-api보다 먼저 collector를 띄워 상태 조회가 꼬이는 경우
+- analyzer가 늦게 떠서 completion 이벤트를 놓치는 경우
+- 브라우저가 backend를 직접 치는 구조라고 가정하고 디버깅하는 경우
+
+## 9. 중지
+
+개별 서비스는 `Ctrl + C`로 내립니다.
+
+인프라는:
+
+```powershell
+cd C:\Users\Oneul\Desktop\Projects\Project-neul\backend
 docker-compose down
+```
 
-# 데이터 볼륨까지 완전 삭제 (초기화할 때)
+데이터까지 초기화하려면:
+
+```powershell
+cd C:\Users\Oneul\Desktop\Projects\Project-neul\backend
 docker-compose down -v
 ```
-
----
-
-## 5. 엔드투엔드(E2E) 테스트 실행 가이드
-
-이 프로젝트는 [Testcontainers](https://www.testcontainers.org/)와 [Playwright](https://playwright.dev/)를 사용하여 인프라부터 UI까지 자동화된 테스트를 제공합니다.
-
-### 5-1. 백엔드 파이프라인 테스트 (Kafka → Core-API → SSE → DB)
-Docker Desktop이 실행 중인 상태에서 아래 명령어를 실행하세요. 별도의 인프라를 수동으로 띄울 필요 없이 테스트용 컨테이너가 자동으로 기동됩니다.
-
-```powershell
-# backend 폴더에서
-.\gradlew.bat :core-api:test --tests com.neul.core_api.e2e.FullPipelineE2ETest
-```
-
-### 5-2. 프론트엔드 UI 테스트 (Playwright)
-실제 브라우저 환경에서 대시보드 렌더링을 확인합니다.
-
-```powershell
-# frontend 폴더에서
-npx playwright test
-```
-
-> [!TIP]
-> Playwright UI 모드를 사용하면 테스트 과정을 시각적으로 확인할 수 있습니다:
-> `npx playwright test --ui`
-
----
-
-## 6. 현재 미완성 항목
-
-| 항목 | 현재 상태 | 목표 |
-|------|-----------|------|
-| 감정 분석 | Ollama (Gemma:2b) / Gemini 연동 완료 | 분석 모델 고도화 및 다국어 지원 |
-| 채팅 수집 | `NidChatCollector` 치지직 실시간 웹소켓 수집 완료 | 유튜브 등 다중 플랫폼 확장 |
-| roomId 연동 | 동적 채널 ID 연동 완료 | 사용자별 대시보드 커스텀 |
-| CORS | 설정 완료 | 보안 설정 강화 |

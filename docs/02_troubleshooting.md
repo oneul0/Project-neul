@@ -1,22 +1,184 @@
-# Consolidated Troubleshooting Log
+# 통합 트러블슈팅 가이드
 
-이 문서는 프로젝트 개발 과정에서 발생한 주요 트러블슈팅 사례를 통합 기록합니다.
+최종 업데이트: 2026-04-01
 
----
+이 문서는 기존 `02_troubleshooting.md`와 `02_troubleshooting_log.md`를 합친 통합본입니다.
+현재 구조에서 자주 부딪히는 문제를 우선순위별로 정리했고, 과거 이력도 아래에 남겨두었습니다.
 
-## 🛠️ Infrastructure & Environment
-- **[2026-02-27] Gradlew Missing**: `gradlew` 스크립트 수동 생성 및 실행 권한 부여.
-- **[2026-03-14] Port Conflict**: 8082 포트 이미 사용 중 에러 해결 (프로세스 종료).
+## 1. 가장 먼저 볼 것
 
-## 🛠️ Backend Integration
-- **[2026-02-27] Reactor-Kafka Version Conflict**: Kafka 4.x 호환성 문제로 `reactor-kafka` 제거 후 `@KafkaListener` 배치 모드 전환.
-- **[2026-02-27] Redis Bean Conflict**: 직접 등록한 `LettuceConnectionFactory`와 스프링 자동 설정 충돌 해결.
-- **[2026-03-09] Redis Connection Exception**: Redis 다운 시 Core API 장애 전파 방지를 위해 `onErrorResume` Fallback 추가.
-- **[2026-03-10] Chzzk Auth Spec**: 공식 API 연동 시 OAuth Flow가 아닌 직접적인 Client Auth 헤더 주입 방식으로 수정.
+문제가 생기면 아래 순서대로 확인합니다.
 
-## 🛠️ Communication & DTO
-- **[2026-02-27] SSE Payload Issue**: `multicast()` 데이터 유실 해결을 위해 `replay(100)` 적용 및 JSON 타입 헤더 비활성화.
-- **[2026-03-14] Import Hell**: `common` 모듈로 DTO 통합 시 발생한 프로젝트 전체 Import 오류 및 `build.gradle` 의존성 일괄 정비.
+1. 어떤 서비스가 실제로 떠 있는지 확인
+2. `frontend -> core-api -> collector -> analyzer -> Kafka/Redis/PostgreSQL` 중 어디에서 끊겼는지 확인
+3. 브라우저 에러와 서버 로그를 같은 시각 기준으로 맞춰서 보기
+4. DB/Flyway, Kafka consumer group, owner 인증 쿠키를 마지막까지 확인
 
-## 🛠️ Frontend
-- **[2026-03-09] Undefined Property**: API 응답 구조 변경에 따른 프런트엔드 매핑 오류를 Optional Chaining으로 해결.
+## 2. 증상별 빠른 가이드
+
+### 2-1. CHZZK 로그인 URL 생성 시 `${CHZZK_CLIENT_ID}`가 그대로 보일 때
+
+원인:
+
+- `.env`가 Spring에 import되지 않았거나
+- 실행 위치에 따라 상대 경로 import가 누락된 경우
+
+확인:
+
+- `backend/.env` 존재 여부
+- `collector`의 `application.yaml`에 `spring.config.import` 설정 여부
+
+해결:
+
+```yaml
+spring:
+  config:
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:../.env[.properties]
+      - optional:file:../../.env[.properties]
+```
+
+### 2-2. 브라우저에는 CORS처럼 보이는데 실제로는 preflight가 막힐 때
+
+원인:
+
+- owner 검증 필터가 `OPTIONS` preflight까지 검사해서
+- CORS 헤더가 붙기 전에 요청이 막힌 경우
+
+대응:
+
+- `OPTIONS`는 필터에서 통과
+- 브라우저가 `8081`, `8083`을 직접 치지 않도록 Next API proxy 사용
+
+### 2-3. `neul_user` 비밀번호 인증 실패가 날 때
+
+원인 후보:
+
+- Docker DB가 아니라 로컬 PostgreSQL에 붙고 있음
+- 이전 볼륨에 남은 계정 상태와 현재 설정이 다름
+
+우선 확인:
+
+```powershell
+Get-Service postgresql-x64-15
+docker ps
+```
+
+현재 기준 권장:
+
+- 로컬 PostgreSQL 서비스는 중지
+- Docker Postgres만 사용
+- core-api는 Flyway로 스키마를 자동 적용
+
+### 2-4. `relation "vod_timeline_points" does not exist`
+
+원인:
+
+- 예전에는 `schema.sql` 수동 반영 상태였고
+- 새 테이블이 DB에 반영되지 않은 채 코드만 먼저 배포된 경우
+
+현재 상태:
+
+- core-api는 Flyway로 관리
+- `V2__add_vod_timeline_points.sql`이 자동 적용되어야 함
+
+확인:
+
+- `core-api` 부팅 로그에서 Flyway migrate 성공 여부
+
+### 2-5. VOD 분석 상태가 `ANALYZING`에서 안 넘어갈 때
+
+원인 후보:
+
+- analyzer 완료 이벤트를 collector가 못 받음
+- analyzer/core-api consumer가 늦게 붙어 completion 체인이 끊김
+
+현재 대응:
+
+- analyzer가 `vod-analysis-complete-topic`에 완료 이벤트 발행
+- collector가 완료 이벤트를 받아 `COMPLETED`로 변경
+- 추가 fallback:
+  - status 조회 시 현재 상태가 `ANALYZING`인데 core-api에 highlights가 이미 있으면 collector가 `COMPLETED`로 보정
+
+### 2-6. VOD 하이라이트가 특정 시점까지만 몰릴 때
+
+원인:
+
+- 크롤링이 아니라 "최종 선별 로직"에서 앞쪽 고밀도 구간이 계속 이기는 경우가 많음
+
+현재 대응:
+
+- 전체 상위 점수만 고르지 않음
+- 시간대 버킷 대표를 먼저 확보
+- 나머지 자리를 전역 상위 점수로 채움
+- `transitionScore`를 넣어 조용하다가 급증한 구간 가중치 추가
+
+### 2-7. 타임라인이 비고 하이라이트만 보일 때
+
+원인:
+
+- `vod_timeline_points` 저장 또는 조회가 실패했을 가능성
+
+현재 대응:
+
+- core-api의 `/timeline`은 실패 시 highlight 기반 fallback 반환
+- frontend도 `timeline`이 비면 `highlights`로 fallback 타임라인 생성
+
+즉 화면이 완전히 비는 문제는 막혀 있지만, 정확한 전체 타임라인을 보려면 timeline 저장 경로가 정상이어야 합니다.
+
+## 3. 최근 주요 이슈 해결 이력
+
+### 2026-03-31. owner 대시보드와 VOD 분석 흐름 정리
+
+- CORS처럼 보이는 문제의 실제 원인이 preflight 차단임을 확인
+- 브라우저 직접 호출을 Next proxy 구조로 전환
+- VOD 조회와 분석 시작을 분리
+- mock chat 주입 API 추가
+- VOD 상태를 `REQUESTED / CRAWLING / ANALYZING / COMPLETED / FAILED`로 정리
+
+### 2026-04-01. 편집 후보 중심 하이라이트 실험
+
+- VOD 하이라이트를 감정 점수 출력이 아니라 편집 후보 탐색으로 재정의
+- `intensity / transition / editability` 내부 점수 도입
+- 사용자 화면에는 `추천 강도 / 추천 이유 / 대표 채팅` 중심으로 단순화
+- 하이라이트 선별이 특정 시간대로 쏠리지 않도록 버킷 기반 분산 선택 적용
+
+## 4. 로그 확인 포인트
+
+### collector
+
+- `[VOD-Crawler] Accepted crawl request`
+- `[VOD-Crawler] Requesting chunk`
+- `[VOD-Crawler] Progress`
+- `[VOD-Crawler] Reached end of VOD chats`
+- `[VOD-Crawler] Finished collection`
+
+### analyzer
+
+- `Finalized videoNo=...`
+- `Timeline range videoNo=...`
+- `Failed to finalize VOD highlights`
+
+### core-api
+
+- Flyway migrate 로그
+- `[VodController] Failed to load timeline ...`
+- `[VOD-Highlight-Consumer]`
+- `[VOD-Timeline-Consumer]`
+
+## 5. 현재 구조 기준으로 outdated 처리한 항목
+
+아래 내용은 더 이상 현재 기준 문서로 보면 안 됩니다.
+
+- `schema.sql` 수동 동기화 전제
+- 공개 방송 탐색형 대시보드 전제
+- VOD 하이라이트를 단일 "감정 점수"로만 설명하는 표현
+- 오래된 `1분 배치` 설명
+
+현재는:
+
+- Flyway 마이그레이션 기준
+- owner 전용 대시보드 기준
+- 편집 후보 중심 VOD 분석 기준
+- VOD 분석은 조회/분석 시작/상태/결과를 나눈 흐름 기준
