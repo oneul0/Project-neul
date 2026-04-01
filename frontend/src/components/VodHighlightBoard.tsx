@@ -109,6 +109,13 @@ interface MarkerCluster {
   items: HighlightMarker[];
 }
 
+interface ChartHoverCard {
+  startSeconds: number;
+  endSeconds: number;
+  messageCount: number;
+  participantCount: number;
+}
+
 const EMPTY_STATUS: VodAnalysisStatus = {
   videoNo: "",
   status: "IDLE",
@@ -356,6 +363,7 @@ export default function VodHighlightBoard() {
   const [highlightFilter, setHighlightFilter] = useState<HighlightFilter>("ACTIVE");
   const [chartMode, setChartMode] = useState<ChartMode>("RESPONSIVE");
   const [chartWidth, setChartWidth] = useState(0);
+  const [hoveredChartBar, setHoveredChartBar] = useState<ChartHoverCard | null>(null);
 
   const cardRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const chartViewportRef = useRef<HTMLDivElement | null>(null);
@@ -1235,26 +1243,59 @@ export default function VodHighlightBoard() {
                     아직 전체 흐름 데이터가 없습니다.
                   </div>
                 ) : (
-                  <div
-                    className="grid h-[280px] grid-flow-col auto-cols-fr items-end gap-px"
-                    style={chartMinWidth ? { minWidth: chartMinWidth } : undefined}
-                  >
-                    {chartBars.map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex h-full min-w-0 items-end gap-px"
-                        title={`${formatSeconds(item.startSeconds)} ~ ${formatSeconds(item.endSeconds)} · 채팅 ${item.messageCount}개 · 참여자 ${item.participantCount}명`}
-                      >
-                        <div
-                          className="w-1/2 rounded-t bg-emerald-300/70"
-                          style={{ height: `${item.messageHeight}%` }}
-                        />
-                        <div
-                          className="w-1/2 rounded-t bg-indigo-400/80"
-                          style={{ height: `${item.participantHeight}%` }}
-                        />
+                  <div className="relative">
+                    {hoveredChartBar ? (
+                      <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
+                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+                          Hover Insight
+                        </div>
+                        <div className="mt-1 text-sm font-black text-slate-950">
+                          {formatSeconds(hoveredChartBar.startSeconds)} ~{" "}
+                          {formatSeconds(hoveredChartBar.endSeconds)}
+                        </div>
+                        <div className="mt-2 flex items-center gap-3 text-sm font-bold text-slate-700">
+                          <span className="inline-flex items-center gap-2 text-emerald-700">
+                            <Zap className="h-3.5 w-3.5" />
+                            채팅 {hoveredChartBar.messageCount}개
+                          </span>
+                          <span className="inline-flex items-center gap-2 text-indigo-700">
+                            <Users className="h-3.5 w-3.5" />
+                            참여자 {hoveredChartBar.participantCount}명
+                          </span>
+                        </div>
                       </div>
-                    ))}
+                    ) : null}
+
+                    <div
+                      className="grid h-[280px] grid-flow-col auto-cols-fr items-end gap-px"
+                      style={chartMinWidth ? { minWidth: chartMinWidth } : undefined}
+                      onMouseLeave={() => setHoveredChartBar(null)}
+                    >
+                      {chartBars.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex h-full min-w-0 items-end gap-px"
+                          title={`${formatSeconds(item.startSeconds)} ~ ${formatSeconds(item.endSeconds)} · 채팅 ${item.messageCount}개 · 참여자 ${item.participantCount}명`}
+                          onMouseEnter={() =>
+                            setHoveredChartBar({
+                              startSeconds: item.startSeconds,
+                              endSeconds: item.endSeconds,
+                              messageCount: item.messageCount,
+                              participantCount: item.participantCount,
+                            })
+                          }
+                        >
+                          <div
+                            className="w-1/2 rounded-t bg-emerald-300/70"
+                            style={{ height: `${item.messageHeight}%` }}
+                          />
+                          <div
+                            className="w-1/2 rounded-t bg-indigo-400/80"
+                            style={{ height: `${item.participantHeight}%` }}
+                          />
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
