@@ -9,11 +9,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class VodCrawlCompletedEvent {
+public class VodAnalysisFailedEvent {
     private String videoNo;
     private int pagesProcessed;
     private int chatsCollected;
-    private String title;
-    private String category;
-    private Integer duration;
+    private String reason;
 }
