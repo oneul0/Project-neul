@@ -59,7 +59,7 @@ public class ChzzkChannelController {
                                                                 log.error("[Chzzk] Failed to fetch live status for channel {}: {}", channelId,
                                                                                 e.getMessage());
                                                                 return Mono.just(buildStatusErrorResponse(
-                                                                                HttpStatus.INTERNAL_SERVER_ERROR,
+                                                                                HttpStatus.OK,
                                                                                 channelId,
                                                                                 e.getMessage()));
                                                         });
@@ -68,7 +68,7 @@ public class ChzzkChannelController {
                                         log.error("[Chzzk] Failed to fetch live status for channel {}: {}", channelId,
                                                         e.getMessage());
                                         return Mono.just(buildStatusErrorResponse(
-                                                        HttpStatus.INTERNAL_SERVER_ERROR,
+                                                        HttpStatus.OK,
                                                         channelId,
                                                         e.getMessage()));
                                 });
