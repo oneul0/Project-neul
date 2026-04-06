@@ -4,8 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.neul.common.dto.VodCrawlCompletedEvent;
 import com.neul.common.dto.VodAnalysisCompletedEvent;
+import com.neul.common.dto.VodAnalysisFailedEvent;
 import com.neul.common.dto.VodHighlightPoint;
 import com.neul.common.dto.VodTimelinePoint;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.KafkaHeaders;
@@ -29,6 +31,10 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
 
@@ -44,6 +50,10 @@ public class VodHighlightAnalyzer {
     private static final int LLM_REVIEW_LIMIT = 12;
     private static final int LLM_REVIEW_CONCURRENCY = 3;
     private static final Duration LLM_REVIEW_TIMEOUT = Duration.ofMinutes(4);
+    private static final Duration FINALIZE_QUIET_PERIOD = Duration.ofMillis(1200);
+    private static final Duration FINALIZE_RETRY_DELAY = Duration.ofMillis(600);
+    private static final int MAX_FINALIZE_RETRIES = 12;
+    private static final int SPIKE_BUCKET_SECONDS = 5;
 
     private static final List<String> LAUGH_TOKENS = List.of("\u314b\u314b", "\u314e\u314e", "lol", "lmao", "rofl");
     private static final List<String> SURPRISE_TOKENS = List.of("\uc640", "\ud5c9", "\ub300\ubc15", "omg", "wtf");
@@ -60,15 +70,46 @@ public class VodHighlightAnalyzer {
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final OllamaAnalyzerService ollamaAnalyzerService;
     private final Map<String, VideoAggregate> aggregates = new ConcurrentHashMap<>();
+    private final Map<String, VodCrawlCompletedEvent> pendingCompletions = new ConcurrentHashMap<>();
+    private final Map<String, Long> finalizeGenerations = new ConcurrentHashMap<>();
+    private final ScheduledExecutorService finalizeScheduler;
+    private final Duration finalizeQuietPeriod;
+    private final Duration finalizeRetryDelay;
+    private final int maxFinalizeRetries;
 
+    @Autowired
     public VodHighlightAnalyzer(
             ObjectMapper objectMapper,
             KafkaTemplate<String, String> kafkaTemplate,
             OllamaAnalyzerService ollamaAnalyzerService
     ) {
+        this(
+                objectMapper,
+                kafkaTemplate,
+                ollamaAnalyzerService,
+                Executors.newSingleThreadScheduledExecutor(new FinalizeThreadFactory()),
+                FINALIZE_QUIET_PERIOD,
+                FINALIZE_RETRY_DELAY,
+                MAX_FINALIZE_RETRIES
+        );
+    }
+
+    VodHighlightAnalyzer(
+            ObjectMapper objectMapper,
+            KafkaTemplate<String, String> kafkaTemplate,
+            OllamaAnalyzerService ollamaAnalyzerService,
+            ScheduledExecutorService finalizeScheduler,
+            Duration finalizeQuietPeriod,
+            Duration finalizeRetryDelay,
+            int maxFinalizeRetries
+    ) {
         this.objectMapper = objectMapper;
         this.kafkaTemplate = kafkaTemplate;
         this.ollamaAnalyzerService = ollamaAnalyzerService;
+        this.finalizeScheduler = finalizeScheduler;
+        this.finalizeQuietPeriod = finalizeQuietPeriod;
+        this.finalizeRetryDelay = finalizeRetryDelay;
+        this.maxFinalizeRetries = maxFinalizeRetries;
     }
 
     @KafkaListener(
@@ -89,6 +130,9 @@ public class VodHighlightAnalyzer {
                     aggregate.addChat(chat);
                 }
             }
+            if (pendingCompletions.containsKey(videoNo)) {
+                scheduleFinalize(videoNo);
+            }
         } catch (Exception e) {
             log.error("[Vod-Analyzer] Failed to consume VOD chunk for videoNo={}", videoNo, e);
         }
@@ -98,47 +142,125 @@ public class VodHighlightAnalyzer {
     public void consumeCompletion(String json, @Header(KafkaHeaders.RECEIVED_KEY) String videoNo) {
         try {
             VodCrawlCompletedEvent event = objectMapper.readValue(json, VodCrawlCompletedEvent.class);
-            VideoAggregate aggregate = aggregates.remove(event.getVideoNo());
-            if (aggregate == null || aggregate.windows().isEmpty()) {
-                log.warn("[Vod-Analyzer] No aggregated VOD chats for videoNo={}", event.getVideoNo());
+            pendingCompletions.put(event.getVideoNo(), event);
+            scheduleFinalize(event.getVideoNo());
+        } catch (Exception e) {
+            log.error("[Vod-Analyzer] Failed to finalize VOD highlights for videoNo={}", videoNo, e);
+        }
+    }
+
+    private void scheduleFinalize(String videoNo) {
+        long generation = finalizeGenerations.merge(videoNo, 1L, Long::sum);
+        finalizeScheduler.schedule(
+                () -> attemptFinalize(videoNo, generation, 0),
+                finalizeRetryDelay.toMillis(),
+                TimeUnit.MILLISECONDS
+        );
+    }
+
+    private void attemptFinalize(String videoNo, long generation, int retryCount) {
+        if (!Objects.equals(finalizeGenerations.get(videoNo), generation)) {
+            return;
+        }
+
+        VodCrawlCompletedEvent event = pendingCompletions.get(videoNo);
+        if (event == null) {
+            finalizeGenerations.remove(videoNo);
+            return;
+        }
+
+        VideoAggregate aggregate = aggregates.get(videoNo);
+        if (aggregate == null || aggregate.windows().isEmpty()) {
+            if (event.getChatsCollected() <= 0 || retryCount >= maxFinalizeRetries) {
+                pendingCompletions.remove(videoNo);
+                finalizeGenerations.remove(videoNo);
+                try {
+                    if (event.getChatsCollected() <= 0) {
+                        publishCompletion(videoNo, 0, 0);
+                        log.warn("[Vod-Analyzer] Finalized empty VOD analysis for videoNo={} because no chats were collected.", videoNo);
+                    } else {
+                        publishFailure(event, "채팅 수집은 완료됐지만 분석용 집계가 준비되지 않아 하이라이트 계산을 종료했습니다.");
+                    }
+                } catch (Exception error) {
+                    log.error("[Vod-Analyzer] Failed to publish terminal event for videoNo={}", videoNo, error);
+                }
                 return;
             }
 
-            List<WindowStats> windows;
-            List<WindowScore> highlights;
-            synchronized (aggregate) {
-                windows = new ArrayList<>(aggregate.windows().values());
-                highlights = rankWindows(event.getVideoNo(), windows);
-            }
+            finalizeScheduler.schedule(
+                    () -> attemptFinalize(videoNo, generation, retryCount + 1),
+                    finalizeRetryDelay.toMillis(),
+                    TimeUnit.MILLISECONDS
+            );
+            return;
+        }
 
+        if (!aggregate.isQuietFor(finalizeQuietPeriod)) {
+            finalizeScheduler.schedule(
+                    () -> attemptFinalize(videoNo, generation, retryCount + 1),
+                    finalizeRetryDelay.toMillis(),
+                    TimeUnit.MILLISECONDS
+            );
+            return;
+        }
+
+        List<WindowStats> windows;
+        synchronized (aggregate) {
+            windows = new ArrayList<>(aggregate.windows().values());
+        }
+
+        if (windows.isEmpty()) {
+            if (retryCount >= maxFinalizeRetries) {
+                pendingCompletions.remove(videoNo);
+                finalizeGenerations.remove(videoNo);
+                try {
+                    if (event.getChatsCollected() <= 0) {
+                        publishCompletion(videoNo, 0, 0);
+                    } else {
+                        publishFailure(event, "채팅 집계 결과가 비어 있어 하이라이트 계산을 완료하지 못했습니다.");
+                    }
+                } catch (Exception error) {
+                    log.error("[Vod-Analyzer] Failed to publish terminal event for videoNo={}", videoNo, error);
+                }
+                return;
+            }
+            finalizeScheduler.schedule(
+                    () -> attemptFinalize(videoNo, generation, retryCount + 1),
+                    finalizeRetryDelay.toMillis(),
+                    TimeUnit.MILLISECONDS
+            );
+            return;
+        }
+
+        if (!pendingCompletions.remove(videoNo, event)) {
+            return;
+        }
+        aggregates.remove(videoNo, aggregate);
+        finalizeGenerations.remove(videoNo);
+
+        try {
+            List<WindowScore> highlights = rankWindows(event, windows);
             publishTimeline(event.getVideoNo(), windows);
             publishHighlights(event.getVideoNo(), highlights);
             publishCompletion(event.getVideoNo(), windows.size(), highlights.size());
 
             log.info(
-                    "[Vod-Analyzer] Finalized videoNo={}, pages={}, chats={}, windows={}, highlights={}",
+                    "[Vod-Analyzer] Finalized videoNo={}, pages={}, chats={}, windows={}, highlights={}, title={}, category={}",
                     event.getVideoNo(),
                     event.getPagesProcessed(),
                     event.getChatsCollected(),
                     windows.size(),
-                    highlights.size()
+                    highlights.size(),
+                    event.getTitle(),
+                    event.getCategory()
             );
-            if (!highlights.isEmpty()) {
-                WindowScore top = highlights.stream()
-                        .max(Comparator.comparingDouble(WindowScore::score))
-                        .orElse(highlights.get(0));
-                int firstStart = windows.stream().mapToInt(WindowStats::startSeconds).min().orElse(0);
-                int lastStart = windows.stream().mapToInt(WindowStats::startSeconds).max().orElse(0);
-                log.info(
-                        "[Vod-Analyzer] Timeline range videoNo={}, first={}s, last={}s, topScore={}",
-                        event.getVideoNo(),
-                        firstStart,
-                        lastStart,
-                        top.score()
-                );
+        } catch (Exception error) {
+            log.error("[Vod-Analyzer] Failed to publish finalized VOD result for videoNo={}", videoNo, error);
+            try {
+                publishFailure(event, "하이라이트 결과를 저장 가능한 이벤트로 발행하지 못했습니다.");
+            } catch (Exception publishError) {
+                log.error("[Vod-Analyzer] Failed to publish failure event for videoNo={}", videoNo, publishError);
             }
-        } catch (Exception e) {
-            log.error("[Vod-Analyzer] Failed to finalize VOD highlights for videoNo={}", videoNo, e);
         }
     }
 
@@ -190,10 +312,28 @@ public class VodHighlightAnalyzer {
         kafkaTemplate.send("vod-analysis-complete-topic", videoNo, objectMapper.writeValueAsString(event));
     }
 
-    private List<WindowScore> rankWindows(String videoNo, List<WindowStats> windows) {
+    private void publishFailure(VodCrawlCompletedEvent sourceEvent, String reason) throws Exception {
+        VodAnalysisFailedEvent failedEvent = VodAnalysisFailedEvent.builder()
+                .videoNo(sourceEvent.getVideoNo())
+                .pagesProcessed(sourceEvent.getPagesProcessed())
+                .chatsCollected(sourceEvent.getChatsCollected())
+                .reason(reason)
+                .build();
+
+        kafkaTemplate.send("vod-analysis-failed-topic", sourceEvent.getVideoNo(), objectMapper.writeValueAsString(failedEvent));
+    }
+
+    private List<WindowScore> rankWindows(VodCrawlCompletedEvent event, List<WindowStats> windows) {
         if (windows.isEmpty()) {
             return List.of();
         }
+
+        VideoContext videoContext = new VideoContext(
+                event.getVideoNo(),
+                safeText(event.getTitle(), "제목 정보 없음"),
+                safeText(event.getCategory(), "카테고리 정보 없음"),
+                event.getDuration() != null ? Math.max(event.getDuration(), WINDOW_SECONDS) : Math.max(windows.stream().mapToInt(WindowStats::startSeconds).max().orElse(0) + WINDOW_SECONDS, WINDOW_SECONDS)
+        );
 
         double averageMessages = windows.stream().mapToInt(WindowStats::messageCount).average().orElse(0.0);
         double averageUsers = windows.stream().mapToInt(WindowStats::uniqueUsers).average().orElse(0.0);
@@ -213,7 +353,7 @@ public class VodHighlightAnalyzer {
             WindowStats current = windows.get(index);
             WindowStats next = index < windows.size() - 1 ? windows.get(index + 1) : null;
             scored.add(scoreWindow(
-                    videoNo,
+                    videoContext.videoNo(),
                     current,
                     previous,
                     next,
@@ -225,6 +365,7 @@ public class VodHighlightAnalyzer {
                     messageStdDev,
                     userStdDev,
                     burstStdDev,
+                    videoContext,
                     maxMessages,
                     maxUsers,
                     maxBurst
@@ -238,7 +379,7 @@ public class VodHighlightAnalyzer {
         int targetCount = Math.min(MAX_HIGHLIGHTS, Math.max(MIN_HIGHLIGHTS, (int) Math.ceil(windows.size() * 0.12)));
         Map<Integer, WindowStats> windowByStart = windows.stream()
                 .collect(LinkedHashMap::new, (map, window) -> map.put(window.startSeconds(), window), LinkedHashMap::putAll);
-        scored = enrichWithLlmReview(videoNo, scored, windowByStart, targetCount);
+        scored = enrichWithLlmReview(videoContext, scored, windowByStart, targetCount);
         List<WindowScore> selected = selectDistributedHighlights(scored, targetCount);
         List<WindowScore> fallbackCandidates = scored.stream()
                 .filter(candidate -> !candidate.hardRejected())
@@ -331,6 +472,7 @@ public class VodHighlightAnalyzer {
             double messageStdDev,
             double userStdDev,
             double burstStdDev,
+            VideoContext videoContext,
             int maxMessages,
             int maxUsers,
             double maxBurst
@@ -354,12 +496,16 @@ public class VodHighlightAnalyzer {
         double punctuationScore = Math.min(3.0, window.punctuationBurstCount() * 0.5);
         double messageVarietyScore = Math.min(4.0, window.messageVariety() * 2.0);
         double balanceScore = Math.min(3.0, window.userCoverageRatio() * 3.0);
+        double consensusScore = Math.min(5.0, window.consensusRatio() * 6.5);
+        double spikeScore = Math.min(4.5, Math.max(0.0, window.peakWindowRatio() - 1.0) * 2.8);
+        double keywordFocusScore = Math.min(3.8, window.keywordConcentration() * 5.5);
+        double keywordShiftScore = calculateKeywordShiftScore(window, previous, next);
         double transitionScore = calculateTransitionScore(window, previous, next, averageMessages, averageUsers);
         String category = determineCategory(window);
         String reactionLabel = categoryLabel(category);
         boolean hardRejected = shouldHardReject(window);
         double negativePenalty = calculateNegativePenalty(window);
-        double edgePenalty = calculateEdgePenalty(window.startSeconds(), firstWindowStart, lastWindowStart);
+        double edgePenalty = calculateEdgePenalty(window.startSeconds(), firstWindowStart, lastWindowStart, videoContext.durationSeconds());
 
         double intensityScore = densityScore
                 + userScore
@@ -370,7 +516,9 @@ public class VodHighlightAnalyzer {
                 + hypeScore
                 + tensionScore
                 + repetitionScore
-                + punctuationScore;
+                + punctuationScore
+                + consensusScore
+                + spikeScore;
 
         double editabilityScore = Math.min(
                 20.0,
@@ -378,6 +526,8 @@ public class VodHighlightAnalyzer {
                         + (balanceScore * 1.8)
                         + Math.min(4.0, window.representativeMessage().isBlank() ? 0.0 : 4.0)
                         + Math.min(5.0, transitionScore * 0.65)
+                        + (keywordFocusScore * 1.2)
+                        + (keywordShiftScore * 1.4)
         );
 
         double totalScore = ((intensityScore * 0.55) + (transitionScore * 0.20) + (editabilityScore * 0.25))
@@ -396,7 +546,7 @@ public class VodHighlightAnalyzer {
         );
 
         return new WindowScore(
-                videoNo,
+                videoContext.videoNo(),
                 window.startSeconds(),
                 window.startSeconds() + WINDOW_SECONDS,
                 totalScore,
@@ -414,7 +564,7 @@ public class VodHighlightAnalyzer {
         );
     }
 
-    private List<WindowScore> enrichWithLlmReview(String videoNo, List<WindowScore> scored, Map<Integer, WindowStats> windowByStart, int targetCount) {
+    private List<WindowScore> enrichWithLlmReview(VideoContext videoContext, List<WindowScore> scored, Map<Integer, WindowStats> windowByStart, int targetCount) {
         if (scored.isEmpty()) {
             return scored;
         }
@@ -436,7 +586,7 @@ public class VodHighlightAnalyzer {
                         if (window == null) {
                             return Flux.empty();
                         }
-                        return ollamaAnalyzerService.analyzeHighlight(buildHighlightPayload(videoNo, candidate, window))
+                        return ollamaAnalyzerService.analyzeHighlight(buildHighlightPayload(videoContext, candidate, window))
                                 .map(decision -> Map.entry(candidate.startSeconds(), decision))
                                 .flux();
                     }, LLM_REVIEW_CONCURRENCY)
@@ -445,7 +595,7 @@ public class VodHighlightAnalyzer {
         } catch (IllegalStateException error) {
             Throwable cause = error.getCause();
             if (cause instanceof TimeoutException) {
-                log.warn("[Vod-Analyzer] Timed out during LLM highlight review for videoNo={}, fallback to heuristic ranking.", videoNo);
+                log.warn("[Vod-Analyzer] Timed out during LLM highlight review for videoNo={}, fallback to heuristic ranking.", videoContext.videoNo());
                 return scored;
             }
             throw error;
@@ -461,7 +611,7 @@ public class VodHighlightAnalyzer {
                 .toList();
     }
 
-    private HighlightPromptPayload buildHighlightPayload(String videoNo, WindowScore score, WindowStats window) {
+    private HighlightPromptPayload buildHighlightPayload(VideoContext videoContext, WindowScore score, WindowStats window) {
         String keywordSummary = window.topKeywords(5).entrySet().stream()
                 .map(entry -> String.format("- '%s' (%d회)", entry.getKey(), entry.getValue()))
                 .reduce((left, right) -> left + "\n" + right)
@@ -480,7 +630,11 @@ public class VodHighlightAnalyzer {
                 .orElse("- 채팅 샘플 없음");
 
         return new HighlightPromptPayload(
-                videoNo,
+                videoContext.videoNo(),
+                videoContext.title(),
+                videoContext.category(),
+                videoContext.durationSeconds(),
+                Math.min(1.0, Math.max(0.0, (double) score.startSeconds() / Math.max(videoContext.durationSeconds(), WINDOW_SECONDS))),
                 score.startSeconds(),
                 score.endSeconds(),
                 window.messageCount(),
@@ -488,6 +642,9 @@ public class VodHighlightAnalyzer {
                 score.messageZScore() <= 0 ? 1.0 : 1.0 + score.messageZScore(),
                 score.messageZScore(),
                 score.burstZScore(),
+                window.consensusRatio(),
+                window.peakWindowRatio(),
+                window.keywordConcentration(),
                 window.repeatedRatio(),
                 window.dominantSenderRatio(),
                 window.goodbyeRatio(),
@@ -542,7 +699,14 @@ public class VodHighlightAnalyzer {
         };
     }
 
-    private double calculateEdgePenalty(int startSeconds, int firstWindowStart, int lastWindowStart) {
+    private double calculateEdgePenalty(int startSeconds, int firstWindowStart, int lastWindowStart, int durationSeconds) {
+        double positionRatio = durationSeconds <= 0 ? 0.5 : (double) startSeconds / durationSeconds;
+        if (positionRatio <= 0.03 || positionRatio >= 0.97) {
+            return 0.54;
+        }
+        if (positionRatio <= 0.08 || positionRatio >= 0.92) {
+            return 0.72;
+        }
         if (startSeconds - firstWindowStart < EDGE_WINDOW_SECONDS / 2 || lastWindowStart - startSeconds < EDGE_WINDOW_SECONDS / 2) {
             return 0.58;
         }
@@ -568,6 +732,22 @@ public class VodHighlightAnalyzer {
             penalty *= 0.65;
         }
         return penalty;
+    }
+
+    private double calculateKeywordShiftScore(WindowStats current, WindowStats previous, WindowStats next) {
+        Set<String> currentTop = current.topKeywordSet(3);
+        if (currentTop.isEmpty()) {
+            return 0.0;
+        }
+
+        double score = current.keywordConcentration() >= 0.28 ? 1.1 : 0.4;
+        if (previous != null && Collections.disjoint(currentTop, previous.topKeywordSet(3))) {
+            score += 1.4;
+        }
+        if (next != null && !Collections.disjoint(currentTop, next.topKeywordSet(3))) {
+            score += 0.9;
+        }
+        return Math.min(3.8, score);
     }
 
     private double zScore(double value, double mean, double standardDeviation) {
@@ -738,16 +918,22 @@ public class VodHighlightAnalyzer {
 
     private static final class VideoAggregate {
         private final Map<Integer, WindowStats> windows = new TreeMap<>();
+        private volatile long lastUpdatedAt = System.nanoTime();
 
         void addChat(JsonNode chat) {
             int seconds = extractVideoSeconds(chat);
             int windowKey = (seconds / WINDOW_SECONDS) * WINDOW_SECONDS;
             WindowStats window = windows.computeIfAbsent(windowKey, WindowStats::new);
             window.record(chat);
+            lastUpdatedAt = System.nanoTime();
         }
 
         Map<Integer, WindowStats> windows() {
             return windows;
+        }
+
+        boolean isQuietFor(Duration duration) {
+            return System.nanoTime() - lastUpdatedAt >= duration.toNanos();
         }
     }
 
@@ -768,6 +954,8 @@ public class VodHighlightAnalyzer {
         private final Map<String, Integer> keywordCounts = new HashMap<>();
         private final Map<String, Integer> senderCounts = new HashMap<>();
         private final Map<String, Integer> senderMessageCounts = new HashMap<>();
+        private final Map<String, Set<String>> messageSenders = new HashMap<>();
+        private final int[] subWindowMessageCounts = new int[Math.max(1, WINDOW_SECONDS / SPIKE_BUCKET_SECONDS)];
         private String latestMessage = "";
 
         private WindowStats(int startSeconds) {
@@ -778,6 +966,10 @@ public class VodHighlightAnalyzer {
             messageCount++;
 
             String senderId = chat.path("userIdHash").asText(chat.path("senderId").asText(""));
+            int seconds = extractVideoSeconds(chat);
+            int offsetSeconds = Math.max(0, Math.min(WINDOW_SECONDS - 1, seconds - startSeconds));
+            int subWindowIndex = Math.min(subWindowMessageCounts.length - 1, offsetSeconds / SPIKE_BUCKET_SECONDS);
+            subWindowMessageCounts[subWindowIndex]++;
             if (!senderId.isBlank() && seenUsers.add(senderId)) {
                 uniqueUsers++;
             }
@@ -792,6 +984,9 @@ public class VodHighlightAnalyzer {
                 int next = normalizedCounts.merge(normalized, 1, Integer::sum);
                 if (next >= 3) {
                     repeatedMessageCount++;
+                }
+                if (!senderId.isBlank()) {
+                    messageSenders.computeIfAbsent(normalized, ignored -> ConcurrentHashMap.newKeySet()).add(senderId);
                 }
                 originalMessages.putIfAbsent(normalized, message);
                 latestMessage = message;
@@ -881,7 +1076,53 @@ public class VodHighlightAnalyzer {
             if (messageCount == 0) {
                 return 0.0;
             }
-            return (double) repeatedMessageCount / messageCount;
+            return Math.min(1.0, (double) repeatedMessageCount / messageCount);
+        }
+
+        private double consensusRatio() {
+            if (uniqueUsers == 0 || messageSenders.isEmpty()) {
+                return 0.0;
+            }
+            int maxConsensus = messageSenders.values().stream()
+                    .mapToInt(Set::size)
+                    .max()
+                    .orElse(0);
+            return Math.min(1.0, (double) maxConsensus / uniqueUsers);
+        }
+
+        private double peakWindowRatio() {
+            if (messageCount == 0) {
+                return 0.0;
+            }
+            double averagePerSlice = (double) messageCount / subWindowMessageCounts.length;
+            int peakSlice = Arrays.stream(subWindowMessageCounts).max().orElse(0);
+            if (averagePerSlice <= 0.0) {
+                return 0.0;
+            }
+            return peakSlice / averagePerSlice;
+        }
+
+        private double keywordConcentration() {
+            if (keywordCounts.isEmpty()) {
+                return 0.0;
+            }
+            int totalKeywords = keywordCounts.values().stream().mapToInt(Integer::intValue).sum();
+            if (totalKeywords == 0) {
+                return 0.0;
+            }
+            int topKeywordCount = keywordCounts.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+            return (double) topKeywordCount / totalKeywords;
+        }
+
+        private Set<String> topKeywordSet(int limit) {
+            if (keywordCounts.isEmpty()) {
+                return Set.of();
+            }
+            return keywordCounts.entrySet().stream()
+                    .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                    .limit(limit)
+                    .map(Map.Entry::getKey)
+                    .collect(java.util.stream.Collectors.toSet());
         }
 
         private double dominantSenderRatio() {
@@ -983,6 +1224,30 @@ public class VodHighlightAnalyzer {
                     burstZScore,
                     hardRejected || rejectedByLlm
             );
+        }
+    }
+
+    private record VideoContext(
+            String videoNo,
+            String title,
+            String category,
+            int durationSeconds
+    ) {
+    }
+
+    private static String safeText(String value, String fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        return value.trim();
+    }
+
+    private static final class FinalizeThreadFactory implements ThreadFactory {
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable, "vod-highlight-finalizer");
+            thread.setDaemon(true);
+            return thread;
         }
     }
 

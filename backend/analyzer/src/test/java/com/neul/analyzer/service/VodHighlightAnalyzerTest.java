@@ -7,6 +7,7 @@ import com.neul.common.dto.VodHighlightPoint;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
@@ -18,7 +19,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeoutException;
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -39,12 +43,27 @@ class VodHighlightAnalyzerTest {
     private OllamaAnalyzerService ollamaAnalyzerService;
 
     private VodHighlightAnalyzer vodHighlightAnalyzer;
+    private ScheduledExecutorService finalizeScheduler;
 
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
         objectMapper.registerModule(new JavaTimeModule());
-        vodHighlightAnalyzer = new VodHighlightAnalyzer(objectMapper, kafkaTemplate, ollamaAnalyzerService);
+        finalizeScheduler = Executors.newSingleThreadScheduledExecutor();
+        vodHighlightAnalyzer = new VodHighlightAnalyzer(
+                objectMapper,
+                kafkaTemplate,
+                ollamaAnalyzerService,
+                finalizeScheduler,
+                Duration.ofMillis(40),
+                Duration.ofMillis(20),
+                8
+        );
+    }
+
+    @AfterEach
+    void tearDown() {
+        finalizeScheduler.shutdownNow();
     }
 
     @Test
@@ -63,6 +82,7 @@ class VodHighlightAnalyzerTest {
                 .build());
 
         vodHighlightAnalyzer.consumeCompletion(completionJson, videoNo);
+        Thread.sleep(220);
 
         ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
         verify(kafkaTemplate, atLeast(5)).send(eq("vod-analyzed-topic"), eq(videoNo), payloadCaptor.capture());
@@ -98,6 +118,7 @@ class VodHighlightAnalyzerTest {
                 .build());
 
         vodHighlightAnalyzer.consumeCompletion(completionJson, videoNo);
+        Thread.sleep(220);
 
         ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
         verify(kafkaTemplate).send(eq("vod-analysis-complete-topic"), eq(videoNo), payloadCaptor.capture());
@@ -122,6 +143,7 @@ class VodHighlightAnalyzerTest {
                 .build());
 
         vodHighlightAnalyzer.consumeCompletion(completionJson, videoNo);
+        Thread.sleep(220);
 
         ArgumentCaptor<String> highlightCaptor = ArgumentCaptor.forClass(String.class);
         verify(kafkaTemplate, atLeast(5)).send(eq("vod-analyzed-topic"), eq(videoNo), highlightCaptor.capture());

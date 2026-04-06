@@ -253,6 +253,10 @@ class OllamaAnalyzerServiceTest {
     void analyzeHighlight_Success() {
         HighlightPromptPayload payload = new HighlightPromptPayload(
                 "video-1",
+                "테스트 VOD",
+                "게임",
+                3600,
+                0.25,
                 30,
                 60,
                 24,
@@ -260,6 +264,9 @@ class OllamaAnalyzerServiceTest {
                 2.35,
                 1.75,
                 4.20,
+                0.42,
+                2.80,
+                0.31,
                 0.12,
                 0.21,
                 0.00,
@@ -299,8 +306,11 @@ class OllamaAnalyzerServiceTest {
         assertThat(capturedRequest.getMessages().get(0).getContent()).contains("전문 편집자");
         assertThat(capturedRequest.getMessages().get(1).getContent())
                 .contains("video-1")
+                .contains("테스트 VOD")
+                .contains("게임")
                 .contains("30초 ~ 60초")
                 .contains("평소 대비 2.35배")
+                .contains("0.42")
                 .contains("한타")
                 .contains("미쳤다");
     }
@@ -309,7 +319,8 @@ class OllamaAnalyzerServiceTest {
     @DisplayName("하이라이트 응답 필드가 비어 있으면 기본값을 채우고 intensity를 보정한다")
     void analyzeHighlight_DefaultsAndClamp() {
         HighlightPromptPayload payload = new HighlightPromptPayload(
-                "video-2", 0, 30, 10, 5, 1.0, 0.4, 1.2, 0.0, 0.0, 0.0,
+                "video-2", "제목 없음", "카테고리 없음", 1800, 0.0,
+                0, 30, 10, 5, 1.0, 0.4, 1.2, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
                 "- 없음", "- 없음", "- 없음"
         );
 
@@ -339,7 +350,8 @@ class OllamaAnalyzerServiceTest {
     @DisplayName("하이라이트 응답이 비었거나 손상되면 fallback 결정을 반환한다")
     void analyzeHighlight_BlankOrMalformed_Fallback() {
         HighlightPromptPayload payload = new HighlightPromptPayload(
-                "video-3", 60, 90, 15, 8, 1.4, 0.9, 2.1, 0.2, 0.1, 0.0,
+                "video-3", "제목 없음", "카테고리 없음", 1800, 0.05,
+                60, 90, 15, 8, 1.4, 0.9, 2.1, 0.2, 1.8, 0.2, 0.2, 0.1, 0.0,
                 "- 없음", "- 없음", "- 없음"
         );
 
@@ -376,7 +388,8 @@ class OllamaAnalyzerServiceTest {
     @DisplayName("하이라이트 프롬프트 로딩이 실패해도 휴리스틱 fallback으로 안전하게 복귀한다")
     void analyzeHighlight_PromptLoadFailure_Fallback() {
         HighlightPromptPayload payload = new HighlightPromptPayload(
-                "video-4", 90, 120, 18, 11, 1.9, 1.2, 2.8, 0.05, 0.08, 0.0,
+                "video-4", "제목 없음", "카테고리 없음", 1800, 0.08,
+                90, 120, 18, 11, 1.9, 1.2, 2.8, 0.05, 1.4, 0.25, 0.05, 0.08, 0.0,
                 "- 없음", "- 없음", "- 없음"
         );
 
