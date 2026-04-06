@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.neul.collector.service.ChatCollector;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,18 +40,37 @@ public class ChzzkChannelController {
         public Mono<ResponseEntity<Map<String, Object>>> getChannelStatus(@PathVariable String channelId) {
                 return chzzkWebClient.get()
                                 .uri("https://api.chzzk.naver.com/polling/v2/channels/" + channelId + "/live-status")
-                                .retrieve()
-                                .bodyToMono(ObjectNode.class)
-                                .map(node -> ResponseEntity.ok(buildStatusResponse(channelId, node)))
+                                .exchangeToMono(response -> {
+                                        if (response.statusCode().is2xxSuccessful()) {
+                                                return response.bodyToMono(ObjectNode.class)
+                                                                .map(node -> ResponseEntity.ok(buildStatusResponse(channelId, node)));
+                                        }
+
+                                        if (response.statusCode().equals(HttpStatus.NOT_FOUND)) {
+                                                log.warn("[Chzzk] Channel {} was not found while fetching live status.", channelId);
+                                                return Mono.just(buildStatusErrorResponse(
+                                                                HttpStatus.NOT_FOUND,
+                                                                channelId,
+                                                                "존재하지 않거나 조회할 수 없는 채널입니다."));
+                                        }
+
+                                        return response.createException()
+                                                        .flatMap(e -> {
+                                                                log.error("[Chzzk] Failed to fetch live status for channel {}: {}", channelId,
+                                                                                e.getMessage());
+                                                                return Mono.just(buildStatusErrorResponse(
+                                                                                HttpStatus.INTERNAL_SERVER_ERROR,
+                                                                                channelId,
+                                                                                e.getMessage()));
+                                                        });
+                                })
                                 .onErrorResume(e -> {
                                         log.error("[Chzzk] Failed to fetch live status for channel {}: {}", channelId,
                                                         e.getMessage());
-                                        return Mono.just(ResponseEntity.internalServerError()
-                                                        .body(Map.of(
-                                                                        "channelId", channelId,
-                                                                        "live", false,
-                                                                        "status", "failed",
-                                                                        "message", e.getMessage())));
+                                        return Mono.just(buildStatusErrorResponse(
+                                                        HttpStatus.INTERNAL_SERVER_ERROR,
+                                                        channelId,
+                                                        e.getMessage()));
                                 });
         }
 
@@ -129,5 +149,15 @@ public class ChzzkChannelController {
                 }
 
                 return map;
+        }
+
+        private ResponseEntity<Map<String, Object>> buildStatusErrorResponse(HttpStatus status, String channelId,
+                        String message) {
+                Map<String, Object> body = new HashMap<>();
+                body.put("channelId", channelId);
+                body.put("live", false);
+                body.put("status", "failed");
+                body.put("message", message);
+                return ResponseEntity.status(status).body(body);
         }
 }
