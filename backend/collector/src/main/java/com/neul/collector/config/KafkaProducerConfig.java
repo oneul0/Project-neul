@@ -61,6 +61,30 @@ public class KafkaProducerConfig {
     }
 
     @Bean
+    public NewTopic vodAnalysisFailedTopic() {
+        return TopicBuilder.name("vod-analysis-failed-topic")
+                .partitions(5)
+                .replicas(1)
+                .build();
+    }
+
+    @Bean
+    public NewTopic vodCrawlCompleteTopic() {
+        return TopicBuilder.name("vod-crawl-complete-topic")
+                .partitions(5)
+                .replicas(1)
+                .build();
+    }
+
+    @Bean
+    public NewTopic vodAnalyzedTopic() {
+        return TopicBuilder.name("vod-analyzed-topic")
+                .partitions(5)
+                .replicas(1)
+                .build();
+    }
+
+    @Bean
     public ConsumerFactory<String, String> consumerFactory() {
         Map<String, Object> configProps = new HashMap<>();
         configProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);

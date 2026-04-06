@@ -9,12 +9,14 @@ public record VodMetadataResponse(
         Long publishDateAt,
         String channelName,
         Integer duration,
+        String category,
         String message
 ) {
     public static VodMetadataResponse notFound(String videoNo) {
         return new VodMetadataResponse(
                 false,
                 videoNo,
+                null,
                 null,
                 null,
                 null,

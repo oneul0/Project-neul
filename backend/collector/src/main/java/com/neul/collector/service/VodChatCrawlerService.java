@@ -33,20 +33,25 @@ public class VodChatCrawlerService {
 
     public Mono<CrawlProgress> crawlFullVodChat(String videoNo) {
         log.info("[VOD-Crawler] Starting full chat crawl for videoNo={}", videoNo);
-        return fetchChunksRecursive(videoNo, null, 0, 0, new HashSet<>(), 0)
-                .doOnSuccess(result -> {
-                    vodAnalysisStatusService.markAnalyzing(videoNo, result.pagesProcessed(), result.chatsCollected());
-                    try {
-                        String payload = objectMapper.writeValueAsString(VodCrawlCompletedEvent.builder()
-                                .videoNo(videoNo)
-                                .pagesProcessed(result.pagesProcessed())
-                                .chatsCollected(result.chatsCollected())
-                                .build());
-                        kafkaTemplate.send("vod-crawl-complete-topic", videoNo, payload);
-                    } catch (Exception e) {
-                        throw new RuntimeException("Failed to publish VOD crawl completion", e);
-                    }
-                });
+        return fetchVideoMetadata(videoNo)
+                .onErrorReturn(VodMetadataResponse.notFound(videoNo))
+                .flatMap(metadata -> fetchChunksRecursive(videoNo, null, 0, 0, new HashSet<>(), 0)
+                        .doOnSuccess(result -> {
+                            vodAnalysisStatusService.markAnalyzing(videoNo, result.pagesProcessed(), result.chatsCollected());
+                            try {
+                                String payload = objectMapper.writeValueAsString(VodCrawlCompletedEvent.builder()
+                                        .videoNo(videoNo)
+                                        .pagesProcessed(result.pagesProcessed())
+                                        .chatsCollected(result.chatsCollected())
+                                        .title(metadata.title())
+                                        .category(metadata.category())
+                                        .duration(metadata.duration())
+                                        .build());
+                                kafkaTemplate.send("vod-crawl-complete-topic", videoNo, payload);
+                            } catch (Exception e) {
+                                throw new RuntimeException("Failed to publish VOD crawl completion", e);
+                            }
+                        }));
     }
 
     public Mono<VodMetadataResponse> fetchVideoMetadata(String videoNo) {
@@ -77,18 +82,44 @@ public class VodChatCrawlerService {
                                             content.path("publishDateAt").isNumber() ? content.path("publishDateAt").asLong() : null,
                                             content.path("channel").path("channelName").asText(null),
                                             content.path("duration").isNumber() ? content.path("duration").asInt() : null,
+                                            extractCategory(content),
                                             null
                                     ));
                                 } catch (Exception e) {
                                     log.error("[VOD-Crawler] Failed to parse video metadata for videoNo={}", videoNo, e);
-                                    return Mono.just(new VodMetadataResponse(false, videoNo, null, null, null, null, null, null, "VOD 정보를 해석하지 못했습니다."));
+                                    return Mono.just(new VodMetadataResponse(false, videoNo, null, null, null, null, null, null, null, "VOD 정보를 해석하지 못했습니다."));
                                 }
                             });
                 })
                 .onErrorResume(e -> {
                     log.error("[VOD-Crawler] Failed to fetch video metadata for videoNo={}", videoNo, e);
-                    return Mono.just(new VodMetadataResponse(false, videoNo, null, null, null, null, null, null, "VOD 정보를 불러오지 못했습니다."));
+                    return Mono.just(new VodMetadataResponse(false, videoNo, null, null, null, null, null, null, null, "VOD 정보를 불러오지 못했습니다."));
                 });
+    }
+
+    private String extractCategory(JsonNode content) {
+        return firstNonBlank(
+                content.path("videoCategoryValue"),
+                content.path("liveCategoryValue"),
+                content.path("categoryValue"),
+                content.path("category").path("categoryValue"),
+                content.path("category").path("name"),
+                content.path("game").path("gameName"),
+                content.path("game").path("name")
+        );
+    }
+
+    private String firstNonBlank(JsonNode... nodes) {
+        for (JsonNode node : nodes) {
+            if (node == null || node.isMissingNode() || node.isNull()) {
+                continue;
+            }
+            String value = node.asText(null);
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return null;
     }
 
     private Mono<CrawlProgress> fetchChunksRecursive(
