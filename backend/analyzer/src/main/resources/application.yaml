@@ -21,3 +21,8 @@ app:
   ollama:
     api-url: http://127.0.0.1:11434/api/chat
     model: gemma:2b
+    prompts:
+      sentiment-system: classpath:prompts/ollama-sentiment-system.txt
+      sentiment-user: classpath:prompts/ollama-sentiment-user.txt
+      highlight-system: classpath:prompts/ollama-highlight-system.txt
+      highlight-user: classpath:prompts/ollama-highlight-user.txt

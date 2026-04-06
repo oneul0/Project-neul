@@ -1,0 +1,24 @@
+[후보 구간]
+- videoNo: {{videoNo}}
+- 구간: {{startSeconds}}초 ~ {{endSeconds}}초
+
+[통계 지표]
+- 현재 구간 채팅 수: {{messageCount}}
+- 현재 구간 참여자 수: {{uniqueUsers}}
+- 채팅 밀도: 평소 대비 {{densityRatio}}배
+- 채팅 폭발 Z-Score: {{zScore}}
+- 반응 버스트 점수: {{burstScore}}
+- 반복 메시지 비율: {{repeatedRatio}}
+- 동일 발화자 점유율: {{dominantSenderRatio}}
+- 방종/인사 키워드 비율: {{goodbyeRatio}}
+
+[핵심 키워드 빈도]
+{{keywordSummary}}
+
+[네거티브 신호]
+{{negativeSignals}}
+
+[채팅 목록]
+{{chatBundle}}
+
+위 정보를 바탕으로 반드시 JSON만 반환해.

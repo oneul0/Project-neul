@@ -2,19 +2,20 @@ package com.neul.analyzer.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.neul.analyzer.config.OllamaPromptProperties;
 import com.neul.common.dto.AnalyzedChatMessage;
 import com.neul.analyzer.dto.ollama.OllamaMessage;
 import com.neul.analyzer.dto.ollama.OllamaRequest;
 import com.neul.analyzer.dto.ollama.OllamaResponse;
 import com.neul.analyzer.optimization.CompressedChat;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
@@ -26,18 +27,29 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
-@Slf4j
 @Service
 public class OllamaAnalyzerService {
+
+    private static final Logger log = LoggerFactory.getLogger(OllamaAnalyzerService.class);
 
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
+    private final PromptTemplateService promptTemplateService;
+    private final OllamaPromptProperties promptProperties;
 
-    public OllamaAnalyzerService(WebClient webClient, ObjectMapper objectMapper, MeterRegistry meterRegistry) {
+    public OllamaAnalyzerService(
+            WebClient webClient,
+            ObjectMapper objectMapper,
+            MeterRegistry meterRegistry,
+            PromptTemplateService promptTemplateService,
+            OllamaPromptProperties promptProperties
+    ) {
         this.webClient = webClient;
         this.objectMapper = objectMapper;
         this.meterRegistry = meterRegistry;
+        this.promptTemplateService = promptTemplateService;
+        this.promptProperties = promptProperties;
     }
 
     @Value("${app.ollama.api-url}")
@@ -69,12 +81,12 @@ public class OllamaAnalyzerService {
         }
 
         // 2. Build the prompt with logical IDs
-        String promptText = buildPrompt(chats, logicalIdToOriginalId);
+        String promptText = buildSentimentPrompt(chats, logicalIdToOriginalId);
 
         OllamaRequest requestDto = OllamaRequest.builder()
                 .model(ollamaModel)
                 .messages(List.of(
-                        OllamaMessage.builder().role("system").content(getSystemPrompt()).build(),
+                        OllamaMessage.builder().role("system").content(getSentimentSystemPrompt()).build(),
                         OllamaMessage.builder().role("user").content(promptText).build()
                 ))
                 .stream(false)
@@ -107,28 +119,67 @@ public class OllamaAnalyzerService {
                 .doFinally(signalType -> isProcessing.set(false));
     }
 
-    private String getSystemPrompt() {
-        return "You are a professional Korean streaming sentiment and keyword analyzer. " +
-               "Categories: JOY, HOPE, NEUTRAL, SADNESS, ANGER, WONDER, DISGUST. " +
-               "Rules:\n" +
-               "1. Extract 3-5 keywords ONLY from the provided chat messages. Do not invent keywords.\n" +
-               "2. For each keyword, provide a 'representativeName' (a normalized form to group synonyms, e.g., '킹아' and 'KINGA' -> 'KINGA').\n" +
-               "3. Reactions like ㄹㅇ, ㅇㅈ, etc. inherit the emotion of previous context.\n" +
-               "4. Be decisive. Avoid NEUTRAL if possible.\n" +
-               "5. Ensure scores sum to 1.0.\n" +
-               "6. Output ONLY JSON.\n\n" +
-               "Example:\n" +
-               "{\n" +
-               "  \"keywords\": [\n" +
-               "    {\"text\": \"나이스\", \"representativeName\": \"나이스\"},\n" +
-               "    {\"text\": \"킹아\", \"representativeName\": \"KINGA\"}\n" +
-               "  ],\n" +
-               "  \"results\": [{\"messageId\": \"1\", \"scores\": {\"JOY\": 0.9, ...}}]\n" +
-               "}";
+    public Mono<HighlightDecision> analyzeHighlight(HighlightPromptPayload payload) {
+        try {
+            String userPrompt = promptTemplateService.render(promptProperties.getHighlightUser(), Map.ofEntries(
+                    Map.entry("videoNo", payload.videoNo()),
+                    Map.entry("startSeconds", String.valueOf(payload.startSeconds())),
+                    Map.entry("endSeconds", String.valueOf(payload.endSeconds())),
+                    Map.entry("messageCount", String.valueOf(payload.messageCount())),
+                    Map.entry("uniqueUsers", String.valueOf(payload.uniqueUsers())),
+                    Map.entry("densityRatio", formatDecimal(payload.densityRatio())),
+                    Map.entry("zScore", formatDecimal(payload.zScore())),
+                    Map.entry("burstScore", formatDecimal(payload.burstScore())),
+                    Map.entry("repeatedRatio", formatDecimal(payload.repeatedRatio())),
+                    Map.entry("dominantSenderRatio", formatDecimal(payload.dominantSenderRatio())),
+                    Map.entry("goodbyeRatio", formatDecimal(payload.goodbyeRatio())),
+                    Map.entry("keywordSummary", payload.keywordSummary()),
+                    Map.entry("negativeSignals", payload.negativeSignals()),
+                    Map.entry("chatBundle", payload.chatBundle())
+            ));
+
+            OllamaRequest requestDto = OllamaRequest.builder()
+                    .model(ollamaModel)
+                    .messages(List.of(
+                            OllamaMessage.builder().role("system").content(getHighlightSystemPrompt()).build(),
+                            OllamaMessage.builder().role("user").content(userPrompt).build()
+                    ))
+                    .stream(false)
+                    .format("json")
+                    .options(Map.of(
+                            "temperature", 0.2,
+                            "num_predict", 768,
+                            "top_p", 0.8
+                    ))
+                    .build();
+
+            return webClient.post()
+                    .uri(ollamaApiUrl)
+                    .bodyValue(requestDto)
+                    .retrieve()
+                    .bodyToMono(OllamaResponse.class)
+                    .timeout(Duration.ofSeconds(45))
+                    .map(this::parseHighlightDecision)
+                    .onErrorResume(error -> {
+                        log.warn("[Ollama] Highlight analysis failed: {}", error.getMessage());
+                        return Mono.just(HighlightDecision.fallback("LLM highlight analysis failed, fallback to heuristic ranking."));
+                    });
+        } catch (Exception error) {
+            log.warn("[Ollama] Highlight prompt preparation failed: {}", error.getMessage());
+            return Mono.just(HighlightDecision.fallback("LLM highlight prompt preparation failed, fallback to heuristic ranking."));
+        }
     }
 
-    private String buildPrompt(List<CompressedChat> chats, Map<String, String> idMap) {
-        StringBuilder sb = new StringBuilder("Analyze the following messages:\n");
+    private String getSentimentSystemPrompt() {
+        return promptTemplateService.render(promptProperties.getSentimentSystem(), Map.of());
+    }
+
+    private String getHighlightSystemPrompt() {
+        return promptTemplateService.render(promptProperties.getHighlightSystem(), Map.of());
+    }
+
+    private String buildSentimentPrompt(List<CompressedChat> chats, Map<String, String> idMap) {
+        StringBuilder sb = new StringBuilder();
         Map<String, String> originalToLogical = idMap.entrySet().stream()
                 .collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
 
@@ -137,7 +188,9 @@ public class OllamaAnalyzerService {
             sb.append(String.format("[%s] %s (%d occurrences)\n",
                     logicalId, chat.getContent(), chat.getCount()));
         }
-        return sb.toString();
+        return promptTemplateService.render(promptProperties.getSentimentUser(), Map.of(
+                "messages", sb.toString().trim()
+        ));
     }
 
     private List<AnalyzedChatMessage> parseOllamaResponse(OllamaResponse response, List<CompressedChat> originalChats, Map<String, String> logicalIdToOriginalId) {
@@ -261,6 +314,35 @@ public class OllamaAnalyzerService {
         }
         
         return text.trim();
+    }
+
+    private HighlightDecision parseHighlightDecision(OllamaResponse response) {
+        String content = response.getMessage() != null ? response.getMessage().getContent() : "";
+        if (content == null || content.isBlank()) {
+            return HighlightDecision.fallback("LLM returned empty highlight decision.");
+        }
+
+        try {
+            String jsonStr = extractJsonText(content);
+            Map<String, Object> root = objectMapper.readValue(jsonStr, new TypeReference<Map<String, Object>>() {});
+            boolean isHighlight = Boolean.TRUE.equals(root.get("is_highlight"));
+            String category = String.valueOf(root.getOrDefault("category", isHighlight ? "소통" : "판단보류")).trim();
+            String summary = String.valueOf(root.getOrDefault("summary", isHighlight ? "하이라이트 후보 구간입니다." : "하이라이트 근거가 약한 구간입니다.")).trim();
+            String reasoning = String.valueOf(root.getOrDefault("reasoning", "LLM reasoning not provided.")).trim();
+            int intensity = 5;
+            Object rawIntensity = root.get("intensity");
+            if (rawIntensity instanceof Number number) {
+                intensity = Math.max(1, Math.min(10, number.intValue()));
+            }
+            return new HighlightDecision(isHighlight, category, summary, intensity, reasoning);
+        } catch (Exception e) {
+            log.warn("[Ollama] Failed to parse highlight decision: {}", e.getMessage());
+            return HighlightDecision.fallback("Failed to parse structured highlight decision.");
+        }
+    }
+
+    private String formatDecimal(double value) {
+        return String.format(java.util.Locale.US, "%.2f", value);
     }
 
     private List<AnalyzedChatMessage> createFallbackList(List<CompressedChat> chats) {

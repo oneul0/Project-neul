@@ -2,6 +2,7 @@ package com.neul.analyzer.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.neul.analyzer.config.OllamaPromptProperties;
 import com.neul.common.dto.AnalyzedChatMessage;
 import com.neul.analyzer.dto.ollama.OllamaMessage;
 import com.neul.analyzer.dto.ollama.OllamaRequest;
@@ -20,8 +21,10 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.springframework.core.io.DefaultResourceLoader;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -60,8 +63,11 @@ class OllamaAnalyzerServiceTest {
         
         // Real SimpleMeterRegistry for testing
         meterRegistry = new SimpleMeterRegistry();
+
+        PromptTemplateService promptTemplateService = new PromptTemplateService(new DefaultResourceLoader());
+        OllamaPromptProperties promptProperties = new OllamaPromptProperties();
         
-        geminiAnalyzerService = new OllamaAnalyzerService(webClient, objectMapper, meterRegistry);
+        geminiAnalyzerService = new OllamaAnalyzerService(webClient, objectMapper, meterRegistry, promptTemplateService, promptProperties);
         
         ReflectionTestUtils.setField(geminiAnalyzerService, "ollamaApiUrl", "http://localhost:11434/api/chat");
         ReflectionTestUtils.setField(geminiAnalyzerService, "ollamaModel", "gemma:2b");
@@ -240,5 +246,163 @@ class OllamaAnalyzerServiceTest {
                     assertThat(results.get(0).getEmotionScores().get("NEUTRAL")).isEqualTo(1.0);
                 })
                 .verifyComplete();
+    }
+
+    @Test
+    @DisplayName("하이라이트 분석 응답을 정상 파싱하고 프롬프트 값을 요청에 담는다")
+    void analyzeHighlight_Success() {
+        HighlightPromptPayload payload = new HighlightPromptPayload(
+                "video-1",
+                30,
+                60,
+                24,
+                12,
+                2.35,
+                1.75,
+                4.20,
+                0.12,
+                0.21,
+                0.00,
+                "- '한타' (3회)",
+                "- 대표 채팅: 미쳤다",
+                "- 미쳤다 (x3)"
+        );
+
+        String mockJsonResponse = "{" +
+                "\"is_highlight\": true," +
+                "\"category\": \"슈퍼플레이\"," +
+                "\"summary\": \"한 줄 요약\"," +
+                "\"intensity\": 9," +
+                "\"reasoning\": \"근거 설명\"" +
+                "}";
+
+        OllamaResponse mockResponse = OllamaResponse.builder()
+                .message(OllamaMessage.builder().content(mockJsonResponse).build())
+                .build();
+
+        mockOllamaResponse(Mono.just(mockResponse));
+
+        StepVerifier.create(geminiAnalyzerService.analyzeHighlight(payload))
+                .assertNext(result -> {
+                    assertThat(result.isHighlight()).isTrue();
+                    assertThat(result.category()).isEqualTo("슈퍼플레이");
+                    assertThat(result.summary()).isEqualTo("한 줄 요약");
+                    assertThat(result.intensity()).isEqualTo(9);
+                    assertThat(result.reasoning()).isEqualTo("근거 설명");
+                })
+                .verifyComplete();
+
+        ArgumentCaptor<OllamaRequest> captor = ArgumentCaptor.forClass(OllamaRequest.class);
+        verify(requestBodySpec).bodyValue(captor.capture());
+        OllamaRequest capturedRequest = captor.getValue();
+        assertThat(capturedRequest.getMessages()).hasSize(2);
+        assertThat(capturedRequest.getMessages().get(0).getContent()).contains("전문 편집자");
+        assertThat(capturedRequest.getMessages().get(1).getContent())
+                .contains("video-1")
+                .contains("30초 ~ 60초")
+                .contains("평소 대비 2.35배")
+                .contains("한타")
+                .contains("미쳤다");
+    }
+
+    @Test
+    @DisplayName("하이라이트 응답 필드가 비어 있으면 기본값을 채우고 intensity를 보정한다")
+    void analyzeHighlight_DefaultsAndClamp() {
+        HighlightPromptPayload payload = new HighlightPromptPayload(
+                "video-2", 0, 30, 10, 5, 1.0, 0.4, 1.2, 0.0, 0.0, 0.0,
+                "- 없음", "- 없음", "- 없음"
+        );
+
+        String mockJsonResponse = "{" +
+                "\"is_highlight\": true," +
+                "\"intensity\": 99" +
+                "}";
+
+        OllamaResponse mockResponse = OllamaResponse.builder()
+                .message(OllamaMessage.builder().content(mockJsonResponse).build())
+                .build();
+
+        mockOllamaResponse(Mono.just(mockResponse));
+
+        StepVerifier.create(geminiAnalyzerService.analyzeHighlight(payload))
+                .assertNext(result -> {
+                    assertThat(result.isHighlight()).isTrue();
+                    assertThat(result.category()).isEqualTo("소통");
+                    assertThat(result.summary()).isEqualTo("하이라이트 후보 구간입니다.");
+                    assertThat(result.intensity()).isEqualTo(10);
+                    assertThat(result.reasoning()).isEqualTo("LLM reasoning not provided.");
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    @DisplayName("하이라이트 응답이 비었거나 손상되면 fallback 결정을 반환한다")
+    void analyzeHighlight_BlankOrMalformed_Fallback() {
+        HighlightPromptPayload payload = new HighlightPromptPayload(
+                "video-3", 60, 90, 15, 8, 1.4, 0.9, 2.1, 0.2, 0.1, 0.0,
+                "- 없음", "- 없음", "- 없음"
+        );
+
+        OllamaResponse blankResponse = OllamaResponse.builder()
+                .message(OllamaMessage.builder().content("   ").build())
+                .build();
+
+        mockOllamaResponse(Mono.just(blankResponse));
+
+        StepVerifier.create(geminiAnalyzerService.analyzeHighlight(payload))
+                .assertNext(result -> {
+                    assertThat(result.isHighlight()).isFalse();
+                    assertThat(result.category()).isEqualTo("판단보류");
+                    assertThat(result.summary()).isEqualTo("하이라이트 근거가 부족합니다.");
+                })
+                .verifyComplete();
+
+        OllamaResponse malformedResponse = OllamaResponse.builder()
+                .message(OllamaMessage.builder().content("not-json").build())
+                .build();
+
+        reset(webClient, requestBodyUriSpec, requestBodySpec, requestHeadersSpec, responseSpec);
+        mockOllamaResponse(Mono.just(malformedResponse));
+
+        StepVerifier.create(geminiAnalyzerService.analyzeHighlight(payload))
+                .assertNext(result -> {
+                    assertThat(result.isHighlight()).isFalse();
+                    assertThat(result.reasoning()).contains("Failed to parse structured highlight decision");
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    @DisplayName("하이라이트 프롬프트 로딩이 실패해도 휴리스틱 fallback으로 안전하게 복귀한다")
+    void analyzeHighlight_PromptLoadFailure_Fallback() {
+        HighlightPromptPayload payload = new HighlightPromptPayload(
+                "video-4", 90, 120, 18, 11, 1.9, 1.2, 2.8, 0.05, 0.08, 0.0,
+                "- 없음", "- 없음", "- 없음"
+        );
+
+        OllamaPromptProperties brokenPromptProperties = new OllamaPromptProperties();
+        brokenPromptProperties.setHighlightSystem("classpath:prompts/missing-system.txt");
+        brokenPromptProperties.setHighlightUser("classpath:prompts/missing-user.txt");
+        PromptTemplateService promptTemplateService = new PromptTemplateService(new DefaultResourceLoader());
+        OllamaAnalyzerService brokenService = new OllamaAnalyzerService(webClient, objectMapper, meterRegistry, promptTemplateService, brokenPromptProperties);
+        ReflectionTestUtils.setField(brokenService, "ollamaApiUrl", "http://localhost:11434/api/chat");
+        ReflectionTestUtils.setField(brokenService, "ollamaModel", "gemma:2b");
+
+        StepVerifier.create(brokenService.analyzeHighlight(payload))
+                .assertNext(result -> {
+                    assertThat(result.isHighlight()).isFalse();
+                    assertThat(result.reasoning()).contains("prompt preparation failed");
+                })
+                .verifyComplete();
+
+        verifyNoInteractions(webClient);
+    }
+
+    private void mockOllamaResponse(Mono<OllamaResponse> responseMono) {
+        when(webClient.post()).thenReturn(requestBodyUriSpec);
+        when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
+        doReturn(requestHeadersSpec).when(requestBodySpec).bodyValue(any());
+        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.bodyToMono(OllamaResponse.class)).thenReturn(responseMono);
     }
 }
