@@ -141,6 +141,10 @@ const categoryLabel: Record<string, string> = {
   HYPE: "고조",
   TENSION: "긴장",
   HOT_MOMENT: "핫모먼트",
+  슈퍼플레이: "슈퍼플레이",
+  대참사: "대참사",
+  운: "운",
+  소통: "소통",
 };
 
 function formatSeconds(seconds: number) {
@@ -239,13 +243,15 @@ function toCompactReasonTags(highlight: VodHighlight) {
   if (
     source.includes("감탄") ||
     source.includes("놀람") ||
-    highlight.category === "WONDER"
+    highlight.category === "WONDER" ||
+    highlight.category === "슈퍼플레이"
   ) {
     tags.add("놀람 반응이 큰 장면");
   }
   if (
     source.includes("웃음") ||
     highlight.category === "LAUGH" ||
+    highlight.category === "소통" ||
     (highlight.reactionLabel ?? "").includes("웃음")
   ) {
     tags.add("웃음이 터진 장면");
@@ -253,16 +259,30 @@ function toCompactReasonTags(highlight: VodHighlight) {
   if (
     source.includes("고조") ||
     source.includes("열기") ||
-    highlight.category === "HYPE"
+    highlight.category === "HYPE" ||
+    highlight.category === "운"
   ) {
     tags.add("분위기가 올라간 장면");
   }
   if (
     source.includes("긴장") ||
     source.includes("몰입") ||
-    highlight.category === "TENSION"
+    highlight.category === "TENSION" ||
+    highlight.category === "대참사"
   ) {
     tags.add("긴장감이 높은 장면");
+  }
+  if (highlight.category === "슈퍼플레이") {
+    tags.add("결정적인 플레이가 나온 장면");
+  }
+  if (highlight.category === "대참사") {
+    tags.add("실수나 사고로 반응이 터진 장면");
+  }
+  if (highlight.category === "운") {
+    tags.add("확률 이벤트로 분위기가 터진 장면");
+  }
+  if (highlight.category === "소통") {
+    tags.add("채팅과 상호작용이 살아난 장면");
   }
   if (
     source.includes("흐름") ||

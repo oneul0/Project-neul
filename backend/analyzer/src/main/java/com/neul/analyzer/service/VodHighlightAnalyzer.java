@@ -6,42 +6,70 @@ import com.neul.common.dto.VodCrawlCompletedEvent;
 import com.neul.common.dto.VodAnalysisCompletedEvent;
 import com.neul.common.dto.VodHighlightPoint;
 import com.neul.common.dto.VodTimelinePoint;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Flux;
 
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeoutException;
+import java.util.regex.Pattern;
 
-@Slf4j
 @Service
-@RequiredArgsConstructor
 public class VodHighlightAnalyzer {
+
+    private static final Logger log = LoggerFactory.getLogger(VodHighlightAnalyzer.class);
 
     private static final int WINDOW_SECONDS = 30;
     private static final int MIN_HIGHLIGHTS = 5;
     private static final int MAX_HIGHLIGHTS = 24;
+    private static final int EDGE_WINDOW_SECONDS = 300;
+    private static final int LLM_REVIEW_LIMIT = 12;
+    private static final int LLM_REVIEW_CONCURRENCY = 3;
+    private static final Duration LLM_REVIEW_TIMEOUT = Duration.ofMinutes(4);
 
     private static final List<String> LAUGH_TOKENS = List.of("\u314b\u314b", "\u314e\u314e", "lol", "lmao", "rofl");
     private static final List<String> SURPRISE_TOKENS = List.of("\uc640", "\ud5c9", "\ub300\ubc15", "omg", "wtf");
     private static final List<String> HYPE_TOKENS = List.of("\ub808\uc804\ub4dc", "goat", "\uc9c0\ub9b0", "\ubbf8\uccd0", "\uc18c\ub984");
     private static final List<String> TENSION_TOKENS = List.of("\uc5b5\uae4c", "\uc2f8\uc6c0", "\ubd88\uc548", "\uc9d1\uc911", "\ubd84\ub178");
+    private static final List<String> GOODBYE_TOKENS = List.of("방종", "수고", "ㅂㅇ", "ㅃㅇ", "빠이", "바이", "goodbye", "bye", "수고했", "고생했");
+    private static final Set<String> STOPWORDS = Set.of(
+            "진짜", "그냥", "이번", "이거", "저거", "근데", "이제", "오늘", "지금", "아까", "뭔가", "약간",
+            "ㅋㅋ", "ㅋㅋㅋ", "ㅎㅎ", "ㅎㅎㅎ", "ㄹㅇ", "ㅇㅈ", "와", "헉", "대박", "미쳤다", "실화냐"
+    );
+    private static final Pattern TOKEN_SPLIT_PATTERN = Pattern.compile("[^0-9a-zA-Zㄱ-ㅎㅏ-ㅣ가-힣]+");
 
     private final ObjectMapper objectMapper;
     private final KafkaTemplate<String, String> kafkaTemplate;
+    private final OllamaAnalyzerService ollamaAnalyzerService;
     private final Map<String, VideoAggregate> aggregates = new ConcurrentHashMap<>();
+
+    public VodHighlightAnalyzer(
+            ObjectMapper objectMapper,
+            KafkaTemplate<String, String> kafkaTemplate,
+            OllamaAnalyzerService ollamaAnalyzerService
+    ) {
+        this.objectMapper = objectMapper;
+        this.kafkaTemplate = kafkaTemplate;
+        this.ollamaAnalyzerService = ollamaAnalyzerService;
+    }
 
     @KafkaListener(
             topics = "vod-raw-chat-topic",
@@ -170,9 +198,14 @@ public class VodHighlightAnalyzer {
         double averageMessages = windows.stream().mapToInt(WindowStats::messageCount).average().orElse(0.0);
         double averageUsers = windows.stream().mapToInt(WindowStats::uniqueUsers).average().orElse(0.0);
         double averageBursts = windows.stream().mapToDouble(WindowStats::burstSignal).average().orElse(0.0);
+        double messageStdDev = standardDeviation(windows.stream().map(WindowStats::messageCount).mapToDouble(Integer::doubleValue).toArray(), averageMessages);
+        double userStdDev = standardDeviation(windows.stream().map(WindowStats::uniqueUsers).mapToDouble(Integer::doubleValue).toArray(), averageUsers);
+        double burstStdDev = standardDeviation(windows.stream().mapToDouble(WindowStats::burstSignal).toArray(), averageBursts);
         int maxMessages = windows.stream().mapToInt(WindowStats::messageCount).max().orElse(1);
         int maxUsers = windows.stream().mapToInt(WindowStats::uniqueUsers).max().orElse(1);
         double maxBurst = windows.stream().mapToDouble(WindowStats::burstSignal).max().orElse(1.0);
+        int firstWindowStart = windows.stream().mapToInt(WindowStats::startSeconds).min().orElse(0);
+        int lastWindowStart = windows.stream().mapToInt(WindowStats::startSeconds).max().orElse(0);
 
         List<WindowScore> scored = new ArrayList<>();
         for (int index = 0; index < windows.size(); index++) {
@@ -184,9 +217,14 @@ public class VodHighlightAnalyzer {
                     current,
                     previous,
                     next,
+                    firstWindowStart,
+                    lastWindowStart,
                     averageMessages,
                     averageUsers,
                     averageBursts,
+                    messageStdDev,
+                    userStdDev,
+                    burstStdDev,
                     maxMessages,
                     maxUsers,
                     maxBurst
@@ -198,10 +236,16 @@ public class VodHighlightAnalyzer {
                 .toList();
 
         int targetCount = Math.min(MAX_HIGHLIGHTS, Math.max(MIN_HIGHLIGHTS, (int) Math.ceil(windows.size() * 0.12)));
+        Map<Integer, WindowStats> windowByStart = windows.stream()
+                .collect(LinkedHashMap::new, (map, window) -> map.put(window.startSeconds(), window), LinkedHashMap::putAll);
+        scored = enrichWithLlmReview(videoNo, scored, windowByStart, targetCount);
         List<WindowScore> selected = selectDistributedHighlights(scored, targetCount);
+        List<WindowScore> fallbackCandidates = scored.stream()
+                .filter(candidate -> !candidate.hardRejected())
+                .toList();
 
-        if (selected.size() < Math.min(MIN_HIGHLIGHTS, scored.size())) {
-            selected = mergeUniqueByStartSeconds(selected, scored.subList(0, Math.min(MIN_HIGHLIGHTS, scored.size())));
+        if (selected.size() < Math.min(MIN_HIGHLIGHTS, fallbackCandidates.size())) {
+            selected = mergeUniqueByStartSeconds(selected, fallbackCandidates.subList(0, Math.min(MIN_HIGHLIGHTS, fallbackCandidates.size())));
         }
 
         return selected.stream()
@@ -214,8 +258,16 @@ public class VodHighlightAnalyzer {
             return List.of();
         }
 
+        List<WindowScore> eligible = scored.stream()
+                .filter(candidate -> !candidate.hardRejected())
+                .toList();
+
+        if (eligible.isEmpty()) {
+            return List.of();
+        }
+
         int bucketCount = Math.min(targetCount, Math.min(8, Math.max(4, targetCount / 2)));
-        int maxStart = scored.stream().mapToInt(WindowScore::startSeconds).max().orElse(0);
+        int maxStart = eligible.stream().mapToInt(WindowScore::startSeconds).max().orElse(0);
         int bucketSize = Math.max(1, (maxStart + WINDOW_SECONDS) / bucketCount);
         int globalQuota = Math.max(0, targetCount - bucketCount);
 
@@ -225,14 +277,14 @@ public class VodHighlightAnalyzer {
             int bucketStart = bucket * bucketSize;
             int bucketEnd = bucket == bucketCount - 1 ? Integer.MAX_VALUE : bucketStart + bucketSize;
 
-            scored.stream()
+            eligible.stream()
                     .filter(candidate -> candidate.startSeconds() >= bucketStart && candidate.startSeconds() < bucketEnd)
                     .findFirst()
                     .ifPresent(candidate -> selectedByStart.putIfAbsent(candidate.startSeconds(), candidate));
         }
 
         if (globalQuota > 0) {
-            for (WindowScore candidate : scored) {
+            for (WindowScore candidate : eligible) {
                 if (selectedByStart.size() >= targetCount) {
                     break;
                 }
@@ -244,7 +296,7 @@ public class VodHighlightAnalyzer {
         }
 
         if (selectedByStart.size() < targetCount) {
-            for (WindowScore candidate : scored) {
+            for (WindowScore candidate : eligible) {
                 if (selectedByStart.size() >= targetCount) {
                     break;
                 }
@@ -271,9 +323,14 @@ public class VodHighlightAnalyzer {
             WindowStats window,
             WindowStats previous,
             WindowStats next,
+            int firstWindowStart,
+            int lastWindowStart,
             double averageMessages,
             double averageUsers,
             double averageBursts,
+            double messageStdDev,
+            double userStdDev,
+            double burstStdDev,
             int maxMessages,
             int maxUsers,
             double maxBurst
@@ -281,10 +338,14 @@ public class VodHighlightAnalyzer {
         double densityFactor = averageMessages == 0 ? 1.0 : ((double) window.messageCount() / averageMessages);
         double userFactor = averageUsers == 0 ? 1.0 : ((double) window.uniqueUsers() / averageUsers);
         double burstFactor = averageBursts == 0 ? 1.0 : (window.burstSignal() / averageBursts);
+        double messageZScore = zScore(window.messageCount(), averageMessages, messageStdDev);
+        double userZScore = zScore(window.uniqueUsers(), averageUsers, userStdDev);
+        double burstZScore = zScore(window.burstSignal(), averageBursts, burstStdDev);
 
         double densityScore = Math.min(14.0, densityFactor * 4.4 + ((double) window.messageCount() / Math.max(1, maxMessages)) * 5.0);
         double userScore = Math.min(9.0, userFactor * 3.4 + ((double) window.uniqueUsers() / Math.max(1, maxUsers)) * 3.0);
         double burstScore = Math.min(8.0, burstFactor * 3.4 + (window.burstSignal() / Math.max(1.0, maxBurst)) * 2.6);
+        double zScoreBoost = Math.max(0.0, messageZScore * 1.8) + Math.max(0.0, userZScore * 0.7) + Math.max(0.0, burstZScore * 0.9);
         double laughScore = Math.min(5.0, window.laughCount() * 0.9);
         double surpriseScore = Math.min(5.0, window.surpriseCount() * 1.0);
         double hypeScore = Math.min(5.0, window.hypeCount() * 1.0);
@@ -296,10 +357,14 @@ public class VodHighlightAnalyzer {
         double transitionScore = calculateTransitionScore(window, previous, next, averageMessages, averageUsers);
         String category = determineCategory(window);
         String reactionLabel = categoryLabel(category);
+        boolean hardRejected = shouldHardReject(window);
+        double negativePenalty = calculateNegativePenalty(window);
+        double edgePenalty = calculateEdgePenalty(window.startSeconds(), firstWindowStart, lastWindowStart);
 
         double intensityScore = densityScore
                 + userScore
                 + burstScore
+                + zScoreBoost
                 + laughScore
                 + surpriseScore
                 + hypeScore
@@ -315,7 +380,12 @@ public class VodHighlightAnalyzer {
                         + Math.min(5.0, transitionScore * 0.65)
         );
 
-        double totalScore = (intensityScore * 0.55) + (transitionScore * 0.20) + (editabilityScore * 0.25);
+        double totalScore = ((intensityScore * 0.55) + (transitionScore * 0.20) + (editabilityScore * 0.25))
+                * edgePenalty
+                * negativePenalty;
+        if (hardRejected) {
+            totalScore *= 0.18;
+        }
 
         String reasonSummary = buildReasonSummary(window, reactionLabel, intensityScore, transitionScore, editabilityScore);
         String description = String.format(
@@ -337,8 +407,185 @@ public class VodHighlightAnalyzer {
                 reactionLabel,
                 description,
                 reasonSummary,
-                window.representativeMessage()
+                window.representativeMessage(),
+                messageZScore,
+                burstZScore,
+                hardRejected
         );
+    }
+
+    private List<WindowScore> enrichWithLlmReview(String videoNo, List<WindowScore> scored, Map<Integer, WindowStats> windowByStart, int targetCount) {
+        if (scored.isEmpty()) {
+            return scored;
+        }
+
+        List<WindowScore> reviewCandidates = scored.stream()
+                .filter(candidate -> !candidate.hardRejected())
+                .limit(Math.min(LLM_REVIEW_LIMIT, Math.max(targetCount * 2, MIN_HIGHLIGHTS)))
+                .toList();
+
+        if (reviewCandidates.isEmpty()) {
+            return scored;
+        }
+
+        Map<Integer, HighlightDecision> reviewed;
+        try {
+            reviewed = Flux.fromIterable(reviewCandidates)
+                    .flatMap(candidate -> {
+                        WindowStats window = windowByStart.get(candidate.startSeconds());
+                        if (window == null) {
+                            return Flux.empty();
+                        }
+                        return ollamaAnalyzerService.analyzeHighlight(buildHighlightPayload(videoNo, candidate, window))
+                                .map(decision -> Map.entry(candidate.startSeconds(), decision))
+                                .flux();
+                    }, LLM_REVIEW_CONCURRENCY)
+                    .collectMap(Map.Entry::getKey, Map.Entry::getValue)
+                    .block(LLM_REVIEW_TIMEOUT);
+        } catch (IllegalStateException error) {
+            Throwable cause = error.getCause();
+            if (cause instanceof TimeoutException) {
+                log.warn("[Vod-Analyzer] Timed out during LLM highlight review for videoNo={}, fallback to heuristic ranking.", videoNo);
+                return scored;
+            }
+            throw error;
+        }
+
+        if (reviewed == null || reviewed.isEmpty()) {
+            return scored;
+        }
+
+        return scored.stream()
+                .map(score -> applyHighlightDecision(score, reviewed.get(score.startSeconds())))
+                .sorted(Comparator.comparingDouble(WindowScore::score).reversed())
+                .toList();
+    }
+
+    private HighlightPromptPayload buildHighlightPayload(String videoNo, WindowScore score, WindowStats window) {
+        String keywordSummary = window.topKeywords(5).entrySet().stream()
+                .map(entry -> String.format("- '%s' (%d회)", entry.getKey(), entry.getValue()))
+                .reduce((left, right) -> left + "\n" + right)
+                .orElse("- 뚜렷한 핵심 키워드 없음");
+
+        String negativeSignals = String.join("\n", List.of(
+                String.format("- 동일 메시지 반복 비율: %.2f", window.repeatedRatio()),
+                String.format("- 동일 발화자 집중도: %.2f", window.dominantSenderRatio()),
+                String.format("- 방종/인사 키워드 비율: %.2f", window.goodbyeRatio()),
+                String.format("- 대표 채팅: %s", window.representativeMessage().isBlank() ? "없음" : window.representativeMessage())
+        ));
+
+        String chatBundle = window.topMessages(8).entrySet().stream()
+                .map(entry -> String.format("- %s (x%d)", entry.getKey(), entry.getValue()))
+                .reduce((left, right) -> left + "\n" + right)
+                .orElse("- 채팅 샘플 없음");
+
+        return new HighlightPromptPayload(
+                videoNo,
+                score.startSeconds(),
+                score.endSeconds(),
+                window.messageCount(),
+                window.uniqueUsers(),
+                score.messageZScore() <= 0 ? 1.0 : 1.0 + score.messageZScore(),
+                score.messageZScore(),
+                score.burstZScore(),
+                window.repeatedRatio(),
+                window.dominantSenderRatio(),
+                window.goodbyeRatio(),
+                keywordSummary,
+                negativeSignals,
+                chatBundle
+        );
+    }
+
+    private WindowScore applyHighlightDecision(WindowScore score, HighlightDecision decision) {
+        if (decision == null) {
+            return score;
+        }
+
+        String decisionReasoning = (decision.reasoning() == null || decision.reasoning().isBlank())
+                ? "LLM reasoning not provided."
+                : decision.reasoning().trim();
+
+        if (!decision.isHighlight()) {
+            return score.withDecision(
+                    score.score() * 0.38,
+                    score.category(),
+                    score.reactionLabel(),
+                    score.description(),
+                    decisionReasoning + " | " + score.reasonSummary(),
+                    true
+            );
+        }
+
+        String normalizedCategory = normalizeEditorialCategory(decision.category());
+        String summary = (decision.summary() == null || decision.summary().isBlank())
+                ? "하이라이트 후보 구간입니다."
+                : decision.summary().trim();
+        double intensityBoost = 1.0 + ((Math.max(1, Math.min(10, decision.intensity())) - 5) * 0.05);
+        return score.withDecision(
+                (score.score() + 2.4) * intensityBoost,
+                normalizedCategory,
+                normalizedCategory,
+                summary,
+                decisionReasoning + " | " + score.reasonSummary(),
+                false
+        );
+    }
+
+    private String normalizeEditorialCategory(String category) {
+        if (category == null || category.isBlank()) {
+            return "소통";
+        }
+        return switch (category.trim()) {
+            case "슈퍼플레이", "대참사", "운", "소통" -> category.trim();
+            default -> "소통";
+        };
+    }
+
+    private double calculateEdgePenalty(int startSeconds, int firstWindowStart, int lastWindowStart) {
+        if (startSeconds - firstWindowStart < EDGE_WINDOW_SECONDS / 2 || lastWindowStart - startSeconds < EDGE_WINDOW_SECONDS / 2) {
+            return 0.58;
+        }
+        if (startSeconds - firstWindowStart < EDGE_WINDOW_SECONDS || lastWindowStart - startSeconds < EDGE_WINDOW_SECONDS) {
+            return 0.74;
+        }
+        return 1.0;
+    }
+
+    private boolean shouldHardReject(WindowStats window) {
+        return window.goodbyeRatio() >= 0.18 || (window.goodbyeKeywordCount() >= 3 && window.messageCount() <= 12);
+    }
+
+    private double calculateNegativePenalty(WindowStats window) {
+        double penalty = 1.0;
+        if (window.repeatedRatio() >= 0.45) {
+            penalty *= 0.72;
+        }
+        if (window.dominantSenderRatio() >= 0.45) {
+            penalty *= 0.78;
+        }
+        if (window.goodbyeRatio() >= 0.10) {
+            penalty *= 0.65;
+        }
+        return penalty;
+    }
+
+    private double zScore(double value, double mean, double standardDeviation) {
+        if (standardDeviation <= 0.0001) {
+            return 0.0;
+        }
+        return (value - mean) / standardDeviation;
+    }
+
+    private double standardDeviation(double[] values, double mean) {
+        if (values.length == 0) {
+            return 0.0;
+        }
+        double variance = Arrays.stream(values)
+                .map(value -> Math.pow(value - mean, 2))
+                .average()
+                .orElse(0.0);
+        return Math.sqrt(variance);
     }
 
     private String buildReasonSummary(
@@ -514,9 +761,13 @@ public class VodHighlightAnalyzer {
         private int tensionCount;
         private int punctuationBurstCount;
         private int repeatedMessageCount;
+        private int goodbyeKeywordCount;
         private final Set<String> seenUsers = ConcurrentHashMap.newKeySet();
         private final Map<String, Integer> normalizedCounts = new HashMap<>();
         private final Map<String, String> originalMessages = new HashMap<>();
+        private final Map<String, Integer> keywordCounts = new HashMap<>();
+        private final Map<String, Integer> senderCounts = new HashMap<>();
+        private final Map<String, Integer> senderMessageCounts = new HashMap<>();
         private String latestMessage = "";
 
         private WindowStats(int startSeconds) {
@@ -530,6 +781,9 @@ public class VodHighlightAnalyzer {
             if (!senderId.isBlank() && seenUsers.add(senderId)) {
                 uniqueUsers++;
             }
+            if (!senderId.isBlank()) {
+                senderCounts.merge(senderId, 1, Integer::sum);
+            }
 
             String message = extractMessage(chat);
             String lower = message.toLowerCase(Locale.ROOT);
@@ -541,7 +795,19 @@ public class VodHighlightAnalyzer {
                 }
                 originalMessages.putIfAbsent(normalized, message);
                 latestMessage = message;
+                if (!senderId.isBlank()) {
+                    int senderDuplicateCount = senderMessageCounts.merge(senderId + "::" + normalized, 1, Integer::sum);
+                    if (senderDuplicateCount >= 2) {
+                        repeatedMessageCount++;
+                    }
+                }
             }
+
+            if (containsGoodbyeKeyword(lower)) {
+                goodbyeKeywordCount++;
+            }
+
+            extractKeywords(lower).forEach(token -> keywordCounts.merge(token, 1, Integer::sum));
 
             laughCount += countMatches(lower, LAUGH_TOKENS);
             surpriseCount += countMatches(lower, SURPRISE_TOKENS);
@@ -593,6 +859,50 @@ public class VodHighlightAnalyzer {
                     + (userCoverageRatio() * 6.0);
         }
 
+        private Map<String, Integer> topMessages(int limit) {
+            return normalizedCounts.entrySet().stream()
+                    .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                    .limit(limit)
+                    .collect(LinkedHashMap::new,
+                            (map, entry) -> map.put(originalMessages.getOrDefault(entry.getKey(), entry.getKey()), entry.getValue()),
+                            LinkedHashMap::putAll);
+        }
+
+        private Map<String, Integer> topKeywords(int limit) {
+            return keywordCounts.entrySet().stream()
+                    .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                    .limit(limit)
+                    .collect(LinkedHashMap::new,
+                            (map, entry) -> map.put(entry.getKey(), entry.getValue()),
+                            LinkedHashMap::putAll);
+        }
+
+        private double repeatedRatio() {
+            if (messageCount == 0) {
+                return 0.0;
+            }
+            return (double) repeatedMessageCount / messageCount;
+        }
+
+        private double dominantSenderRatio() {
+            if (messageCount == 0 || senderCounts.isEmpty()) {
+                return 0.0;
+            }
+            int maxSenderMessages = senderCounts.values().stream().max(Integer::compareTo).orElse(0);
+            return (double) maxSenderMessages / messageCount;
+        }
+
+        private double goodbyeRatio() {
+            if (messageCount == 0) {
+                return 0.0;
+            }
+            return (double) goodbyeKeywordCount / messageCount;
+        }
+
+        private int goodbyeKeywordCount() {
+            return goodbyeKeywordCount;
+        }
+
         private int startSeconds() {
             return startSeconds;
         }
@@ -642,7 +952,57 @@ public class VodHighlightAnalyzer {
             String reactionLabel,
             String description,
             String reasonSummary,
-            String topMessage
+            String topMessage,
+            double messageZScore,
+            double burstZScore,
+            boolean hardRejected
     ) {
+
+        private WindowScore withDecision(
+                double updatedScore,
+                String updatedCategory,
+                String updatedReactionLabel,
+                String updatedDescription,
+                String updatedReasonSummary,
+                boolean rejectedByLlm
+        ) {
+            return new WindowScore(
+                    videoNo,
+                    startSeconds,
+                    endSeconds,
+                    updatedScore,
+                    intensityScore,
+                    transitionScore,
+                    editabilityScore,
+                    updatedCategory,
+                    updatedReactionLabel,
+                    updatedDescription,
+                    updatedReasonSummary,
+                    topMessage,
+                    messageZScore,
+                    burstZScore,
+                    hardRejected || rejectedByLlm
+            );
+        }
+    }
+
+    private static boolean containsGoodbyeKeyword(String lower) {
+        return GOODBYE_TOKENS.stream().anyMatch(lower::contains);
+    }
+
+    private static List<String> extractKeywords(String lower) {
+        if (lower == null || lower.isBlank()) {
+            return List.of();
+        }
+        String[] rawTokens = TOKEN_SPLIT_PATTERN.split(lower);
+        List<String> tokens = new ArrayList<>();
+        for (String rawToken : rawTokens) {
+            String token = rawToken == null ? "" : rawToken.trim();
+            if (token.length() < 2 || STOPWORDS.contains(token) || token.chars().allMatch(Character::isDigit)) {
+                continue;
+            }
+            tokens.add(token);
+        }
+        return tokens;
     }
 }
