@@ -2,6 +2,10 @@ package com.neul.analyzer.service;
 
 public record HighlightPromptPayload(
         String videoNo,
+        String videoTitle,
+        String videoCategory,
+        int durationSeconds,
+        double progressRatio,
         int startSeconds,
         int endSeconds,
         int messageCount,
@@ -9,6 +13,9 @@ public record HighlightPromptPayload(
         double densityRatio,
         double zScore,
         double burstScore,
+        double consensusRatio,
+        double peakWindowRatio,
+        double keywordConcentration,
         double repeatedRatio,
         double dominantSenderRatio,
         double goodbyeRatio,

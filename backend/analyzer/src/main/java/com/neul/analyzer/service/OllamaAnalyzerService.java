@@ -123,6 +123,10 @@ public class OllamaAnalyzerService {
         try {
             String userPrompt = promptTemplateService.render(promptProperties.getHighlightUser(), Map.ofEntries(
                     Map.entry("videoNo", payload.videoNo()),
+                    Map.entry("videoTitle", payload.videoTitle()),
+                    Map.entry("videoCategory", payload.videoCategory()),
+                    Map.entry("durationSeconds", String.valueOf(payload.durationSeconds())),
+                    Map.entry("progressRatio", formatDecimal(payload.progressRatio())),
                     Map.entry("startSeconds", String.valueOf(payload.startSeconds())),
                     Map.entry("endSeconds", String.valueOf(payload.endSeconds())),
                     Map.entry("messageCount", String.valueOf(payload.messageCount())),
@@ -130,6 +134,9 @@ public class OllamaAnalyzerService {
                     Map.entry("densityRatio", formatDecimal(payload.densityRatio())),
                     Map.entry("zScore", formatDecimal(payload.zScore())),
                     Map.entry("burstScore", formatDecimal(payload.burstScore())),
+                    Map.entry("consensusRatio", formatDecimal(payload.consensusRatio())),
+                    Map.entry("peakWindowRatio", formatDecimal(payload.peakWindowRatio())),
+                    Map.entry("keywordConcentration", formatDecimal(payload.keywordConcentration())),
                     Map.entry("repeatedRatio", formatDecimal(payload.repeatedRatio())),
                     Map.entry("dominantSenderRatio", formatDecimal(payload.dominantSenderRatio())),
                     Map.entry("goodbyeRatio", formatDecimal(payload.goodbyeRatio())),

@@ -50,6 +50,22 @@ public class KafkaConfig {
     }
 
     @Bean
+    public NewTopic vodCrawlCompleteTopic() {
+        return TopicBuilder.name("vod-crawl-complete-topic")
+                .partitions(5)
+                .replicas(1)
+                .build();
+    }
+
+    @Bean
+    public NewTopic vodAnalyzedTopic() {
+        return TopicBuilder.name("vod-analyzed-topic")
+                .partitions(5)
+                .replicas(1)
+                .build();
+    }
+
+    @Bean
     public NewTopic vodWindowSummaryTopic() {
         return TopicBuilder.name("vod-window-summary-topic")
                 .partitions(5)
@@ -60,6 +76,14 @@ public class KafkaConfig {
     @Bean
     public NewTopic vodAnalysisCompleteTopic() {
         return TopicBuilder.name("vod-analysis-complete-topic")
+                .partitions(5)
+                .replicas(1)
+                .build();
+    }
+
+    @Bean
+    public NewTopic vodAnalysisFailedTopic() {
+        return TopicBuilder.name("vod-analysis-failed-topic")
                 .partitions(5)
                 .replicas(1)
                 .build();
