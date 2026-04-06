@@ -30,8 +30,10 @@ import KeywordBubbleChart from "@/components/KeywordBubbleChart";
 import VodHighlightBoard from "@/components/VodHighlightBoard";
 import MoodGauge from "@/components/MoodGauge";
 import EmotionHeatmap from "@/components/EmotionHeatmap";
+import PollCard from "@/components/poll/PollCard";
 import V2InsightsPanel from "@/components/v2/V2InsightsPanel";
 import type { V2Frame } from "@/components/v2/V2InsightsPanel";
+import { usePollSession } from "@/hooks/usePollSession";
 import { appendOwnerId, buildOwnerHeaders } from "@/lib/ownerAuth";
 
 interface Highlight {
@@ -130,14 +132,6 @@ export default function ChannelDashboard({
     label: string;
     color: string;
   } | null>(null);
-  const [isSessionActive, setIsSessionActive] = useState(false);
-  const [pollResults, setPollResults] = useState<Record<string, number>>({});
-  const [voters, setVoters] = useState<Record<string, string>>({});
-  const [selectedVoter, setSelectedVoter] = useState<string | null>(null);
-  const [voterHistory, setVoterHistory] = useState<HistoryItem[]>([]);
-  const [pollItems, setPollItems] = useState<string[]>([]);
-  const [showPollCreator, setShowPollCreator] = useState(false);
-  const [newPollItems, setNewPollItems] = useState<string[]>(["", ""]);
   const [keywordStats, setKeywordStats] = useState<Record<string, number>>({});
   const [v2Frame, setV2Frame] = useState<V2Frame | null>(null);
   const [activeTab, setActiveTab] = useState<"live" | "vod">("live");
@@ -254,10 +248,15 @@ export default function ChannelDashboard({
       }
     };
 
-    void fetchBroadcastStatus;
+    void fetchBroadcastStatus();
+
+    const intervalId = window.setInterval(() => {
+      void fetchBroadcastStatus(true);
+    }, 60_000);
 
     return () => {
       disposed = true;
+      window.clearInterval(intervalId);
     };
   }, [channelId, ownerChannelId]);
 
@@ -276,7 +275,6 @@ export default function ChannelDashboard({
       message,
     });
     setOwnerChannelId("");
-    setIsSessionActive(false);
     setIsConnected(false);
     setSessionNotice(message);
   }, []);
@@ -309,6 +307,16 @@ export default function ChannelDashboard({
     }
     return (await response.json()) as T;
   }, [fetchOwned]);
+
+  const pollSession = usePollSession({
+    roomId: channelId,
+    ownerId: ownerChannelId,
+    isAuthorizedChannel,
+    fetchOwned,
+    preferredMode: "AUTO",
+  });
+
+  const isSessionActive = pollSession.isSessionActive;
 
   useEffect(() => {
     if (!channelId || !isAuthorizedChannel) return;
@@ -450,37 +458,8 @@ export default function ChannelDashboard({
       };
     };
 
-    const fetchPollState = async () => {
-      try {
-        const sessionState = await fetchOwnedJson<boolean>(`http://localhost:8083/api/v1/poll/${channelId}/session`);
-        if (sessionState === null) return;
-        setIsSessionActive(sessionState);
-
-        const nextPollResults = await fetchOwnedJson<Record<string, number>>(`http://localhost:8083/api/v1/poll/${channelId}/results`);
-        if (nextPollResults === null) return;
-        setPollResults(nextPollResults);
-
-        const nextPollItems = await fetchOwnedJson<string[]>(`http://localhost:8083/api/v1/poll/${channelId}/items`);
-        if (nextPollItems === null) return;
-        setPollItems(nextPollItems);
-      } catch {}
-    };
-
     fetchHistory();
-    fetchPollState();
     connectSSE();
-
-    const pollInterval = setInterval(async () => {
-      try {
-        const results = await fetchOwnedJson<Record<string, number>>(`http://localhost:8083/api/v1/poll/${channelId}/results`);
-        if (results === null) return;
-        setPollResults(results);
-
-        const voterData = await fetchOwnedJson<Record<string, string>>(`http://localhost:8083/api/v1/poll/${channelId}/voters`);
-        if (voterData === null) return;
-        setVoters(voterData);
-      } catch {}
-    }, 3000);
 
     return () => {
       if (reconnectTimeoutRef.current !== null) {
@@ -489,7 +468,6 @@ export default function ChannelDashboard({
       }
       eventSourceRef.current?.close();
       eventSourceRef.current = null;
-      clearInterval(pollInterval);
     };
   }, [channelId, fetchOwnedJson, isAuthorizedChannel, ownerChannelId]);
 
@@ -513,8 +491,6 @@ export default function ChannelDashboard({
     [keywordStats, v2Frame],
   );
 
-  const totalPollVotes = Object.values(pollResults).reduce((sum, count) => sum + count, 0);
-
   const handleLogin = () => {
     window.location.href = "/api/chzzk/login";
   };
@@ -525,7 +501,6 @@ export default function ChannelDashboard({
     });
     setOwnerProfile(EMPTY_OWNER_PROFILE);
     setOwnerChannelId("");
-    setIsSessionActive(false);
     router.replace("/");
   };
 
@@ -636,11 +611,7 @@ export default function ChannelDashboard({
         }
       }
 
-      const pollSessionResponse = await fetchOwned(`http://localhost:8083/api/v1/poll/${channelId}/session?active=${nextState}`, {
-        method: "POST",
-      });
-      if (!pollSessionResponse) return;
-      setIsSessionActive(nextState);
+      await pollSession.setSessionActive(nextState);
     } catch (error) {
       console.error("Failed to toggle session:", error);
       if (error instanceof Error) {
@@ -649,55 +620,6 @@ export default function ChannelDashboard({
       }
       alert("분석 상태를 변경하지 못했습니다. 백엔드 상태를 확인해 주세요.");
     }
-  };
-
-  const handleClearPoll = async () => {
-    if (!confirm("현재 투표를 초기화할까요?")) return;
-    try {
-      const response = await fetchOwned(`http://localhost:8083/api/v1/poll/${channelId}`, {
-        method: "DELETE",
-      });
-      if (!response) return;
-      setPollResults({});
-      setVoters({});
-    } catch {}
-  };
-
-  const handleCreatePoll = async () => {
-    const items = newPollItems.filter((item) => item.trim() !== "");
-    if (items.length < 2) {
-      alert("투표 항목을 두 개 이상 입력해 주세요.");
-      return;
-    }
-
-    try {
-      const saveItemsResponse = await fetchOwned(`http://localhost:8083/api/v1/poll/${channelId}/items`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...buildOwnerHeaders(ownerChannelId),
-        },
-        body: JSON.stringify(items),
-      });
-      if (!saveItemsResponse) return;
-      setPollItems(items);
-      setShowPollCreator(false);
-      const resetPollResponse = await fetchOwned(`http://localhost:8083/api/v1/poll/${channelId}`, {
-        method: "DELETE",
-      });
-      if (!resetPollResponse) return;
-      setPollResults({});
-      setVoters({});
-    } catch {}
-  };
-
-  const openVoterHistory = async (userId: string) => {
-    setSelectedVoter(userId);
-    const history = await fetchOwnedJson<HistoryItem[]>(
-      `http://localhost:8083/api/v1/poll/${channelId}/voters/${userId}/history`,
-    );
-    if (!history) return;
-    setVoterHistory(history);
   };
 
   const renderMetric = (
@@ -1235,108 +1157,7 @@ export default function ChannelDashboard({
             </div>
           </div>
 
-          <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">투표</div>
-                <div className="mt-2 text-xl font-black text-slate-950">시청자 반응 확인</div>
-              </div>
-              <Users className="h-5 w-5 text-emerald-300" />
-            </div>
-
-            <div className="mb-4 flex flex-wrap gap-3">
-              <button
-                onClick={() => setShowPollCreator((prev) => !prev)}
-                className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-black text-white transition hover:bg-slate-800"
-              >
-                {showPollCreator ? "편집 닫기" : "항목 편집"}
-              </button>
-              <button
-                onClick={handleClearPoll}
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 transition hover:bg-slate-100"
-              >
-                투표 초기화
-              </button>
-            </div>
-
-            {showPollCreator ? (
-              <div className="mb-5 space-y-3 rounded-[24px] border border-slate-200 bg-slate-50 p-4">
-                {newPollItems.map((item, index) => (
-                  <input
-                    key={`${index}-${item}`}
-                    value={item}
-                    onChange={(event) =>
-                      setNewPollItems((prev) =>
-                        prev.map((current, currentIndex) =>
-                          currentIndex === index ? event.target.value : current,
-                        ),
-                      )
-                    }
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-sky-400/40"
-                    placeholder={`항목 ${index + 1}`}
-                  />
-                ))}
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    onClick={() => setNewPollItems((prev) => [...prev, ""])}
-                    className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700"
-                  >
-                    항목 추가
-                  </button>
-                  <button
-                    onClick={handleCreatePoll}
-                    className="rounded-2xl bg-sky-500 px-4 py-2 text-sm font-black text-slate-950"
-                  >
-                    저장
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            <div className="space-y-3">
-              {pollItems.length === 0 ? (
-                <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
-                  방송 중 시청자 반응을 확인하려면 먼저 투표 항목을 만들어 주세요.
-                </div>
-              ) : (
-                pollItems.map((item) => {
-                  const votes = pollResults[item] ?? 0;
-                  const ratio = totalPollVotes ? (votes / totalPollVotes) * 100 : 0;
-                  const votersForItem = Object.entries(voters)
-                    .filter(([, selected]) => selected === item)
-                    .map(([userId]) => userId)
-                    .slice(0, 5);
-
-                  return (
-                    <div key={item} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="font-bold text-slate-950">{item}</div>
-                        <div className="text-sm font-mono text-slate-500">
-                          {votes}표 · {ratio.toFixed(0)}%
-                        </div>
-                      </div>
-                      <div className="mt-3 h-2 rounded-full bg-white/6">
-                        <div className="h-2 rounded-full bg-emerald-400" style={{ width: `${ratio}%` }} />
-                      </div>
-                      {votersForItem.length > 0 ? (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {votersForItem.map((userId) => (
-                            <button
-                              key={userId}
-                              onClick={() => openVoterHistory(userId)}
-                              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700 transition hover:bg-slate-100"
-                            >
-                              {userId}
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
+          <PollCard session={pollSession} />
 
           <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-5 flex items-center justify-between">
@@ -1381,56 +1202,7 @@ export default function ChannelDashboard({
       </section>
       )}
 
-      {dashboardMode === "detail" && selectedVoter ? (
-        <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">투표 참여 기록</div>
-              <div className="mt-2 text-xl font-black text-slate-950">{selectedVoter}</div>
-            </div>
-            <button
-              onClick={() => {
-                setSelectedVoter(null);
-                setVoterHistory([]);
-              }}
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700"
-            >
-              닫기
-            </button>
-          </div>
-
-          <div className="space-y-3">
-            {voterHistory.length === 0 ? (
-              <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
-                아직 이 시청자의 최근 분석 기록이 없습니다.
-              </div>
-            ) : (
-              voterHistory.map((message) => {
-                const config = EMOTION_MAP[message.emotionType] || EMOTION_MAP.NEUTRAL;
-
-                return (
-                  <div key={message.messageId} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-                      <span
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-full"
-                        style={{ backgroundColor: `${config.color}22`, color: config.color }}
-                      >
-                        {config.icon}
-                      </span>
-                      {config.label}
-                      <span className="font-mono text-slate-400">{(message.emotionScore * 100).toFixed(0)}%</span>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-slate-700">{message.content || "(빈 메시지)"}</p>
-                    <div className="mt-3 text-xs text-slate-500">
-                      {message.analyzedAt ? new Date(message.analyzedAt).toLocaleString() : "시간 정보 대기 중"}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </section>
-      ) : null}
+      {dashboardMode === "detail" ? <PollCard session={pollSession} variant="history" /> : null}
 
       {dashboardMode === "detail" ? (
       <section className="grid gap-5 lg:grid-cols-3">
