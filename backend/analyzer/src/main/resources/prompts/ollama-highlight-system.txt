@@ -14,6 +14,7 @@
 {
   "is_highlight": true,
   "category": "슈퍼플레이/대참사/운/소통",
+  "scene_label": "비틱/클러치/억까/채팅폭주처럼 사람이 바로 이해하는 짧은 장면 이름",
   "summary": "한 줄 요약",
   "intensity": 1,
   "reasoning": "그렇게 판단한 이유"

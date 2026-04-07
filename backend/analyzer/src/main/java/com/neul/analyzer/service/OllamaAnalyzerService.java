@@ -334,6 +334,7 @@ public class OllamaAnalyzerService {
             Map<String, Object> root = objectMapper.readValue(jsonStr, new TypeReference<Map<String, Object>>() {});
             boolean isHighlight = Boolean.TRUE.equals(root.get("is_highlight"));
             String category = String.valueOf(root.getOrDefault("category", isHighlight ? "소통" : "판단보류")).trim();
+            String sceneLabel = String.valueOf(root.getOrDefault("scene_label", category)).trim();
             String summary = String.valueOf(root.getOrDefault("summary", isHighlight ? "하이라이트 후보 구간입니다." : "하이라이트 근거가 약한 구간입니다.")).trim();
             String reasoning = String.valueOf(root.getOrDefault("reasoning", "LLM reasoning not provided.")).trim();
             int intensity = 5;
@@ -341,7 +342,7 @@ public class OllamaAnalyzerService {
             if (rawIntensity instanceof Number number) {
                 intensity = Math.max(1, Math.min(10, number.intValue()));
             }
-            return new HighlightDecision(isHighlight, category, summary, intensity, reasoning);
+            return new HighlightDecision(isHighlight, category, sceneLabel, summary, intensity, reasoning);
         } catch (Exception e) {
             log.warn("[Ollama] Failed to parse highlight decision: {}", e.getMessage());
             return HighlightDecision.fallback("Failed to parse structured highlight decision.");
