@@ -35,6 +35,7 @@ public class VodHighlightConsumer {
                     .editabilityScore(point.getEditabilityScore())
                     .category(point.getCategory())
                     .reactionLabel(point.getReactionLabel())
+                    .sceneLabel(point.getSceneLabel())
                     .description(point.getDescription())
                     .reasonSummary(point.getReasonSummary())
                     .topMessage(point.getTopMessage())
