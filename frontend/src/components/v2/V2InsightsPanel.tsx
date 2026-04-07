@@ -80,6 +80,8 @@ const EMPTY_FRAME: V2Frame = {
 export default function V2InsightsPanel({ roomId, ownerId, onFrame }: Props) {
   const [frame, setFrame] = useState<V2Frame>(EMPTY_FRAME);
   const [connected, setConnected] = useState(false);
+  const [hasReceivedFrame, setHasReceivedFrame] = useState(false);
+  const [hasOpenedStream, setHasOpenedStream] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
@@ -87,7 +89,13 @@ export default function V2InsightsPanel({ roomId, ownerId, onFrame }: Props) {
 
     let cancelled = false;
 
+    setFrame(EMPTY_FRAME);
+    setConnected(false);
+    setHasReceivedFrame(false);
+    setHasOpenedStream(false);
+
     const pushFrame = (nextFrame: V2Frame) => {
+      setHasReceivedFrame(true);
       setFrame(nextFrame);
       onFrame?.(nextFrame);
     };
@@ -116,7 +124,10 @@ export default function V2InsightsPanel({ roomId, ownerId, onFrame }: Props) {
       );
       eventSourceRef.current = es;
 
-      es.onopen = () => setConnected(true);
+      es.onopen = () => {
+        setConnected(true);
+        setHasOpenedStream(true);
+      };
       es.onerror = () => {
         setConnected(false);
         es.close();
@@ -140,27 +151,62 @@ export default function V2InsightsPanel({ roomId, ownerId, onFrame }: Props) {
       cancelled = true;
       eventSourceRef.current?.close();
     };
-  }, [roomId, onFrame]);
+  }, [ownerId, roomId, onFrame]);
+
+  const hasFrame = hasReceivedFrame || Boolean(frame.roomId);
+
+  const connectionState = connected
+    ? hasFrame
+      ? {
+          label: "실시간 반영 중",
+          summary: "카드가 바뀌는 순간이 지금 분위기입니다.",
+          toneClass: "border-emerald-200 bg-emerald-50 text-emerald-900",
+          dotClass: "bg-emerald-500",
+          labelClass: "text-emerald-700",
+        }
+      : {
+          label: "첫 프레임 대기 중",
+          summary: "첫 요약이 들어오면 아래 카드가 바로 채워집니다.",
+          toneClass: "border-sky-200 bg-sky-50 text-sky-900",
+          dotClass: "bg-sky-500 animate-pulse",
+          labelClass: "text-sky-700",
+        }
+    : hasOpenedStream
+      ? {
+          label: "재연결 중",
+          summary: "다시 붙는 즉시 최신 프레임으로 맞춰집니다.",
+          toneClass: "border-rose-200 bg-rose-50 text-rose-900",
+          dotClass: "bg-rose-500 animate-pulse",
+          labelClass: "text-rose-700",
+        }
+      : {
+          label: "연결 준비 중",
+          summary: "스트림을 열고 첫 상태를 불러오는 중입니다.",
+          toneClass: "border-slate-200 bg-slate-50 text-slate-900",
+          dotClass: "bg-slate-400 animate-pulse",
+          labelClass: "text-slate-700",
+        };
 
   return (
     <section className="mb-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-black tracking-[0.25em] text-slate-500">심리 가드레일</h2>
-          <p className="mt-2 text-sm text-slate-600">
-            지금 꼭 봐야 할 민심 흐름과 대표 반응만 빠르게 정리합니다.
-          </p>
+          <p className="mt-2 text-sm text-slate-600">핵심 신호만 바로 읽을 수 있게 묶었습니다.</p>
           {frame.topicLabel ? (
             <div className="mt-3 inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[10px] font-black tracking-[0.2em] text-indigo-600">
               현재 주제 {frame.topicLabel}
             </div>
-          ) : null}
+            ) : null}
         </div>
-        <div className="flex items-center gap-2 text-xs font-bold">
-          <span className={`w-2.5 h-2.5 rounded-full ${connected ? "bg-emerald-500" : "bg-rose-500 animate-pulse"}`} />
-          <span className={connected ? "text-emerald-600" : "text-rose-500"}>
-            {connected ? "실시간 연결됨" : "다시 연결 중"}
-          </span>
+        <div className={`rounded-2xl border px-4 py-3 ${connectionState.toneClass}`}>
+          <div className="flex items-center gap-2 text-[11px] font-black tracking-[0.18em]">
+            <span className={`h-2.5 w-2.5 rounded-full ${connectionState.dotClass}`} />
+            <span className={connectionState.labelClass}>{connectionState.label}</span>
+          </div>
+          <p className="mt-2 max-w-[280px] text-xs leading-5 text-slate-600">
+            {connectionState.summary}
+          </p>
         </div>
       </div>
 

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
   Clock3,
+  Copy,
+  ExternalLink,
   Film,
   LoaderCircle,
   Pin,
@@ -36,6 +38,7 @@ interface VodHighlight {
   editabilityScore?: number | null;
   category: string;
   reactionLabel?: string | null;
+  sceneLabel?: string | null;
   description: string;
   reasonSummary?: string | null;
   topMessage: string;
@@ -172,6 +175,43 @@ function formatDateTime(value?: string | number | null) {
   return new Date(value).toLocaleString("ko-KR");
 }
 
+function buildOriginalVodUrl(videoNo: string) {
+  return `https://chzzk.naver.com/video/${videoNo}`;
+}
+
+async function copyText(text: string) {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  if (typeof document === "undefined") {
+    throw new Error("copy-unavailable");
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  textarea.style.pointerEvents = "none";
+
+  document.body.appendChild(textarea);
+  let copied = false;
+
+  try {
+    textarea.focus();
+    textarea.select();
+    copied = document.execCommand("copy");
+  } finally {
+    document.body.removeChild(textarea);
+  }
+
+  if (!copied) {
+    throw new Error("copy-failed");
+  }
+}
+
 function resolveVideoNo(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return "";
@@ -234,7 +274,7 @@ function toReadablePoints(...values: Array<string | null | undefined>) {
   return values
     .flatMap((value) =>
       (value ?? "")
-        .split(/(?<=[.!?])\s+/)
+        .split(/\s*\|\s*|(?<=[.!?])\s+/)
         .map((part) => part.trim())
         .filter(Boolean),
     )
@@ -242,7 +282,7 @@ function toReadablePoints(...values: Array<string | null | undefined>) {
 }
 
 function toCompactReasonTags(highlight: VodHighlight) {
-  const source = `${highlight.description} ${highlight.reasonSummary ?? ""}`;
+  const source = `${highlight.sceneLabel ?? ""} ${highlight.description} ${highlight.reasonSummary ?? ""}`;
   const tags = new Set<string>();
 
   if (
@@ -315,6 +355,10 @@ function toCompactReasonTags(highlight: VodHighlight) {
   }
 
   return Array.from(tags).slice(0, 4);
+}
+
+function getDisplaySceneLabel(highlight: VodHighlight) {
+  return highlight.sceneLabel || highlight.reactionLabel || categoryLabel[highlight.category] || "편집 후보";
 }
 
 function buildMarkerClusters(
@@ -394,9 +438,11 @@ export default function VodHighlightBoard({
   const [chartWidth, setChartWidth] = useState(0);
   const [hoveredChartBar, setHoveredChartBar] = useState<ChartHoverCard | null>(null);
   const [inlineNotice, setInlineNotice] = useState<InlineNotice | null>(null);
+  const [copiedHighlightId, setCopiedHighlightId] = useState<number | null>(null);
 
   const cardRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const chartViewportRef = useRef<HTMLDivElement | null>(null);
+  const copiedHighlightResetRef = useRef<number | null>(null);
 
   const fetchStatus = useCallback(async (videoNo: string) => {
     const response = await fetch(`/api/vod/${videoNo}/status`, {
@@ -640,6 +686,14 @@ export default function VodHighlightBoard({
   }, [selectedVideoNo, status.status, syncData]);
 
   useEffect(() => {
+    return () => {
+      if (copiedHighlightResetRef.current) {
+        window.clearTimeout(copiedHighlightResetRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (highlights.length === 0) {
       setSelectedHighlightId(null);
       return;
@@ -839,6 +893,145 @@ export default function VodHighlightBoard({
         ? "분석 진행 상황 보기"
         : "분석 시작";
 
+  const lookupState = lookupLoading
+    ? {
+        label: "조회 중",
+        summary: "입력한 VOD를 확인하고 있습니다.",
+        nextStep: "잠시 후 아래에서 상태를 바로 확인하세요.",
+        toneClass: "border-indigo-200 bg-indigo-50 text-indigo-900",
+      }
+    : !metadata
+      ? {
+          label: "VOD 선택 전",
+          summary: "번호나 링크를 넣고 조회를 눌러 주세요.",
+          nextStep: "조회 후 바로 상태와 다음 행동이 열립니다.",
+          toneClass: "border-slate-200 bg-slate-50 text-slate-900",
+        }
+      : metadata.exists
+        ? {
+            label: "찾았습니다",
+            summary: `${metadata.title || `VOD ${metadata.videoNo}`} 준비 완료`,
+            nextStep: "아래 버튼으로 분석을 시작하거나 바로 열어 보세요.",
+            toneClass: "border-emerald-200 bg-emerald-50 text-emerald-900",
+          }
+        : {
+            label: "다시 확인 필요",
+            summary: metadata.message || "해당 VOD를 찾지 못했습니다.",
+            nextStep: "번호 또는 전체 URL을 확인한 뒤 다시 조회해 주세요.",
+            toneClass: "border-amber-200 bg-amber-50 text-amber-900",
+          };
+
+  const selectedVodState = !metadata
+    ? {
+        label: "VOD를 먼저 고르세요",
+        summary: "1단계 조회 후 여기서 상태와 CTA가 열립니다.",
+        nextStep: "번호나 링크를 조회해 주세요.",
+        toneClass: "border-slate-200 bg-slate-50 text-slate-900",
+      }
+    : !metadata.exists
+      ? {
+          label: "다시 조회해 주세요",
+          summary: metadata.message || "이 번호로는 다시보기 정보를 불러올 수 없습니다.",
+          nextStep: "번호나 URL을 확인한 뒤 다시 조회해 주세요.",
+          toneClass: "border-amber-200 bg-amber-50 text-amber-900",
+        }
+      : status.status === "FAILED"
+        ? {
+            label: "다시 분석 필요",
+            summary: status.message || "이전 분석이 끝나지 못했습니다.",
+            nextStep: "분석 시작으로 다시 요청하거나 다른 VOD를 선택해 주세요.",
+            toneClass: "border-amber-200 bg-amber-50 text-amber-900",
+          }
+        : status.status === "CRAWLING"
+          ? {
+            label: "채팅 수집 중",
+            summary: `현재 ${status.pagesProcessed ?? 0}페이지, ${status.chatsCollected ?? 0}개 채팅을 확인하고 있습니다.`,
+            nextStep: "완료되면 분석으로 넘어가고 워크스페이스가 갱신됩니다.",
+            toneClass: "border-indigo-200 bg-indigo-50 text-indigo-900",
+          }
+        : status.status === "WAITING"
+            ? {
+                label: "차례 대기 중",
+                summary: status.message || "분석 작업이 순서를 기다리고 있습니다.",
+                nextStep: "잠시 후 수집 또는 분석 단계로 바뀝니다.",
+                toneClass: "border-indigo-200 bg-indigo-50 text-indigo-900",
+              }
+            : status.status === "REQUESTED"
+              ? {
+                  label: "요청 접수",
+                  summary: status.message || "분석 요청이 등록되었습니다.",
+                  nextStep: "잠시 후 대기 또는 수집 단계로 바뀝니다.",
+                  toneClass: "border-indigo-200 bg-indigo-50 text-indigo-900",
+                }
+              : status.status === "ANALYZING"
+                ? {
+                    label: "후보 계산 중",
+                    summary: status.message || "편집 후보를 계산하고 있습니다.",
+                    nextStep: "완료되면 후보 목록과 상세 패널이 채워집니다.",
+                    toneClass: "border-indigo-200 bg-indigo-50 text-indigo-900",
+                  }
+                : status.status === "COMPLETED" && selectedVideoNo === metadata.videoNo && highlights.length === 0
+                  ? {
+                      label: "분석 완료",
+                      summary: "이번 결과에는 바로 검토할 후보가 없습니다.",
+                      nextStep: "다른 VOD를 보거나 나중에 다시 확인해 주세요.",
+                      toneClass: "border-emerald-200 bg-emerald-50 text-emerald-900",
+                    }
+                  : status.status === "COMPLETED"
+                    ? {
+                        label: selectedVideoNo === metadata.videoNo ? "워크스페이스 준비 완료" : "기존 결과 있음",
+                        summary:
+                          selectedVideoNo === metadata.videoNo
+                            ? `편집 후보 ${highlights.length}개를 워크스페이스에서 검토할 수 있습니다.`
+                            : "이 VOD는 이미 분석 결과가 있어 바로 워크스페이스를 열 수 있습니다.",
+                        nextStep:
+                          selectedVideoNo === metadata.videoNo
+                            ? "타임라인과 후보 목록에서 장면을 골라 액션을 남기면 됩니다."
+                            : "분석 워크스페이스 열기를 눌러 기존 결과를 불러오세요.",
+                        toneClass: "border-emerald-200 bg-emerald-50 text-emerald-900",
+                      }
+                    : {
+                        label: "분석 시작 가능",
+                        summary: "영상 확인이 끝났습니다.",
+                        nextStep: "분석 시작을 눌러 수집과 후보 생성을 시작해 주세요.",
+                        toneClass: "border-slate-200 bg-slate-50 text-slate-900",
+                      };
+
+  const resultsEmptyState = status.status === "FAILED"
+    ? {
+        title: "다시 분석이 필요합니다",
+        description: status.message || "이번 결과를 불러오지 못했습니다.",
+        detail: "위 버튼으로 다시 요청해 주세요.",
+        toneClass: "border-amber-200 bg-amber-50 text-amber-900",
+      }
+    : isAnalysisActive
+      ? {
+          title: "후보 준비 중입니다",
+          description: "완료되면 목록과 상세 패널이 자동으로 채워집니다.",
+          detail: "잠시만 기다려 주세요.",
+          toneClass: "border-indigo-200 bg-indigo-50 text-indigo-900",
+        }
+      : status.status === "COMPLETED" && highlights.length === 0
+        ? {
+            title: "이번 영상은 후보 없음",
+            description: "기준을 넘는 하이라이트가 아직 없습니다.",
+            detail: "다른 VOD를 열어 보세요.",
+            toneClass: "border-emerald-200 bg-emerald-50 text-emerald-900",
+          }
+        : filteredHighlights.length === 0 && highlights.length > 0
+          ? {
+              title: "필터를 바꿔 보세요",
+              description: "숨겨진 후보가 있어 현재 목록이 비어 있습니다.",
+              detail: "추천만, 전체, 편집점, 좋아요를 전환해 보세요.",
+              toneClass: "border-slate-200 bg-slate-50 text-slate-900",
+            }
+          : {
+              title: "워크스페이스를 열어 주세요",
+              description: "선택한 VOD의 후보 목록은 여기서 바로 이어집니다.",
+              detail: "위 CTA를 누르면 열립니다.",
+              toneClass: "border-slate-200 bg-slate-50 text-slate-900",
+            };
+
   const handleLookup = async () => {
     const videoNo = resolveVideoNo(videoInput);
     if (!videoNo) {
@@ -938,6 +1131,32 @@ export default function VodHighlightBoard({
     }
   };
 
+  const handleCopyHighlightTimecode = useCallback(
+    async (highlight: Pick<VodHighlight, "id" | "startSeconds" | "endSeconds">) => {
+      const timecode = formatSeconds(highlight.startSeconds);
+
+      try {
+        await copyText(timecode);
+        setInlineNotice(null);
+        setCopiedHighlightId(highlight.id);
+        if (copiedHighlightResetRef.current) {
+          window.clearTimeout(copiedHighlightResetRef.current);
+        }
+        copiedHighlightResetRef.current = window.setTimeout(() => {
+          setCopiedHighlightId((current) =>
+            current === highlight.id ? null : current,
+          );
+        }, 2400);
+      } catch {
+        setInlineNotice({
+          tone: "warn",
+          message: "타임코드 복사에 실패했습니다. 다시 시도해 주세요.",
+        });
+      }
+    },
+    [],
+  );
+
   return (
     <div className="space-y-6 overflow-x-hidden">
       <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
@@ -950,9 +1169,7 @@ export default function VodHighlightBoard({
             <h3 className="text-2xl font-black text-slate-950">
               다시보기를 찾고 편집 후보 검토를 시작하세요
             </h3>
-            <p className="max-w-2xl text-sm leading-6 text-slate-600">
-              VOD 번호나 링크를 조회하면 존재 여부와 기본 정보를 먼저 확인합니다. 그다음 선택한 영상의 상태를 보고 분석을 시작하거나 바로 워크스페이스로 이어서 볼 수 있습니다.
-            </p>
+            <p className="max-w-2xl text-sm leading-6 text-slate-600">번호나 링크를 조회한 뒤 바로 아래 CTA로 이어가면 됩니다.</p>
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -986,6 +1203,20 @@ export default function VodHighlightBoard({
             {inlineNotice.message}
           </div>
         ) : null}
+
+        <div className={`mt-4 rounded-[24px] border px-5 py-4 ${lookupState.toneClass}`}>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="inline-flex items-center rounded-full border border-white/70 bg-white/85 px-3 py-1 text-[11px] font-black tracking-[0.18em] text-slate-700">
+                {lookupState.label}
+              </div>
+              <p className="mt-3 text-sm font-semibold text-slate-900">{lookupState.summary}</p>
+            </div>
+            <div className="rounded-2xl border border-white/70 bg-white/85 px-4 py-3 text-sm font-semibold text-slate-700">
+              다음 · {lookupState.nextStep}
+            </div>
+          </div>
+        </div>
       </section>
 
       <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
@@ -1003,7 +1234,7 @@ export default function VodHighlightBoard({
 
         {!metadata ? (
           <div className="mt-5 rounded-[26px] border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-sm font-semibold text-slate-500">
-            먼저 다시보기를 조회하면 여기에서 선택한 영상의 상태, 메타데이터, 다음 단계가 정리됩니다.
+            1단계에서 VOD를 고르면 여기서 바로 상태와 CTA를 확인합니다.
           </div>
         ) : metadata.exists ? (
           <div className="mt-5 grid gap-5 lg:grid-cols-[280px_1fr]">
@@ -1070,6 +1301,20 @@ export default function VodHighlightBoard({
                 </div>
               </div>
 
+              <div className={`rounded-[22px] border px-5 py-4 ${selectedVodState.toneClass}`}>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <div className="inline-flex items-center rounded-full border border-white/70 bg-white/85 px-3 py-1 text-[11px] font-black tracking-[0.18em] text-slate-700">
+                      {selectedVodState.label}
+                    </div>
+                    <p className="mt-3 text-sm font-semibold text-slate-900">{selectedVodState.summary}</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/70 bg-white/85 px-4 py-3 text-sm font-semibold text-slate-700">
+                    다음 · {selectedVodState.nextStep}
+                  </div>
+                </div>
+              </div>
+
               <div className="flex flex-wrap gap-3">
                 <button
                   onClick={() =>
@@ -1106,9 +1351,7 @@ export default function VodHighlightBoard({
             <div>
               <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">3. 분석 워크스페이스</div>
               <h4 className="mt-2 text-2xl font-black text-slate-950">선택한 VOD의 흐름과 편집 후보를 한곳에서 확인합니다</h4>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                타임라인으로 방송 흐름을 먼저 읽고, 마커 레일로 후보 묶음을 훑은 뒤, 오른쪽 상세 패널에서 장면을 검토하고 액션을 남길 수 있습니다.
-              </p>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">타임라인에서 고르고, 오른쪽 패널에서 바로 액션을 남기면 됩니다.</p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
@@ -1301,7 +1544,7 @@ export default function VodHighlightBoard({
                               {selectedCluster.items.length > 1 ? "가까운 후보 묶음" : "선택한 편집 후보"}
                             </div>
                             <div className="mt-1 text-base font-black text-slate-950">
-                              {selectedCluster.items[0].reactionLabel || categoryLabel[selectedCluster.items[0].category] || "편집 후보"}
+                              {getDisplaySceneLabel(selectedCluster.items[0])}
                             </div>
                             <div className="mt-3 flex max-w-xl flex-wrap gap-2">
                               {selectedClusterPoints.map((point) => (
@@ -1356,16 +1599,17 @@ export default function VodHighlightBoard({
 
                 {selectedHighlight ? (
                   (() => {
-                    const spotlightPoints = toReadablePoints(selectedHighlight.description, selectedHighlight.reasonSummary).slice(0, 3);
+                    const spotlightPoints = toReadablePoints(
+                      selectedHighlight.reasonSummary,
+                      selectedHighlight.description,
+                    ).slice(0, 3);
+                    const selectedTimecodeCopied = copiedHighlightId === selectedHighlight.id;
 
                     return (
                       <div className="space-y-4">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-[11px] font-black tracking-[0.18em] text-indigo-700">
-                            {selectedHighlight.reactionLabel || categoryLabel[selectedHighlight.category] || "편집 후보"}
-                          </span>
-                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-black tracking-[0.18em] text-amber-700">
-                            <Zap className="h-3.5 w-3.5" />추천 강도 {selectedHighlight.highlightScore.toFixed(1)}
+                            {getDisplaySceneLabel(selectedHighlight)}
                           </span>
                         </div>
 
@@ -1388,6 +1632,46 @@ export default function VodHighlightBoard({
                           </div>
                         </div>
 
+                        <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-4">
+                          <div className="flex flex-wrap gap-2">
+                            <a
+                              href={buildOriginalVodUrl(selectedHighlight.videoNo)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-3.5 py-2 text-xs font-black text-indigo-700 transition hover:bg-indigo-100"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />원본 VOD 열기
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => void handleCopyHighlightTimecode(selectedHighlight)}
+                              className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-black transition ${selectedTimecodeCopied ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"}`}
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                              {selectedTimecodeCopied ? "타임코드 복사됨" : "타임코드 복사"}
+                            </button>
+                          </div>
+                          <p className="mt-3 text-xs font-semibold leading-5 text-indigo-700">
+                            원본 VOD를 연 뒤 {formatSeconds(selectedHighlight.startSeconds)}부터 {formatSeconds(selectedHighlight.endSeconds)} 사이를 확인해 보세요.
+                          </p>
+                        </div>
+
+                        <div>
+                          <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">왜 중요한가</div>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {(spotlightPoints.length > 0
+                              ? spotlightPoints
+                              : toCompactReasonTags(selectedHighlight)).map((point) => (
+                              <span key={point} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold leading-5 text-slate-700">{point}</span>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                          <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">대표 채팅</div>
+                          <p className="mt-2 text-sm leading-6 text-slate-700">"{selectedHighlight.topMessage || "대표 채팅이 없는 구간입니다."}"</p>
+                        </div>
+
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="button"
@@ -1407,48 +1691,40 @@ export default function VodHighlightBoard({
                             type="button"
                             onClick={() => void handleHighlightAction(selectedHighlight.id, "BAD")}
                             className={`inline-flex items-center gap-1 rounded-full border px-3 py-2 text-xs font-black transition ${selectedHighlightAction === "BAD" ? "border-slate-300 bg-slate-100 text-slate-700" : "border-slate-200 bg-white text-slate-600"}`}
-                          >
-                            <XCircle className="h-3.5 w-3.5" />별로예요
-                          </button>
-                        </div>
-
-                        <div>
-                          <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">추천 이유</div>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {(spotlightPoints.length > 0 ? spotlightPoints : toCompactReasonTags(selectedHighlight)).map((point) => (
-                              <span key={point} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold leading-5 text-slate-700">{point}</span>
-                            ))}
-                          </div>
+                            >
+                              <XCircle className="h-3.5 w-3.5" />별로예요
+                            </button>
                         </div>
 
                         <div className="flex flex-wrap gap-2 text-xs font-bold text-slate-600">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-amber-700">
+                            <Zap className="h-3.5 w-3.5" />추천 강도 {selectedHighlight.highlightScore.toFixed(1)}
+                          </span>
                           {typeof selectedHighlight.intensityScore === "number" ? <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">반응 밀집도 {selectedHighlight.intensityScore.toFixed(1)}</span> : null}
                           {typeof selectedHighlight.transitionScore === "number" && selectedHighlight.transitionScore > 0 ? <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">흐름 전환 {selectedHighlight.transitionScore.toFixed(1)}</span> : null}
                           {typeof selectedHighlight.editabilityScore === "number" ? <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">편집 용이도 {selectedHighlight.editabilityScore.toFixed(1)}</span> : null}
-                        </div>
-
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                          <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">대표 채팅</div>
-                          <p className="mt-2 text-sm leading-6 text-slate-700">"{selectedHighlight.topMessage || "대표 채팅이 없는 구간입니다."}"</p>
                         </div>
                       </div>
                     );
                   })()
                 ) : (
-                  <div className={`rounded-[22px] border px-5 py-4 ${statusToneClass}`}>
+                  <div className={`rounded-[22px] border px-5 py-4 ${resultsEmptyState.toneClass}`}>
                     <div className="flex items-start gap-3">
                       <div className="mt-0.5">
-                        {isAnalysisActive ? <LoaderCircle className="h-5 w-5 animate-spin" /> : status.status === "COMPLETED" ? <CheckCircle2 className="h-5 w-5" /> : <Clock3 className="h-5 w-5" />}
+                        {status.status === "FAILED" ? (
+                          <XCircle className="h-5 w-5" />
+                        ) : isAnalysisActive ? (
+                          <LoaderCircle className="h-5 w-5 animate-spin" />
+                        ) : status.status === "COMPLETED" ? (
+                          <CheckCircle2 className="h-5 w-5" />
+                        ) : (
+                          <Clock3 className="h-5 w-5" />
+                        )}
                       </div>
                       <div>
-                        <div className="text-base font-black">
-                          {isAnalysisActive
-                            ? "편집 후보를 생성하는 중입니다."
-                            : status.status === "COMPLETED"
-                              ? "분석은 완료됐지만 표시할 후보가 아직 없습니다."
-                              : "후보를 보려면 분석을 시작하거나 기존 분석을 열어 주세요."}
-                        </div>
-                        <div className="mt-1 text-sm leading-6 text-slate-600">{status.message || EMPTY_STATUS.message}</div>
+                        <div className="text-base font-black">{resultsEmptyState.title}</div>
+                        <div className="mt-1 text-sm leading-6 text-slate-600">{resultsEmptyState.description}</div>
+                        <div className="mt-2 text-xs leading-5 text-slate-500">{resultsEmptyState.detail}</div>
                       </div>
                     </div>
                   </div>
@@ -1487,15 +1763,26 @@ export default function VodHighlightBoard({
 
                 <div className="max-h-[720px] space-y-3 overflow-y-auto pr-1">
                   {filteredHighlights.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center">
-                      <Clock3 className="mx-auto h-8 w-8 text-slate-400" />
-                      <div className="mt-3 text-base font-black text-slate-900">표시할 편집 후보가 없습니다.</div>
-                      <div className="mt-2 text-sm text-slate-500">필터를 바꾸거나 분석이 끝난 뒤 다시 확인해 주세요.</div>
+                    <div className={`rounded-2xl border px-5 py-10 text-center ${resultsEmptyState.toneClass}`}>
+                      {status.status === "FAILED" ? (
+                        <XCircle className="mx-auto h-8 w-8" />
+                      ) : isAnalysisActive ? (
+                        <LoaderCircle className="mx-auto h-8 w-8 animate-spin" />
+                      ) : status.status === "COMPLETED" ? (
+                        <CheckCircle2 className="mx-auto h-8 w-8" />
+                      ) : (
+                        <Clock3 className="mx-auto h-8 w-8" />
+                      )}
+                      <div className="mt-3 text-base font-black text-slate-900">{resultsEmptyState.title}</div>
+                      <div className="mt-2 text-sm text-slate-600">{resultsEmptyState.description}</div>
+                      <div className="mt-2 text-xs leading-5 text-slate-500">{resultsEmptyState.detail}</div>
                     </div>
                   ) : (
                     filteredHighlights.map((item) => {
                       const active = selectedHighlightId === item.id;
                       const currentAction = normalizeHighlightAction(highlightActions[item.id]);
+                      const reasonPoints = toReadablePoints(item.reasonSummary, item.description).slice(0, 2);
+                      const timecodeCopied = copiedHighlightId === item.id;
 
                       return (
                         <div
@@ -1507,16 +1794,57 @@ export default function VodHighlightBoard({
                           className={`rounded-[22px] border p-4 transition ${active ? "border-rose-300 bg-rose-50/70 shadow-sm" : "border-slate-200 bg-white"}`}
                         >
                           <div className="flex items-start justify-between gap-3">
-                            <div>
+                            <div className="space-y-2">
                               <div className="text-sm font-black text-slate-950">{formatSeconds(item.startSeconds)} ~ {formatSeconds(item.endSeconds)}</div>
                               <div className="mt-1 flex flex-wrap gap-2">
                                 <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-indigo-700">
-                                  {item.reactionLabel || categoryLabel[item.category] || "편집 후보"}
+                                  {getDisplaySceneLabel(item)}
                                 </span>
-                                <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-amber-700">강도 {item.highlightScore.toFixed(1)}</span>
+                                {currentAction === "PIN" ? (
+                                  <span className="rounded-full border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-indigo-700">편집점으로 보관됨</span>
+                                ) : currentAction === "GOOD" ? (
+                                  <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-emerald-700">좋아요 표시됨</span>
+                                ) : currentAction === "BAD" ? (
+                                  <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-slate-600">낮은 우선순위</span>
+                                ) : null}
                               </div>
                             </div>
 
+                            <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                              <a
+                                href={buildOriginalVodUrl(item.videoNo)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black text-slate-600 transition hover:bg-slate-100"
+                              >
+                                <ExternalLink className="h-3 w-3" />원본 VOD
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => void handleCopyHighlightTimecode(item)}
+                                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black transition ${timecodeCopied ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"}`}
+                              >
+                                <Copy className="h-3 w-3" />
+                                {timecodeCopied ? "복사됨" : "타임코드"}
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="mt-4">
+                            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">왜 중요한가</div>
+                            <div className="mt-2 flex flex-wrap gap-2 text-xs font-bold text-slate-600">
+                              {(reasonPoints.length > 0 ? reasonPoints : toCompactReasonTags(item).slice(0, 3)).map((point) => (
+                              <span key={point} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">{point}</span>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">대표 채팅</div>
+                            <p className="mt-2 text-sm leading-6 text-slate-700">"{item.topMessage || "대표 채팅이 없는 구간입니다."}"</p>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap gap-2">
                             <button
                               type="button"
                               onClick={() => moveToCard(item.id)}
@@ -1524,17 +1852,6 @@ export default function VodHighlightBoard({
                             >
                               상세 보기
                             </button>
-                          </div>
-
-                          <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-600">
-                            {toCompactReasonTags(item).slice(0, 3).map((point) => (
-                              <span key={point} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">{point}</span>
-                            ))}
-                          </div>
-
-                          <p className="mt-3 text-sm leading-6 text-slate-700">"{item.topMessage || "대표 채팅이 없는 구간입니다."}"</p>
-
-                          <div className="mt-3 flex flex-wrap gap-2">
                             <button
                               type="button"
                               onClick={() => void handleHighlightAction(item.id, "GOOD")}
@@ -1557,6 +1874,13 @@ export default function VodHighlightBoard({
                               <XCircle className="h-3.5 w-3.5" />별로예요
                             </button>
                           </div>
+
+                          <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-600">
+                            <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-amber-700">추천 강도 {item.highlightScore.toFixed(1)}</span>
+                            {typeof item.intensityScore === "number" ? <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">반응 밀집도 {item.intensityScore.toFixed(1)}</span> : null}
+                            {typeof item.transitionScore === "number" && item.transitionScore > 0 ? <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">흐름 전환 {item.transitionScore.toFixed(1)}</span> : null}
+                            {typeof item.editabilityScore === "number" ? <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">편집 용이도 {item.editabilityScore.toFixed(1)}</span> : null}
+                          </div>
                         </div>
                       );
                     })
@@ -1568,11 +1892,15 @@ export default function VodHighlightBoard({
         </section>
       ) : metadata?.exists ? (
         <section className="rounded-[30px] border border-indigo-200 bg-indigo-50 p-5">
-          <div className="flex items-start gap-3">
-            <Film className="mt-0.5 h-5 w-5 text-indigo-700" />
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <div className="text-sm font-black text-slate-950">선택한 VOD 기준으로 워크스페이스가 열립니다</div>
-              <div className="mt-1 text-sm leading-6 text-slate-600">위 카드의 기본 CTA를 누르면 이 영상의 타임라인, 마커 레일, 하이라이트 상세 패널을 바로 이어서 볼 수 있습니다.</div>
+              <div className="inline-flex items-center rounded-full border border-white/70 bg-white/85 px-3 py-1 text-[11px] font-black tracking-[0.18em] text-indigo-700">
+                워크스페이스 대기
+              </div>
+              <p className="mt-3 text-sm font-semibold text-slate-900">위 버튼으로 이 VOD의 타임라인과 후보 목록을 바로 열 수 있습니다.</p>
+            </div>
+            <div className="rounded-2xl border border-white/70 bg-white/85 px-4 py-3 text-sm font-semibold text-slate-700">
+              다음 클릭 · 분석 시작 또는 분석 워크스페이스 열기
             </div>
           </div>
         </section>

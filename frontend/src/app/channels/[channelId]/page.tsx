@@ -6,7 +6,6 @@ import { AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip } from "recharts"
 import {
   AlertCircle,
   BarChart3,
-  CheckCircle2,
   Clock3,
   Download,
   Lock,
@@ -15,7 +14,6 @@ import {
   ShieldCheck,
   Sparkles,
   Target,
-  Users,
   Waves,
 } from "lucide-react";
 import KeywordBubbleChart from "@/components/KeywordBubbleChart";
@@ -750,29 +748,51 @@ export default function ChannelDashboard({
       ? { tone: "warn", message: broadcastStatus.message }
       : null);
 
-  const accessSummaryTitle = authLoading
-    ? "로그인 상태를 확인하는 중입니다"
-    : hasOwnerIdentity
-      ? `${ownerProfile.channelName || "내 채널"} 계정으로 로그인됨`
-      : "로그인이 필요합니다";
-
-  const accessSummaryDescription = authLoading
-    ? "치지직 로그인과 채널 소유 여부를 확인하고 있습니다."
-    : hasOwnerIdentity
-      ? `세션 만료 ${ownerProfile.expiresAt ? new Date(ownerProfile.expiresAt).toLocaleString() : "곧 만료"}`
-      : ownerProfile.message || "본인 방송 소유자만 이 대시보드를 열 수 있습니다.";
-
-  const accessBadgeClass = isAuthorizedChannel
-    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-    : "border-amber-200 bg-amber-50 text-amber-700";
-
-  const liveStatusLabel = statusLoading
-    ? "확인 중"
-    : broadcastStatus?.status === "live"
-      ? "방송 중"
-      : broadcastStatus?.status === "failed"
-        ? "확인 필요"
-        : "오프라인";
+  const accessState = authLoading
+    ? {
+        title: "로그인 상태를 확인하는 중입니다",
+        description: "치지직 로그인과 채널 소유 여부를 확인하고 있습니다.",
+        cause: "대시보드를 열면서 현재 브라우저 세션과 소유자 채널 정보를 조회했습니다.",
+        nextStep: "확인이 끝나면 로그인 필요, 소유자 확인 완료, 또는 제한 상태로 바뀝니다.",
+        badgeLabel: "확인 중",
+        badgeClass: "border-sky-200 bg-sky-50 text-sky-700",
+        panelClass: "border-sky-200 bg-sky-50",
+        cardClass: "border-sky-200 bg-sky-50",
+      }
+    : !hasOwnerIdentity
+      ? {
+          title: "로그인이 필요합니다",
+          description: ownerProfile.message || "치지직 소유자 로그인 없이 열린 상태입니다.",
+          cause: "현재 브라우저에 이 채널을 소유한 계정 세션이 없습니다.",
+          nextStep: "치지직 로그인 후 다시 들어오면 내 채널 대시보드와 실시간 가드레일을 사용할 수 있습니다.",
+          badgeLabel: "로그아웃",
+          badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
+          panelClass: "border-amber-200 bg-amber-50",
+          cardClass: "border-amber-200 bg-amber-50",
+        }
+      : !isAuthorizedChannel
+        ? {
+            title: `${ownerProfile.channelName || "내 채널"} 계정으로 로그인됨`,
+            description: "로그인은 되어 있지만 현재 보고 있는 채널은 이 계정의 소유 채널이 아닙니다.",
+            cause: `현재 세션은 ${ownerProfile.channelId || "내 채널"} 기준이고, 보고 있는 채널은 ${channelId}입니다.`,
+            nextStep: "본인 채널로 이동하거나 올바른 계정으로 다시 로그인해야 분석 시작 버튼이 활성화됩니다.",
+            badgeLabel: "제한됨",
+            badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
+            panelClass: "border-amber-200 bg-amber-50",
+            cardClass: "border-amber-200 bg-amber-50",
+          }
+        : {
+            title: `${ownerProfile.channelName || "내 채널"} 소유자 세션이 확인되었습니다`,
+            description: ownerProfile.expiresAt
+              ? `세션 만료 예정 ${new Date(ownerProfile.expiresAt).toLocaleString()}`
+              : "이 채널 기준으로 실시간 대시보드와 분석 제어를 사용할 수 있습니다.",
+            cause: "로그인한 계정의 소유 채널과 현재 페이지 채널이 일치합니다.",
+            nextStep: "라이브 상태를 확인한 뒤 분석 시작 또는 중지로 실시간 추적을 제어할 수 있습니다.",
+            badgeLabel: "소유자 확인",
+            badgeClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+            panelClass: "border-emerald-200 bg-emerald-50",
+            cardClass: "border-emerald-200 bg-emerald-50",
+          };
 
   const liveStatusDescription = statusLoading
     ? "현재 방송 상태를 확인하고 있습니다."
@@ -780,7 +800,128 @@ export default function ChannelDashboard({
       ? `${broadcastStatus.liveTitle}${typeof broadcastStatus.viewerCount === "number" ? ` · 시청자 ${broadcastStatus.viewerCount.toLocaleString()}명` : ""}`
       : broadcastStatus?.message || "방송 제목과 상태가 여기에 표시됩니다.";
 
+  const liveState = statusLoading
+    ? {
+        label: "상태 확인 중",
+        summary: "현재 방송 상태를 다시 확인하고 있습니다.",
+        cause: "소유자 채널의 라이브 상태를 API로 조회 중입니다.",
+        nextStep: "확인이 끝나면 방송 중, 오프라인, 또는 확인 필요 상태가 표시됩니다.",
+        cardClass: "border-sky-200 bg-sky-50",
+      }
+    : broadcastStatus?.status === "live"
+      ? {
+          label: "방송 중",
+          summary: liveStatusDescription,
+          cause: "현재 소유자 채널이 라이브 상태로 확인되었습니다.",
+          nextStep: isSessionActive ? "지금은 분석을 유지하면서 민심 흐름을 확인하면 됩니다." : "지금 분석 시작을 눌러 실시간 수집과 요약을 켤 수 있습니다.",
+          cardClass: "border-emerald-200 bg-emerald-50",
+        }
+      : broadcastStatus?.status === "failed"
+        ? {
+            label: "상태 확인 필요",
+            summary: liveStatusDescription,
+            cause: "라이브 상태를 안정적으로 확인하지 못했습니다.",
+            nextStep: "잠시 후 다시 확인하거나 방송 페이지에서 실제 라이브 상태를 먼저 확인해 주세요.",
+            cardClass: "border-amber-200 bg-amber-50",
+          }
+        : {
+            label: "오프라인",
+            summary: liveStatusDescription,
+            cause: "현재 이 채널이 라이브 방송 중이 아니어서 채팅 수집을 시작할 수 없습니다.",
+            nextStep: "방송이 켜지면 분석 시작으로 바로 전환할 수 있습니다.",
+            cardClass: "border-amber-200 bg-amber-50",
+          };
+
+  const sessionState = !hasOwnerIdentity
+    ? {
+        label: "잠김",
+        summary: "로그인 전이라 분석 세션을 만들 수 없습니다.",
+        cause: "소유자 인증이 아직 되지 않았습니다.",
+        nextStep: "먼저 치지직 로그인으로 소유자 세션을 연결해 주세요.",
+        cardClass: "border-amber-200 bg-amber-50",
+      }
+    : !isAuthorizedChannel
+      ? {
+          label: "권한 제한",
+          summary: "다른 채널을 보고 있어 분석 시작이 막혀 있습니다.",
+          cause: "소유자 채널과 현재 URL의 채널이 다릅니다.",
+          nextStep: "본인 채널로 이동하거나 올바른 소유자 계정으로 다시 로그인해 주세요.",
+          cardClass: "border-amber-200 bg-amber-50",
+        }
+      : isSessionActive
+        ? {
+            label: "진행 중",
+            summary: "채팅 수집과 분석, 투표 상태 추적이 켜져 있습니다.",
+            cause: "현재 방송에 대해 구독 세션이 활성화되어 있습니다.",
+            nextStep: "필요할 때까지 유지하고, 멈추려면 분석 중지를 누르면 됩니다.",
+            cardClass: "border-emerald-200 bg-emerald-50",
+          }
+        : broadcastStatus?.status === "live"
+          ? {
+              label: "시작 가능",
+              summary: "방송은 켜져 있고 분석 세션만 아직 시작하지 않았습니다.",
+              cause: "소유자 권한은 확인됐지만 실시간 구독 세션은 아직 비활성화 상태입니다.",
+              nextStep: "분석 시작을 누르면 채팅 수집과 대시보드 반영이 바로 시작됩니다.",
+              cardClass: "border-sky-200 bg-sky-50",
+            }
+          : {
+              label: "방송 대기",
+              summary: "분석 세션은 꺼져 있고 라이브 시작을 기다리는 상태입니다.",
+              cause: "현재 방송이 오프라인이거나 상태 확인이 끝나지 않았습니다.",
+              nextStep: "방송이 시작되면 분석 시작으로 바로 전환할 수 있습니다.",
+              cardClass: "border-slate-200 bg-slate-50",
+            };
+
+  const connectionState = !hasOwnerIdentity
+    ? {
+        label: "권한 없음",
+        summary: "로그인 전이라 실시간 스트림 연결을 만들지 않았습니다.",
+        cause: "소유자 세션 없이 라이브 데이터 스트림을 요청할 수 없습니다.",
+        nextStep: "로그인 후 본인 채널에서 들어오면 연결 상태가 실시간으로 바뀝니다.",
+        cardClass: "border-amber-200 bg-amber-50",
+      }
+    : !isAuthorizedChannel
+      ? {
+          label: "연결 제한",
+          summary: "현재 채널은 소유자 채널이 아니어서 실시간 스트림을 열지 않았습니다.",
+          cause: "보안상 본인 채널에서만 실시간 분석 스트림을 연결합니다.",
+          nextStep: "본인 채널로 이동하면 연결 상태가 정상 또는 재연결 상태로 바뀝니다.",
+          cardClass: "border-amber-200 bg-amber-50",
+        }
+      : !isSessionActive
+        ? {
+            label: "세션 시작 전",
+            summary: "실시간 분석 스트림이 아직 열리지 않았습니다.",
+            cause: "분석 세션이 비활성화된 상태입니다.",
+            nextStep: "분석 시작을 누르면 연결이 열리고 이후 프레임이 즉시 반영됩니다.",
+            cardClass: "border-slate-200 bg-slate-50",
+          }
+        : isConnected
+          ? {
+              label: "정상 연결",
+              summary: "이벤트 스트림이 정상이며 새 분석 결과를 바로 반영하고 있습니다.",
+              cause: "실시간 SSE 연결이 열려 있습니다.",
+              nextStep: "연결이 유지되는 동안 최신 민심 흐름과 대표 반응을 그대로 읽으면 됩니다.",
+              cardClass: "border-emerald-200 bg-emerald-50",
+            }
+          : {
+              label: "재연결 중",
+              summary: "실시간 스트림이 잠시 끊겨 다시 연결하고 있습니다.",
+              cause: "네트워크 또는 SSE 스트림 오류가 발생해 자동 재시도를 시작했습니다.",
+              nextStep: "잠시 기다리면 최신 상태로 다시 맞춰집니다.",
+              cardClass: "border-rose-200 bg-rose-50",
+            };
+
   const primaryActionDisabled = hasOwnerIdentity ? !isAuthorizedChannel || statusLoading : false;
+  const primaryActionLabel = isSessionActive
+    ? "분석 중지"
+    : !isAuthorizedChannel
+      ? "내 채널에서만 시작 가능"
+      : statusLoading
+        ? "방송 상태 확인 중"
+        : broadcastStatus?.status === "live"
+          ? "분석 시작"
+          : "방송 시작 후 분석";
 
   return (
     <div className="space-y-8">
@@ -800,13 +941,13 @@ export default function ChannelDashboard({
             <div>
               <h1 className="text-4xl font-black tracking-tight text-slate-950">
                 {activeTab === "live"
-                  ? "지금 방송 분위기를 빠르게 보는 화면"
-                  : "방송 다시보기 하이라이트를 먼저 고르는 화면"}
+                  ? "내 방송을 바로 읽는 대시보드"
+                  : "VOD 편집 후보를 고르는 워크스페이스"}
               </h1>
               <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
                 {activeTab === "live"
-                  ? "실시간 보기에서는 민심 흐름과 대표 반응을 먼저 보여주고, 상세 보기에서 키워드·투표·세부 로그를 펼쳐 확인할 수 있습니다."
-                  : "다시보기에서는 먼저 VOD를 찾고, 선택한 영상의 상태와 메인 분석 워크스페이스를 중심으로 편집 후보를 검토할 수 있습니다."}
+                  ? "핵심 신호부터 보고 필요할 때만 상세 패널을 펼칩니다."
+                  : "VOD를 조회한 뒤 바로 분석을 열어 후보를 검토합니다."}
               </p>
             </div>
           </div>
@@ -838,19 +979,20 @@ export default function ChannelDashboard({
             </div>
 
             {activeTab === "live" ? (
-              <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
+              <div className={`rounded-[28px] border p-5 ${accessState.panelClass}`}>
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
-                      접근 및 세션 요약
+                      접근 상태
                     </div>
-                    <div className="mt-3 text-xl font-black text-slate-950">{accessSummaryTitle}</div>
-                    <div className="mt-2 text-sm leading-6 text-slate-600">{accessSummaryDescription}</div>
+                    <div className="mt-3 text-xl font-black text-slate-950">{accessState.title}</div>
+                    <div className="mt-2 text-sm leading-6 text-slate-600">{accessState.description}</div>
+                    <div className="mt-3 text-sm font-semibold text-slate-700">{accessState.nextStep}</div>
                   </div>
 
-                  <div className={`inline-flex h-10 items-center gap-2 rounded-full border px-4 text-xs font-black uppercase tracking-[0.2em] ${accessBadgeClass}`}>
+                  <div className={`inline-flex h-10 items-center gap-2 rounded-full border px-4 text-xs font-black uppercase tracking-[0.2em] ${accessState.badgeClass}`}>
                     <ShieldCheck className="h-4 w-4" />
-                    {isAuthorizedChannel ? "Authorized" : "Restricted"}
+                    {accessState.badgeLabel}
                   </div>
                 </div>
 
@@ -888,7 +1030,7 @@ export default function ChannelDashboard({
                       }`}
                     >
                       <RefreshCw className="h-4 w-4" />
-                      {isSessionActive ? "분석 중지" : "분석 시작"}
+                      {primaryActionLabel}
                     </button>
                   )}
 
@@ -908,54 +1050,41 @@ export default function ChannelDashboard({
                     <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">방송 채널</div>
                     <div className="mt-2 truncate font-mono text-sm text-slate-800">{channelId}</div>
                   </div>
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className={`rounded-2xl border p-4 ${liveState.cardClass}`}>
                     <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">라이브 상태</div>
-                    <div className="mt-2 text-sm font-bold text-slate-950">{liveStatusLabel}</div>
-                    <div className="mt-1 text-xs leading-5 text-slate-500">{liveStatusDescription}</div>
+                    <div className="mt-2 text-sm font-bold text-slate-950">{liveState.label}</div>
+                    <div className="mt-1 text-xs leading-5 text-slate-600">{liveState.summary}</div>
                   </div>
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className={`rounded-2xl border p-4 ${sessionState.cardClass}`}>
                     <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">분석 세션</div>
-                    <div className="mt-2 text-sm font-bold text-slate-950">
-                      {isSessionActive ? "채팅 수집 및 분석 중" : "대기 중"}
-                    </div>
-                    <div className="mt-1 text-xs leading-5 text-slate-500">
-                      {isSessionActive
-                        ? "실시간 채팅과 투표 상태를 함께 추적하고 있습니다."
-                        : "방송이 시작되면 분석 시작으로 바로 전환할 수 있습니다."}
-                    </div>
+                    <div className="mt-2 text-sm font-bold text-slate-950">{sessionState.label}</div>
+                    <div className="mt-1 text-xs leading-5 text-slate-600">{sessionState.summary}</div>
                   </div>
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className={`rounded-2xl border p-4 ${connectionState.cardClass}`}>
                     <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">실시간 연결</div>
-                    <div className="mt-2 text-sm font-bold text-slate-950">
-                      {isConnected ? "이벤트 스트림 연결됨" : "재연결 중"}
-                    </div>
-                    <div className="mt-1 text-xs leading-5 text-slate-500">
-                      {isConnected
-                        ? "분석 결과가 들어오는 즉시 화면에 반영됩니다."
-                        : "연결이 돌아오면 최신 상태로 다시 맞춰집니다."}
-                    </div>
+                    <div className="mt-2 text-sm font-bold text-slate-950">{connectionState.label}</div>
+                    <div className="mt-1 text-xs leading-5 text-slate-600">{connectionState.summary}</div>
                   </div>
                 </div>
               </div>
             ) : (
               <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
-                <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
-                  VOD Workflow
-                </div>
-                <div className="mt-3 text-xl font-black text-slate-950">
-                  조회한 영상 하나를 중심으로 편집 후보를 검토합니다
-                </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">VOD 진행 순서</div>
+                <div className="mt-3 flex flex-wrap gap-2">
                   {[
-                    "1. VOD 번호나 링크를 조회합니다.",
-                    "2. 선택한 영상의 상태와 메타데이터를 확인합니다.",
-                    "3. 분석 워크스페이스에서 타임라인과 후보를 살펴봅니다.",
+                    "1. 조회",
+                    "2. 상태 확인",
+                    "3. 워크스페이스 열기",
                   ].map((step) => (
-                    <div key={step} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
+                    <div
+                      key={step}
+                      className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700"
+                    >
                       {step}
                     </div>
                   ))}
                 </div>
+                <div className="mt-3 text-sm text-slate-600">선택한 VOD 하나를 기준으로 바로 이어집니다.</div>
               </div>
             )}
           </div>
@@ -970,9 +1099,7 @@ export default function ChannelDashboard({
           <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">보기 밀도</div>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                핵심 보기에서는 우선순위가 높은 신호만 먼저 보여주고, 상세 보기에서 세부 로그와 보조 패널을 펼칩니다.
-              </p>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">핵심만 보거나, 필요할 때 상세 로그까지 펼칠 수 있습니다.</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -1015,15 +1142,15 @@ export default function ChannelDashboard({
             )}
             {renderMetric(
               "연결 상태",
-              isConnected ? "정상" : "재연결 중",
-              isConnected ? "실시간 이벤트 스트림이 정상입니다." : "실시간 스트림을 다시 연결하고 있습니다.",
-              isConnected ? "good" : "warn",
+              connectionState.label,
+              connectionState.summary,
+              isConnected ? "good" : connectionState.label === "세션 시작 전" ? "default" : "warn",
             )}
             {renderMetric(
               "수집 상태",
-              isSessionActive ? "진행 중" : "중지됨",
-              isSessionActive ? "채팅 수집과 투표 상태 추적이 켜져 있습니다." : "분석이 현재 중지된 상태입니다.",
-              isSessionActive ? "good" : "warn",
+              sessionState.label,
+              sessionState.summary,
+              isSessionActive ? "good" : sessionState.label === "방송 대기" ? "default" : "warn",
             )}
             {renderMetric(
               "현재 분위기",
@@ -1067,22 +1194,22 @@ export default function ChannelDashboard({
                   <div className="mt-2 text-2xl font-black text-slate-950">{latestVibe?.label || "대기 중"}</div>
                   <p className="mt-2 text-sm leading-6 text-slate-600">
                     {latestVibe
-                      ? `최근 채팅에서 ${(latestVibe.score * 100).toFixed(0)}% 비중으로 가장 강하게 나타난 감정입니다.`
-                      : "분석된 채팅이 들어오면 현재 분위기를 보여줍니다."}
+                      ? `${(latestVibe.score * 100).toFixed(0)}% 비중으로 가장 강한 반응입니다.`
+                      : "채팅이 들어오면 바로 갱신됩니다."}
                   </p>
                 </div>
                 <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
                   <div className="text-[10px] font-black tracking-[0.18em] text-slate-500">대표 주제</div>
                   <div className="mt-2 text-2xl font-black text-slate-950">{v2Frame?.topicLabel || "수집 중"}</div>
                   <p className="mt-2 text-sm leading-6 text-slate-600">
-                    지금 채팅에서 반복적으로 드러나는 주제를 간단히 묶어서 보여줍니다.
+                    반복해서 올라오는 주제를 묶어 보여줍니다.
                   </p>
                 </div>
                 <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
                   <div className="text-[10px] font-black tracking-[0.18em] text-slate-500">주의 신호</div>
                   <div className="mt-2 text-2xl font-black text-slate-950">{v2Frame?.trustSummary?.filteredCount ?? 0}건</div>
                   <p className="mt-2 text-sm leading-6 text-slate-600">
-                    신뢰도가 낮아 격리되거나 주의가 필요한 반응 수를 보여줍니다.
+                    격리되었거나 주의가 필요한 반응 수입니다.
                   </p>
                 </div>
               </div>
@@ -1104,21 +1231,6 @@ export default function ChannelDashboard({
           </div>
 
           <div className="space-y-6">
-            <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="mb-5 flex items-center justify-between">
-                <div>
-                  <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">왜 이 화면을 보나요?</div>
-                  <div className="mt-2 text-xl font-black text-slate-950">핵심 목적</div>
-                </div>
-                <Target className="h-5 w-5 text-indigo-300" />
-              </div>
-              <div className="space-y-3 text-sm leading-7 text-slate-600">
-                <p>1. 전체 민심이 어느 방향인지 빠르게 확인합니다.</p>
-                <p>2. 악성 반응 하나에 흔들리지 않도록 보정된 흐름을 봅니다.</p>
-                <p>3. 지금 방송 맥락을 대표하는 채팅 몇 개만 바로 읽습니다.</p>
-              </div>
-            </div>
-
             <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
               <div className="mb-5 flex items-center justify-between">
                 <div>
@@ -1312,43 +1424,6 @@ export default function ChannelDashboard({
 
           {dashboardMode === "detail" ? <PollCard session={pollSession} variant="history" /> : null}
 
-          {dashboardMode === "detail" ? (
-      <section className="grid gap-5 lg:grid-cols-3">
-        <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="h-5 w-5 text-emerald-300" />
-            <div>
-              <div className="text-sm font-black text-slate-950">핵심 화면 중심 구성</div>
-              <div className="mt-1 text-sm text-slate-600">
-                지금 꼭 봐야 할 정보와 상세 정보를 구분해서 볼 수 있습니다.
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center gap-3">
-            <Users className="h-5 w-5 text-sky-300" />
-            <div>
-              <div className="text-sm font-black text-slate-950">본인 방송 전용 접근</div>
-              <div className="mt-1 text-sm text-slate-600">
-                인증된 스트리머 계정 기준으로만 접근이 허용됩니다.
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center gap-3">
-            <Target className="h-5 w-5 text-pink-300" />
-            <div>
-              <div className="text-sm font-black text-slate-950">맥락 중심 화면</div>
-              <div className="mt-1 text-sm text-slate-600">
-                무엇을 왜 보는지 바로 이해할 수 있도록 목적 중심으로 묶었습니다.
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-          ) : null}
         </>
       )}
     </div>
