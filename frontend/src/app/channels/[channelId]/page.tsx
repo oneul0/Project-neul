@@ -2,15 +2,7 @@
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-} from "recharts";
+import { AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip } from "recharts";
 import {
   AlertCircle,
   BarChart3,
@@ -89,6 +81,46 @@ interface BroadcastStatus {
   viewerCount?: number;
 }
 
+interface InlineNotice {
+  tone: "good" | "warn";
+  message: string;
+}
+
+function useMeasuredElement() {
+  const elementRef = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const node = elementRef.current;
+    if (!node) {
+      return;
+    }
+
+    const updateSize = () => {
+      setSize({
+        width: node.clientWidth,
+        height: node.clientHeight,
+      });
+    };
+
+    updateSize();
+
+    const observer = new ResizeObserver(() => {
+      updateSize();
+    });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  return {
+    elementRef,
+    width: size.width,
+    height: size.height,
+    isReady: size.width > 0 && size.height > 0,
+  };
+}
+
 const EMOTION_MAP: Record<string, { color: string; label: string; icon: string }> = {
   JOY: { color: "#f59e0b", label: "기쁨", icon: "J" },
   HOPE: { color: "#38bdf8", label: "기대", icon: "H" },
@@ -139,12 +171,14 @@ export default function ChannelDashboard({
   const [ownerChannelId, setOwnerChannelId] = useState("");
   const [ownerProfile, setOwnerProfile] = useState<OwnerProfile>(EMPTY_OWNER_PROFILE);
   const [authLoading, setAuthLoading] = useState(true);
-  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+  const [sessionNotice, setSessionNotice] = useState<InlineNotice | null>(null);
   const [broadcastStatus, setBroadcastStatus] = useState<BroadcastStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  const focusTrendContainer = useMeasuredElement();
+  const detailTrendContainer = useMeasuredElement();
 
   useEffect(() => {
     let disposed = false;
@@ -166,20 +200,29 @@ export default function ChannelDashboard({
         if (!response.ok || !profile.authenticated) {
           setOwnerProfile(profile);
           setOwnerChannelId("");
-          setSessionNotice(profile.message || "다시 로그인해 주세요.");
+           setSessionNotice({
+             tone: "warn",
+             message: profile.message || "다시 로그인해 주세요.",
+           });
           return;
         }
 
         setOwnerProfile(profile);
         setOwnerChannelId(profile.channelId ?? "");
         if (profile.refreshed) {
-          setSessionNotice("로그인 세션이 자동으로 연장되었습니다.");
+           setSessionNotice({
+             tone: "good",
+             message: "로그인 세션이 자동으로 연장되었습니다.",
+           });
         }
       } catch {
         if (!disposed) {
           setOwnerProfile(EMPTY_OWNER_PROFILE);
           setOwnerChannelId("");
-          setSessionNotice("치지직 로그인 상태를 확인하지 못했습니다.");
+           setSessionNotice({
+             tone: "warn",
+             message: "치지직 로그인 상태를 확인하지 못했습니다.",
+           });
         }
       } finally {
         if (!disposed) {
@@ -276,7 +319,7 @@ export default function ChannelDashboard({
     });
     setOwnerChannelId("");
     setIsConnected(false);
-    setSessionNotice(message);
+    setSessionNotice({ tone: "warn", message });
   }, []);
 
   const fetchOwned = useCallback(async (url: string, init?: RequestInit) => {
@@ -564,18 +607,30 @@ export default function ChannelDashboard({
   const handleToggleSession = async () => {
     try {
       if (!isAuthorizedChannel) {
-        alert("로그인한 본인 채널에서만 분석을 시작할 수 있습니다.");
+        setSessionNotice({
+          tone: "warn",
+          message: "로그인한 본인 채널에서만 분석을 시작할 수 있습니다.",
+        });
         return;
       }
       if (false && !isSessionActive && !broadcastStatus?.live) {
-        alert(broadcastStatus?.message || "현재 라이브 상태가 아니어서 분석을 시작할 수 없습니다.");
+        setSessionNotice({
+          tone: "warn",
+          message:
+            broadcastStatus?.message ||
+            "현재 라이브 상태가 아니어서 분석을 시작할 수 없습니다.",
+        });
         return;
       }
 
       if (!isSessionActive) {
         const status = await fetchBroadcastStatusOnce();
         if (!status.live) {
-          alert(status.message || "현재 방송 중이 아니어서 분석을 시작할 수 없습니다.");
+          setSessionNotice({
+            tone: "warn",
+            message:
+              status.message || "현재 방송 중이 아니어서 분석을 시작할 수 없습니다.",
+          });
           return;
         }
       }
@@ -589,7 +644,10 @@ export default function ChannelDashboard({
             headers: buildOwnerHeaders(ownerChannelId),
           });
         if (response.status === 403) {
-          alert("본인 채널만 분석할 수 있습니다.");
+          setSessionNotice({
+            tone: "warn",
+            message: "본인 채널만 분석할 수 있습니다.",
+          });
           return;
         }
         if (!response.ok) {
@@ -612,13 +670,22 @@ export default function ChannelDashboard({
       }
 
       await pollSession.setSessionActive(nextState);
+      setSessionNotice({
+        tone: "good",
+        message: nextState
+          ? "실시간 분석을 시작했습니다. 방송 흐름을 바로 반영합니다."
+          : "실시간 분석을 중지했습니다.",
+      });
     } catch (error) {
       console.error("Failed to toggle session:", error);
       if (error instanceof Error) {
-        alert(error.message);
+        setSessionNotice({ tone: "warn", message: error.message });
         return;
       }
-      alert("분석 상태를 변경하지 못했습니다. 백엔드 상태를 확인해 주세요.");
+      setSessionNotice({
+        tone: "warn",
+        message: "분석 상태를 변경하지 못했습니다. 백엔드 상태를 확인해 주세요.",
+      });
     }
   };
 
@@ -644,256 +711,345 @@ export default function ChannelDashboard({
     );
   };
 
-  if (activeTab === "vod") {
-    return (
-      <div className="space-y-8">
-        <section className="rounded-[36px] border border-slate-200 bg-white p-8 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
-          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-            <div className="space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.25em] text-indigo-300">
-                <BarChart3 className="h-3.5 w-3.5" />
-                방송 다시보기
-              </div>
-              <h1 className="text-4xl font-black tracking-tight text-slate-950">방송 다시보기 하이라이트</h1>
-              <p className="max-w-2xl text-base leading-7 text-slate-600">
-                방송이 끝난 뒤 반응이 컸던 장면을 다시 보고, 중요한 순간을 빠르게 확인할 수 있습니다.
-              </p>
-            </div>
-
-            <button
-              onClick={() => setActiveTab("live")}
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-100"
-            >
-              <Radio className="h-4 w-4" />
-              실시간 대시보드로 돌아가기
-            </button>
-          </div>
-        </section>
-
-        <div className="min-h-[780px]">
-          <VodHighlightBoard />
+  const renderTrendChart = (width: number, height: number) => {
+    if (width <= 0 || height <= 0) {
+      return (
+        <div className="flex h-full min-h-[260px] items-center justify-center rounded-[24px] border border-dashed border-slate-300 bg-slate-50 text-sm font-semibold text-slate-500">
+          감정 추이 차트를 준비하는 중입니다.
         </div>
-      </div>
+      );
+    }
+
+    return (
+      <AreaChart width={width} height={height} data={trendData}>
+        <defs>
+          <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.35} />
+            <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+        <XAxis dataKey="time" tick={{ fill: "#94a3b8", fontSize: 11 }} tickLine={false} axisLine={false} />
+        <YAxis domain={[-1, 1]} tick={{ fill: "#94a3b8", fontSize: 11 }} tickLine={false} axisLine={false} />
+        <Tooltip
+          contentStyle={{
+            background: "rgba(15,23,42,0.94)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 16,
+            color: "#fff",
+          }}
+        />
+        <Area type="monotone" dataKey="score" stroke="#38bdf8" strokeWidth={3} fill="url(#trendFill)" />
+      </AreaChart>
     );
-  }
+  };
+
+  const heroNotice: InlineNotice | null =
+    sessionNotice ??
+    (!statusLoading && broadcastStatus?.status === "failed" && broadcastStatus.message
+      ? { tone: "warn", message: broadcastStatus.message }
+      : null);
+
+  const accessSummaryTitle = authLoading
+    ? "로그인 상태를 확인하는 중입니다"
+    : hasOwnerIdentity
+      ? `${ownerProfile.channelName || "내 채널"} 계정으로 로그인됨`
+      : "로그인이 필요합니다";
+
+  const accessSummaryDescription = authLoading
+    ? "치지직 로그인과 채널 소유 여부를 확인하고 있습니다."
+    : hasOwnerIdentity
+      ? `세션 만료 ${ownerProfile.expiresAt ? new Date(ownerProfile.expiresAt).toLocaleString() : "곧 만료"}`
+      : ownerProfile.message || "본인 방송 소유자만 이 대시보드를 열 수 있습니다.";
+
+  const accessBadgeClass = isAuthorizedChannel
+    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : "border-amber-200 bg-amber-50 text-amber-700";
+
+  const liveStatusLabel = statusLoading
+    ? "확인 중"
+    : broadcastStatus?.status === "live"
+      ? "방송 중"
+      : broadcastStatus?.status === "failed"
+        ? "확인 필요"
+        : "오프라인";
+
+  const liveStatusDescription = statusLoading
+    ? "현재 방송 상태를 확인하고 있습니다."
+    : broadcastStatus?.liveTitle
+      ? `${broadcastStatus.liveTitle}${typeof broadcastStatus.viewerCount === "number" ? ` · 시청자 ${broadcastStatus.viewerCount.toLocaleString()}명` : ""}`
+      : broadcastStatus?.message || "방송 제목과 상태가 여기에 표시됩니다.";
+
+  const primaryActionDisabled = hasOwnerIdentity ? !isAuthorizedChannel || statusLoading : false;
 
   return (
     <div className="space-y-8">
       <section className="rounded-[36px] border border-slate-200 bg-white p-8 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
         <div className="flex flex-col gap-8 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl space-y-4">
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.25em] text-emerald-300">
-              <Radio className="h-3.5 w-3.5" />
-              내 방송 대시보드
+            <div
+              className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.25em] ${
+                activeTab === "live"
+                  ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : "border border-indigo-200 bg-indigo-50 text-indigo-700"
+              }`}
+            >
+              {activeTab === "live" ? <Radio className="h-3.5 w-3.5" /> : <BarChart3 className="h-3.5 w-3.5" />}
+              {activeTab === "live" ? "내 방송 대시보드" : "방송 다시보기"}
             </div>
             <div>
-              <h1 className="text-4xl font-black tracking-tight text-slate-950">지금 방송 분위기를 빠르게 보는 화면</h1>
+              <h1 className="text-4xl font-black tracking-tight text-slate-950">
+                {activeTab === "live"
+                  ? "지금 방송 분위기를 빠르게 보는 화면"
+                  : "방송 다시보기 하이라이트를 먼저 고르는 화면"}
+              </h1>
               <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
-                핵심 화면에서는 민심 흐름과 대표 반응만 먼저 보여주고,
-                상세 화면에서 키워드, 투표, 세부 로그를 확인할 수 있습니다.
+                {activeTab === "live"
+                  ? "실시간 보기에서는 민심 흐름과 대표 반응을 먼저 보여주고, 상세 보기에서 키워드·투표·세부 로그를 펼쳐 확인할 수 있습니다."
+                  : "다시보기에서는 먼저 VOD를 찾고, 선택한 영상의 상태와 메인 분석 워크스페이스를 중심으로 편집 후보를 검토할 수 있습니다."}
               </p>
             </div>
           </div>
 
-          <div className="w-full max-w-xl rounded-[28px] border border-slate-200 bg-slate-50 p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">접근 상태</div>
-                {authLoading ? (
-                  <div className="mt-3 text-sm font-bold text-slate-500">치지직 로그인 상태를 확인하고 있습니다...</div>
-                ) : hasOwnerIdentity ? (
-                  <>
-                    <div className="mt-3 text-xl font-black text-slate-950">
-                      {ownerProfile.channelName || "내 채널"} 계정으로 로그인됨
-                    </div>
-                    <div className="mt-2 text-sm text-slate-600">
-                      채널 ID <span className="font-mono text-slate-800">{ownerChannelId}</span>
-                    </div>
-                    <div className="mt-2 text-sm text-slate-600">
-                      세션 만료 시각{" "}
-                      <span className="font-semibold text-slate-800">
-                        {ownerProfile.expiresAt
-                          ? new Date(ownerProfile.expiresAt).toLocaleString()
-                          : "곧 만료"}
-                      </span>
-                    </div>
-                    {sessionNotice ? (
-                      <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-                        {sessionNotice}
-                      </div>
-                    ) : null}
-                  </>
-                ) : (
-                  <>
-                    <div className="mt-3 text-xl font-black text-slate-950">로그인이 필요합니다</div>
-                    <div className="mt-2 text-sm text-slate-600">
-                      {ownerProfile.message || "본인 방송 소유자만 이 대시보드를 열 수 있습니다."}
-                    </div>
-                    {sessionNotice ? (
-                      <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
-                        {sessionNotice}
-                      </div>
-                    ) : null}
-                  </>
-                )}
-              </div>
-
-              <div
-                className={`mt-1 inline-flex h-10 items-center gap-2 rounded-full border px-4 text-xs font-black uppercase tracking-[0.2em] ${
-                  isAuthorizedChannel
-                    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
-                    : "border-amber-500/20 bg-amber-500/10 text-amber-300"
+          <div className="w-full max-w-xl space-y-4">
+            <div className="grid grid-cols-2 rounded-[24px] border border-slate-200 bg-slate-100 p-1.5">
+              <button
+                onClick={() => setActiveTab("live")}
+                className={`inline-flex items-center justify-center gap-2 rounded-[18px] px-4 py-3 text-sm font-black transition ${
+                  activeTab === "live"
+                    ? "bg-slate-950 text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-950"
                 }`}
               >
-                <ShieldCheck className="h-4 w-4" />
-                {isAuthorizedChannel ? "Authorized" : "Restricted"}
-              </div>
-            </div>
-
-            <div className="mt-5 flex flex-wrap items-center gap-3">
-              {!hasOwnerIdentity ? (
-                <button
-                  onClick={handleLogin}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-emerald-400"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  치지직 로그인
-                </button>
-              ) : (
-                <button
-                  onClick={handleLogout}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-100"
-                >
-                  <Lock className="h-4 w-4" />
-                  로그아웃
-                </button>
-              )}
-
+                <Radio className="h-4 w-4" />
+                실시간 보기
+              </button>
               <button
-                onClick={handleToggleSession}
-                disabled={!isAuthorizedChannel || statusLoading}
-                className={`inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-black transition ${
-                  !isAuthorizedChannel || statusLoading
-                    ? "cursor-not-allowed bg-slate-200 text-slate-500"
-                    : isSessionActive
-                      ? "bg-rose-500/12 text-rose-300 hover:bg-rose-500/18"
-                      : "bg-sky-500 text-slate-950 hover:bg-sky-400"
+                onClick={() => setActiveTab("vod")}
+                className={`inline-flex items-center justify-center gap-2 rounded-[18px] px-4 py-3 text-sm font-black transition ${
+                  activeTab === "vod"
+                    ? "bg-slate-950 text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-950"
                 }`}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                {isSessionActive ? "분석 중지" : "분석 시작"}
+              >
+                <BarChart3 className="h-4 w-4" />
+                다시보기
               </button>
             </div>
 
-            {!statusLoading && broadcastStatus?.message ? (
-              <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-                {broadcastStatus.message}
-              </div>
-            ) : null}
+            {activeTab === "live" ? (
+              <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+                      접근 및 세션 요약
+                    </div>
+                    <div className="mt-3 text-xl font-black text-slate-950">{accessSummaryTitle}</div>
+                    <div className="mt-2 text-sm leading-6 text-slate-600">{accessSummaryDescription}</div>
+                  </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">방송 채널</div>
-                <div className="mt-2 truncate font-mono text-sm text-slate-800">{channelId}</div>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">분석 상태</div>
-                <div className="mt-2 text-sm font-bold text-slate-950">
-                  {isSessionActive ? "채팅 수집 및 분석 중" : "대기 중"}
+                  <div className={`inline-flex h-10 items-center gap-2 rounded-full border px-4 text-xs font-black uppercase tracking-[0.2em] ${accessBadgeClass}`}>
+                    <ShieldCheck className="h-4 w-4" />
+                    {isAuthorizedChannel ? "Authorized" : "Restricted"}
+                  </div>
+                </div>
+
+                {heroNotice ? (
+                  <div
+                    className={`mt-4 rounded-2xl border px-4 py-3 text-sm font-semibold ${
+                      heroNotice.tone === "good"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : "border-amber-200 bg-amber-50 text-amber-700"
+                    }`}
+                  >
+                    {heroNotice.message}
+                  </div>
+                ) : null}
+
+                <div className="mt-5 flex flex-wrap items-center gap-3">
+                  {!hasOwnerIdentity ? (
+                    <button
+                      onClick={handleLogin}
+                      className="inline-flex items-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-emerald-400"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      치지직 로그인
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleToggleSession}
+                      disabled={primaryActionDisabled}
+                      className={`inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-black transition ${
+                        primaryActionDisabled
+                          ? "cursor-not-allowed bg-slate-200 text-slate-500"
+                          : isSessionActive
+                            ? "bg-rose-500 text-white hover:bg-rose-400"
+                            : "bg-sky-500 text-slate-950 hover:bg-sky-400"
+                      }`}
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      {isSessionActive ? "분석 중지" : "분석 시작"}
+                    </button>
+                  )}
+
+                  {hasOwnerIdentity ? (
+                    <button
+                      onClick={handleLogout}
+                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-100"
+                    >
+                      <Lock className="h-4 w-4" />
+                      로그아웃
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">방송 채널</div>
+                    <div className="mt-2 truncate font-mono text-sm text-slate-800">{channelId}</div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">라이브 상태</div>
+                    <div className="mt-2 text-sm font-bold text-slate-950">{liveStatusLabel}</div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">{liveStatusDescription}</div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">분석 세션</div>
+                    <div className="mt-2 text-sm font-bold text-slate-950">
+                      {isSessionActive ? "채팅 수집 및 분석 중" : "대기 중"}
+                    </div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">
+                      {isSessionActive
+                        ? "실시간 채팅과 투표 상태를 함께 추적하고 있습니다."
+                        : "방송이 시작되면 분석 시작으로 바로 전환할 수 있습니다."}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">실시간 연결</div>
+                    <div className="mt-2 text-sm font-bold text-slate-950">
+                      {isConnected ? "이벤트 스트림 연결됨" : "재연결 중"}
+                    </div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">
+                      {isConnected
+                        ? "분석 결과가 들어오는 즉시 화면에 반영됩니다."
+                        : "연결이 돌아오면 최신 상태로 다시 맞춰집니다."}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
+                <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+                  VOD Workflow
+                </div>
+                <div className="mt-3 text-xl font-black text-slate-950">
+                  조회한 영상 하나를 중심으로 편집 후보를 검토합니다
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  {[
+                    "1. VOD 번호나 링크를 조회합니다.",
+                    "2. 선택한 영상의 상태와 메타데이터를 확인합니다.",
+                    "3. 분석 워크스페이스에서 타임라인과 후보를 살펴봅니다.",
+                  ].map((step) => (
+                    <div key={step} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
+                      {step}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </section>
-
-      <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        {renderMetric(
-          "분석된 채팅 수",
-          `${stats.TOTAL_COUNT || 0}`,
-          "현재 방송에서 분석된 전체 채팅 수입니다.",
-          "default",
-        )}
-        {renderMetric(
-          "연결 상태",
-          isConnected ? "정상" : "재연결 중",
-          isConnected ? "실시간 이벤트 스트림이 정상입니다." : "실시간 스트림을 다시 연결하고 있습니다.",
-          isConnected ? "good" : "warn",
-        )}
-        {renderMetric(
-          "수집 상태",
-          isSessionActive ? "진행 중" : "중지됨",
-          isSessionActive ? "채팅 수집과 투표 상태 추적이 켜져 있습니다." : "분석이 현재 중지된 상태입니다.",
-          isSessionActive ? "good" : "warn",
-        )}
-        {renderMetric(
-          "현재 분위기",
-          latestVibe ? latestVibe.label : "대기 중",
-          latestVibe ? `가장 강한 반응은 ${(latestVibe.score * 100).toFixed(0)}% ${latestVibe.label}입니다.` : "아직 분석된 채팅이 없습니다.",
-          latestVibe ? "good" : "default",
-        )}
-      </section>
-
-      <section className="flex flex-wrap items-center justify-between gap-4">
-        <div className="inline-flex rounded-2xl border border-slate-200 bg-white p-1">
-          <button
-            onClick={() => setActiveTab("live")}
-            className={`rounded-xl px-4 py-2 text-sm font-black transition ${
-              activeTab === "live" ? "bg-slate-950 text-white" : "text-slate-500 hover:text-slate-950"
-            }`}
-          >
-            실시간 보기
-          </button>
-          <button
-            onClick={() => setActiveTab("vod")}
-            className="rounded-xl px-4 py-2 text-sm font-black text-slate-500 transition hover:text-slate-950"
-          >
-            다시보기
-          </button>
+      {activeTab === "vod" ? (
+        <div className="min-h-[780px]">
+          <VodHighlightBoard personalizationEnabled={hasOwnerIdentity} />
         </div>
-
-        <div className="inline-flex rounded-2xl border border-slate-200 bg-white p-1">
-          <button
-            onClick={() => setDashboardMode("focus")}
-            className={`rounded-xl px-4 py-2 text-sm font-black transition ${
-              dashboardMode === "focus" ? "bg-slate-950 text-white" : "text-slate-500 hover:text-slate-950"
-            }`}
-          >
-            핵심 보기
-          </button>
-          <button
-            onClick={() => setDashboardMode("detail")}
-            className={`rounded-xl px-4 py-2 text-sm font-black transition ${
-              dashboardMode === "detail" ? "bg-slate-950 text-white" : "text-slate-500 hover:text-slate-950"
-            }`}
-          >
-            상세 보기
-          </button>
-        </div>
-
-        <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-          <Clock3 className="h-3.5 w-3.5" />
-          스트리머 본인 방송 전용
-        </div>
-      </section>
-
-      {isAuthorizedChannel ? (
-        <V2InsightsPanel roomId={channelId} ownerId={ownerChannelId} onFrame={setV2Frame} />
       ) : (
-        <section className="rounded-[30px] border border-amber-500/20 bg-amber-500/8 p-6">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="mt-0.5 h-5 w-5 text-amber-300" />
+        <>
+          <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h2 className="text-lg font-black text-slate-950">Access limited to the verified owner</h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                이 채널을 소유한 치지직 계정으로 로그인해야 실시간 가드레일과 상세 분석을 볼 수 있습니다.
+              <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">보기 밀도</div>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                핵심 보기에서는 우선순위가 높은 신호만 먼저 보여주고, 상세 보기에서 세부 로그와 보조 패널을 펼칩니다.
               </p>
             </div>
-          </div>
-        </section>
-      )}
 
-      {dashboardMode === "focus" ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 p-1">
+                <button
+                  onClick={() => setDashboardMode("focus")}
+                  className={`rounded-full px-4 py-2 text-sm font-black transition ${
+                    dashboardMode === "focus"
+                      ? "bg-white text-slate-950 shadow-sm"
+                      : "text-slate-500 hover:text-slate-950"
+                  }`}
+                >
+                  핵심 보기
+                </button>
+                <button
+                  onClick={() => setDashboardMode("detail")}
+                  className={`rounded-full px-4 py-2 text-sm font-black transition ${
+                    dashboardMode === "detail"
+                      ? "bg-white text-slate-950 shadow-sm"
+                      : "text-slate-500 hover:text-slate-950"
+                  }`}
+                >
+                  상세 보기
+                </button>
+              </div>
+
+              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                <Clock3 className="h-3.5 w-3.5" />
+                스트리머 본인 방송 전용
+              </div>
+            </div>
+          </section>
+
+          <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+            {renderMetric(
+              "분석된 채팅 수",
+              `${stats.TOTAL_COUNT || 0}`,
+              "현재 방송에서 분석된 전체 채팅 수입니다.",
+              "default",
+            )}
+            {renderMetric(
+              "연결 상태",
+              isConnected ? "정상" : "재연결 중",
+              isConnected ? "실시간 이벤트 스트림이 정상입니다." : "실시간 스트림을 다시 연결하고 있습니다.",
+              isConnected ? "good" : "warn",
+            )}
+            {renderMetric(
+              "수집 상태",
+              isSessionActive ? "진행 중" : "중지됨",
+              isSessionActive ? "채팅 수집과 투표 상태 추적이 켜져 있습니다." : "분석이 현재 중지된 상태입니다.",
+              isSessionActive ? "good" : "warn",
+            )}
+            {renderMetric(
+              "현재 분위기",
+              latestVibe ? latestVibe.label : "대기 중",
+              latestVibe ? `가장 강한 반응은 ${(latestVibe.score * 100).toFixed(0)}% ${latestVibe.label}입니다.` : "아직 분석된 채팅이 없습니다.",
+              latestVibe ? "good" : "default",
+            )}
+          </section>
+
+          {isAuthorizedChannel ? (
+            <V2InsightsPanel roomId={channelId} ownerId={ownerChannelId} onFrame={setV2Frame} />
+          ) : (
+            <section className="rounded-[30px] border border-amber-200 bg-amber-50 p-6">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="mt-0.5 h-5 w-5 text-amber-600" />
+                <div>
+                  <h2 className="text-lg font-black text-slate-950">인증된 소유자 계정에서만 상세 분석을 볼 수 있습니다</h2>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                    이 채널을 소유한 치지직 계정으로 로그인해야 실시간 가드레일과 상세 분석을 열 수 있습니다.
+                  </p>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {dashboardMode === "focus" ? (
         <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
           <div className="space-y-6">
             <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
@@ -941,29 +1097,8 @@ export default function ChannelDashboard({
                 <Waves className="h-5 w-5 text-sky-300" />
               </div>
 
-              <div className="h-[260px] min-w-0 min-h-[260px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={trendData}>
-                    <defs>
-                      <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.35} />
-                        <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.02} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                    <XAxis dataKey="time" tick={{ fill: "#94a3b8", fontSize: 11 }} tickLine={false} axisLine={false} />
-                    <YAxis domain={[-1, 1]} tick={{ fill: "#94a3b8", fontSize: 11 }} tickLine={false} axisLine={false} />
-                    <Tooltip
-                      contentStyle={{
-                        background: "rgba(15,23,42,0.94)",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        borderRadius: 16,
-                        color: "#fff",
-                      }}
-                    />
-                    <Area type="monotone" dataKey="score" stroke="#38bdf8" strokeWidth={3} fill="url(#trendFill)" />
-                  </AreaChart>
-                </ResponsiveContainer>
+              <div ref={focusTrendContainer.elementRef} className="h-[260px] min-w-0 min-h-[260px]">
+                {renderTrendChart(focusTrendContainer.width, focusTrendContainer.height)}
               </div>
             </div>
           </div>
@@ -1011,7 +1146,7 @@ export default function ChannelDashboard({
             </div>
           </div>
         </section>
-      ) : (
+          ) : (
       <section className="grid gap-6 xl:grid-cols-[1.35fr_0.85fr]">
         <div className="space-y-6">
           <div className="grid gap-6 lg:grid-cols-[0.82fr_1.18fr]">
@@ -1053,35 +1188,8 @@ export default function ChannelDashboard({
                 <Waves className="h-5 w-5 text-sky-300" />
               </div>
 
-              <div className="h-[260px] min-w-0 min-h-[260px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={trendData}>
-                    <defs>
-                      <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.35} />
-                        <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.02} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                    <XAxis dataKey="time" tick={{ fill: "#94a3b8", fontSize: 11 }} tickLine={false} axisLine={false} />
-                    <YAxis domain={[-1, 1]} tick={{ fill: "#94a3b8", fontSize: 11 }} tickLine={false} axisLine={false} />
-                    <Tooltip
-                      contentStyle={{
-                        background: "rgba(15,23,42,0.94)",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        borderRadius: 16,
-                        color: "#fff",
-                      }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="score"
-                      stroke="#38bdf8"
-                      strokeWidth={3}
-                      fill="url(#trendFill)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+              <div ref={detailTrendContainer.elementRef} className="h-[260px] min-w-0 min-h-[260px]">
+                {renderTrendChart(detailTrendContainer.width, detailTrendContainer.height)}
               </div>
             </div>
           </div>
@@ -1200,11 +1308,11 @@ export default function ChannelDashboard({
           </div>
         </div>
       </section>
-      )}
+          )}
 
-      {dashboardMode === "detail" ? <PollCard session={pollSession} variant="history" /> : null}
+          {dashboardMode === "detail" ? <PollCard session={pollSession} variant="history" /> : null}
 
-      {dashboardMode === "detail" ? (
+          {dashboardMode === "detail" ? (
       <section className="grid gap-5 lg:grid-cols-3">
         <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-3">
@@ -1240,7 +1348,9 @@ export default function ChannelDashboard({
           </div>
         </div>
       </section>
-      ) : null}
+          ) : null}
+        </>
+      )}
     </div>
   );
 }
