@@ -19,6 +19,7 @@ public class VodHighlightPoint {
     private double editabilityScore;
     private String category;
     private String reactionLabel;
+    private String sceneLabel;
     private String description;
     private String reasonSummary;
     private String topMessage;
