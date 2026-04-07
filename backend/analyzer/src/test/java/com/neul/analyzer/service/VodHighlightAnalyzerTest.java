@@ -71,7 +71,7 @@ class VodHighlightAnalyzerTest {
     void consumeCompletion_NormalizesUnknownEditorialCategory() throws Exception {
         String videoNo = "video-123";
         when(ollamaAnalyzerService.analyzeHighlight(any()))
-                .thenReturn(Mono.just(new HighlightDecision(true, "알수없음", "LLM 요약", 8, "LLM 근거")));
+                .thenReturn(Mono.just(new HighlightDecision(true, "알수없음", "비틱", "LLM 요약", 8, "LLM 근거")));
 
         vodHighlightAnalyzer.consumeVodChunks(buildChatChunkJson(), videoNo);
 
@@ -97,6 +97,7 @@ class VodHighlightAnalyzerTest {
                 .allSatisfy(point -> {
                     assertThat(point.getCategory()).isEqualTo("소통");
                     assertThat(point.getReactionLabel()).isEqualTo("소통");
+                    assertThat(point.getSceneLabel()).isEqualTo("비틱");
                     assertThat(point.getDescription()).isEqualTo("LLM 요약");
                     assertThat(point.getReasonSummary()).contains("LLM 근거");
                 });
@@ -107,7 +108,7 @@ class VodHighlightAnalyzerTest {
     void consumeCompletion_ExcludesRejectedHighlights() throws Exception {
         String videoNo = "video-reject";
         when(ollamaAnalyzerService.analyzeHighlight(any()))
-                .thenReturn(Mono.just(new HighlightDecision(false, "판단보류", "제외", 2, "하이라이트 아님")));
+                .thenReturn(Mono.just(new HighlightDecision(false, "판단보류", "판단보류", "제외", 2, "하이라이트 아님")));
 
         vodHighlightAnalyzer.consumeVodChunks(buildChatChunkJson(), videoNo);
 
@@ -158,6 +159,40 @@ class VodHighlightAnalyzerTest {
                 .allSatisfy(point -> assertThat(point.getCategory()).isIn("LAUGH", "WONDER", "HYPE", "TENSION", "HOT_MOMENT"));
     }
 
+    @Test
+    @DisplayName("가챠 행운과 놀람 신호가 겹치면 sceneLabel을 비틱으로 만든다")
+    void consumeCompletion_ComposesSceneLabelForGachaFlex() throws Exception {
+        String videoNo = "video-gacha";
+        when(ollamaAnalyzerService.analyzeHighlight(any()))
+                .thenReturn(Mono.error(new IllegalStateException(new TimeoutException("use heuristic scene label"))));
+
+        vodHighlightAnalyzer.consumeVodChunks(buildGachaChatChunkJson(), videoNo);
+
+        String completionJson = objectMapper.writeValueAsString(VodCrawlCompletedEvent.builder()
+                .videoNo(videoNo)
+                .pagesProcessed(1)
+                .chatsCollected(24)
+                .title("가챠 레전드 순간")
+                .category("가챠 게임")
+                .duration(1800)
+                .build());
+
+        vodHighlightAnalyzer.consumeCompletion(completionJson, videoNo);
+        Thread.sleep(220);
+
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
+        verify(kafkaTemplate, atLeast(5)).send(eq("vod-analyzed-topic"), eq(videoNo), payloadCaptor.capture());
+
+        List<VodHighlightPoint> highlightPoints = new ArrayList<>();
+        for (String payload : payloadCaptor.getAllValues()) {
+            highlightPoints.add(objectMapper.readValue(payload, VodHighlightPoint.class));
+        }
+
+        assertThat(highlightPoints)
+                .extracting(VodHighlightPoint::getSceneLabel)
+                .contains("비틱");
+    }
+
     private String buildChatChunkJson() throws Exception {
         List<Map<String, Object>> chats = new ArrayList<>();
         for (int window = 0; window < 5; window++) {
@@ -167,6 +202,29 @@ class VodHighlightAnalyzerTest {
                 chat.put("videoInSeconds", startSeconds + index);
                 chat.put("userIdHash", "user-" + window + "-" + index);
                 chat.put("message", "와 미쳤다 한타 " + window + " " + index + "!!");
+                chats.add(chat);
+            }
+        }
+        return objectMapper.writeValueAsString(chats);
+    }
+
+    private String buildGachaChatChunkJson() throws Exception {
+        List<Map<String, Object>> chats = new ArrayList<>();
+        String[][] windows = new String[][] {
+                {"와 이걸 단챠 원트에 뽑네", "비틱 미쳤다 ssr 나왔다", "가챠에서 전설 한방에 떴다", "개부럽다 이건 비틱이지", "실화냐 확률 뚫었네", "와 미쳤다 픽업 원트"},
+                {"또 가챠 레전드네", "원트 성공 실화냐", "비틱력 미쳤다", "ssr 또 떴다", "한방에 끝냈네", "확률 개부럽다"},
+                {"가챠 방송 맞네", "픽업을 또 뽑았어", "비틱 ON", "전설 원트 뭐냐", "와 또 떴다", "이건 놀랍다"},
+                {"뽑기 방송에서 이게 되네", "단챠 전설 대박", "부럽다 진짜", "가챠 레전드 장면", "원트 성공 미쳤다", "채팅 난리났다"},
+                {"비틱 엔딩이다", "확률 뚫은 장면", "전설 픽업 성공", "가챠에서 또 떴다", "실화냐 원트", "와 다들 부러워한다"}
+        };
+
+        for (int window = 0; window < windows.length; window++) {
+            int startSeconds = window * 30;
+            for (int index = 0; index < windows[window].length; index++) {
+                Map<String, Object> chat = new LinkedHashMap<>();
+                chat.put("videoInSeconds", startSeconds + index);
+                chat.put("userIdHash", "gacha-user-" + window + "-" + index);
+                chat.put("message", windows[window][index]);
                 chats.add(chat);
             }
         }

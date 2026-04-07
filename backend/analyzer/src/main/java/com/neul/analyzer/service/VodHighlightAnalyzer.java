@@ -54,6 +54,11 @@ public class VodHighlightAnalyzer {
     private static final Duration FINALIZE_RETRY_DELAY = Duration.ofMillis(600);
     private static final int MAX_FINALIZE_RETRIES = 12;
     private static final int SPIKE_BUCKET_SECONDS = 5;
+    private static final List<String> GACHA_TOKENS = List.of("가챠", "뽑", "뽑기", "단챠", "10연", "연차", "픽업", "전설", "ssr", "레전", "천장", "확률", "득템", "나왔다");
+    private static final List<String> FLEX_TOKENS = List.of("비틱", "부럽", "원트", "한방", "개부럽", "쉽게", "미쳤다", "실화", "말이돼", "와");
+    private static final List<String> DISASTER_TOKENS = List.of("억까", "실수", "망", "말아", "터졌", "죽었", "박았", "대참사", "실화냐", "왜이래");
+    private static final List<String> CLUTCH_TOKENS = List.of("클러치", "역전", "한타", "캐리", "세이브", "슈퍼플레이", "미쳤다", "각", "뒤집", "살렸다");
+    private static final List<String> CHAT_TOKENS = List.of("채팅", "ㅋㅋ", "다들", "도배", "반응", "난리", "훈수", "어그로");
 
     private static final List<String> LAUGH_TOKENS = List.of("\u314b\u314b", "\u314e\u314e", "lol", "lmao", "rofl");
     private static final List<String> SURPRISE_TOKENS = List.of("\uc640", "\ud5c9", "\ub300\ubc15", "omg", "wtf");
@@ -293,6 +298,7 @@ public class VodHighlightAnalyzer {
                     .editabilityScore(ranked.editabilityScore())
                     .category(ranked.category())
                     .reactionLabel(ranked.reactionLabel())
+                    .sceneLabel(ranked.sceneLabel())
                     .description(ranked.description())
                     .reasonSummary(ranked.reasonSummary())
                     .topMessage(ranked.topMessage())
@@ -519,6 +525,7 @@ public class VodHighlightAnalyzer {
                 + punctuationScore
                 + consensusScore
                 + spikeScore;
+        String sceneLabel = determineSceneLabel(videoContext, window, category, reactionLabel, intensityScore, transitionScore);
 
         double editabilityScore = Math.min(
                 20.0,
@@ -537,13 +544,8 @@ public class VodHighlightAnalyzer {
             totalScore *= 0.18;
         }
 
-        String reasonSummary = buildReasonSummary(window, reactionLabel, intensityScore, transitionScore, editabilityScore);
-        String description = String.format(
-                "%s 반응이 몰린 구간이에요. 채팅 %d개와 참여자 %d명이 함께 반응했어요.",
-                reactionLabel,
-                window.messageCount(),
-                window.uniqueUsers()
-        );
+        String reasonSummary = buildReasonSummary(window, sceneLabel, reactionLabel, intensityScore, transitionScore, editabilityScore);
+        String description = buildDescription(window, sceneLabel);
 
         return new WindowScore(
                 videoContext.videoNo(),
@@ -555,6 +557,7 @@ public class VodHighlightAnalyzer {
                 editabilityScore,
                 category,
                 reactionLabel,
+                sceneLabel,
                 description,
                 reasonSummary,
                 window.representativeMessage(),
@@ -668,6 +671,7 @@ public class VodHighlightAnalyzer {
                     score.score() * 0.38,
                     score.category(),
                     score.reactionLabel(),
+                    score.sceneLabel(),
                     score.description(),
                     decisionReasoning + " | " + score.reasonSummary(),
                     true
@@ -675,6 +679,7 @@ public class VodHighlightAnalyzer {
         }
 
         String normalizedCategory = normalizeEditorialCategory(decision.category());
+        String normalizedSceneLabel = normalizeSceneLabel(decision.sceneLabel(), normalizedCategory, score.sceneLabel());
         String summary = (decision.summary() == null || decision.summary().isBlank())
                 ? "하이라이트 후보 구간입니다."
                 : decision.summary().trim();
@@ -683,10 +688,22 @@ public class VodHighlightAnalyzer {
                 (score.score() + 2.4) * intensityBoost,
                 normalizedCategory,
                 normalizedCategory,
+                normalizedSceneLabel,
                 summary,
                 decisionReasoning + " | " + score.reasonSummary(),
                 false
-        );
+            );
+    }
+
+    private String normalizeSceneLabel(String sceneLabel, String normalizedCategory, String fallback) {
+        if (sceneLabel == null || sceneLabel.isBlank() || sceneLabel.equals("null")) {
+            return fallback != null && !fallback.isBlank() ? fallback : normalizedCategory;
+        }
+        String trimmed = sceneLabel.trim();
+        if (trimmed.length() > 20) {
+            return trimmed.substring(0, 20).trim();
+        }
+        return trimmed;
     }
 
     private String normalizeEditorialCategory(String category) {
@@ -750,6 +767,73 @@ public class VodHighlightAnalyzer {
         return Math.min(3.8, score);
     }
 
+    private String determineSceneLabel(
+            VideoContext videoContext,
+            WindowStats window,
+            String category,
+            String reactionLabel,
+            double intensityScore,
+            double transitionScore
+    ) {
+        String text = String.join(" ",
+                safeText(videoContext.title(), ""),
+                safeText(videoContext.category(), ""),
+                safeText(window.representativeMessage(), ""),
+                String.join(" ", window.topKeywords(5).keySet()),
+                String.join(" ", window.topMessages(5).keySet())
+        ).toLowerCase(Locale.ROOT);
+
+        boolean hasGacha = containsAny(text, GACHA_TOKENS);
+        boolean hasFlex = containsAny(text, FLEX_TOKENS);
+        boolean hasDisaster = containsAny(text, DISASTER_TOKENS);
+        boolean hasClutch = containsAny(text, CLUTCH_TOKENS);
+        boolean hasChatMeta = containsAny(text, CHAT_TOKENS);
+
+        if ((category.equals("운") || category.equals("WONDER") || category.equals("HYPE")) && hasGacha && hasFlex) {
+            return "비틱";
+        }
+        if ((category.equals("대참사") || category.equals("TENSION")) && hasDisaster && transitionScore >= 2.0) {
+            return "억까";
+        }
+        if ((category.equals("슈퍼플레이") || category.equals("HYPE") || category.equals("WONDER")) && hasClutch) {
+            return transitionScore >= 2.5 ? "역전각" : "클러치";
+        }
+        if ((category.equals("소통") || category.equals("LAUGH") || category.equals("HOT_MOMENT")) && hasChatMeta && window.consensusRatio() >= 0.24) {
+            return "채팅폭주";
+        }
+        if ((category.equals("LAUGH") || category.equals("WONDER")) && window.laughCount() >= 2 && window.surpriseCount() >= 2) {
+            return "어이없음";
+        }
+        if (category.equals("슈퍼플레이")) {
+            return "슈퍼플레이";
+        }
+        if (category.equals("대참사")) {
+            return "대참사";
+        }
+        if (category.equals("운")) {
+            return intensityScore >= 14.0 ? "행운 폭발" : "행운 장면";
+        }
+        if (category.equals("소통")) {
+            return window.consensusRatio() >= 0.2 ? "채팅 합주" : "소통 타임";
+        }
+        if (category.equals("HYPE")) {
+            return "분위기 폭발";
+        }
+        if (category.equals("WONDER")) {
+            return reactionLabel.equals("놀람") && intensityScore >= 12.0 ? "반응 폭발" : reactionLabel;
+        }
+        return reactionLabel;
+    }
+
+    private String buildDescription(WindowStats window, String sceneLabel) {
+        return String.format(
+                "%s 장면입니다. 채팅 %d개와 참여자 %d명이 동시에 반응했습니다.",
+                sceneLabel,
+                window.messageCount(),
+                window.uniqueUsers()
+        );
+    }
+
     private double zScore(double value, double mean, double standardDeviation) {
         if (standardDeviation <= 0.0001) {
             return 0.0;
@@ -770,6 +854,7 @@ public class VodHighlightAnalyzer {
 
     private String buildReasonSummary(
             WindowStats window,
+            String sceneLabel,
             String reactionLabel,
             double intensityScore,
             double transitionScore,
@@ -777,30 +862,35 @@ public class VodHighlightAnalyzer {
     ) {
         List<String> reasons = new ArrayList<>();
 
-        reasons.add(String.format("이 구간에서 채팅 %d개, 참여자 %d명이 반응했어요.", window.messageCount(), window.uniqueUsers()));
+        reasons.add(String.format("%s 흐름이 보입니다.", sceneLabel));
+        reasons.add(String.format("채팅 %d개 · 참여자 %d명", window.messageCount(), window.uniqueUsers()));
 
         if (window.burstSignal() >= 3.0) {
-            reasons.add("감탄이나 반복 반응이 눈에 띄게 몰렸어요.");
+            reasons.add("감탄·반복 반응이 짧게 몰렸습니다.");
         }
         if (window.repeatedMessageCount() >= 2) {
-            reasons.add("비슷한 메시지가 여러 번 반복돼서 장면 반응이 또렷했어요.");
+            reasons.add("비슷한 메시지가 반복돼 장면 맥락이 또렷합니다.");
         }
         if (transitionScore >= 4.5) {
-            reasons.add("직전 구간보다 분위기가 확 바뀌는 편집 포인트예요.");
+            reasons.add("직전 구간보다 분위기 전환이 큽니다.");
         }
         if (editabilityScore >= 8.0) {
-            reasons.add("짧게 잘라 하이라이트로 쓰기 좋은 흐름이에요.");
+            reasons.add("짧게 잘라 쓰기 좋은 편집 포인트입니다.");
         }
 
         if (intensityScore >= 12.0) {
-            reasons.add("반응 강도가 높아서 먼저 확인해볼 만해요.");
+            reasons.add("반응 강도가 높아 우선 확인할 만합니다.");
         } else if (transitionScore >= 3.5) {
-            reasons.add("큰 폭발 구간은 아니어도 편집 포인트로 보기 좋아요.");
+            reasons.add("큰 폭발은 아니어도 흐름 변화가 뚜렷합니다.");
         } else {
-            reasons.add("조용한 흐름 속에서도 상대적으로 반응이 살아난 구간이에요.");
+            reasons.add(String.format("%s 중심으로 반응이 살아난 구간입니다.", reactionLabel));
         }
 
         return String.join(" | ", reasons);
+    }
+
+    private boolean containsAny(String text, List<String> tokens) {
+        return tokens.stream().anyMatch(text::contains);
     }
 
     private double calculateTransitionScore(
@@ -1191,6 +1281,7 @@ public class VodHighlightAnalyzer {
             double editabilityScore,
             String category,
             String reactionLabel,
+            String sceneLabel,
             String description,
             String reasonSummary,
             String topMessage,
@@ -1203,6 +1294,7 @@ public class VodHighlightAnalyzer {
                 double updatedScore,
                 String updatedCategory,
                 String updatedReactionLabel,
+                String updatedSceneLabel,
                 String updatedDescription,
                 String updatedReasonSummary,
                 boolean rejectedByLlm
@@ -1217,6 +1309,7 @@ public class VodHighlightAnalyzer {
                     editabilityScore,
                     updatedCategory,
                     updatedReactionLabel,
+                    updatedSceneLabel,
                     updatedDescription,
                     updatedReasonSummary,
                     topMessage,

@@ -278,6 +278,7 @@ class OllamaAnalyzerServiceTest {
         String mockJsonResponse = "{" +
                 "\"is_highlight\": true," +
                 "\"category\": \"슈퍼플레이\"," +
+                "\"scene_label\": \"클러치\"," +
                 "\"summary\": \"한 줄 요약\"," +
                 "\"intensity\": 9," +
                 "\"reasoning\": \"근거 설명\"" +
@@ -293,6 +294,7 @@ class OllamaAnalyzerServiceTest {
                 .assertNext(result -> {
                     assertThat(result.isHighlight()).isTrue();
                     assertThat(result.category()).isEqualTo("슈퍼플레이");
+                    assertThat(result.sceneLabel()).isEqualTo("클러치");
                     assertThat(result.summary()).isEqualTo("한 줄 요약");
                     assertThat(result.intensity()).isEqualTo(9);
                     assertThat(result.reasoning()).isEqualTo("근거 설명");
@@ -339,6 +341,7 @@ class OllamaAnalyzerServiceTest {
                 .assertNext(result -> {
                     assertThat(result.isHighlight()).isTrue();
                     assertThat(result.category()).isEqualTo("소통");
+                    assertThat(result.sceneLabel()).isEqualTo("소통");
                     assertThat(result.summary()).isEqualTo("하이라이트 후보 구간입니다.");
                     assertThat(result.intensity()).isEqualTo(10);
                     assertThat(result.reasoning()).isEqualTo("LLM reasoning not provided.");
@@ -365,6 +368,7 @@ class OllamaAnalyzerServiceTest {
                 .assertNext(result -> {
                     assertThat(result.isHighlight()).isFalse();
                     assertThat(result.category()).isEqualTo("판단보류");
+                    assertThat(result.sceneLabel()).isEqualTo("판단보류");
                     assertThat(result.summary()).isEqualTo("하이라이트 근거가 부족합니다.");
                 })
                 .verifyComplete();
