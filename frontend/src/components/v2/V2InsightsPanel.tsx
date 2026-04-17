@@ -49,6 +49,28 @@ interface Props {
   onFrame?: (frame: V2Frame) => void;
 }
 
+function CompactInfoDisclosure({
+  label,
+  summary,
+}: {
+  label: string;
+  summary: string;
+}) {
+  return (
+    <details className="group relative">
+      <summary
+        aria-label={label}
+        className="flex cursor-pointer list-none items-center justify-center rounded-full border border-slate-200 bg-white p-0 text-[11px] font-black text-slate-500 transition hover:border-slate-300 hover:text-slate-700 [&::-webkit-details-marker]:hidden"
+      >
+        <span className="inline-flex h-6 w-6 items-center justify-center">?</span>
+      </summary>
+      <div className="absolute right-0 top-full z-10 mt-3 w-72 max-w-[calc(100vw-4rem)] rounded-2xl border border-slate-200 bg-white px-3 py-3 text-xs leading-5 text-slate-600 shadow-[0_18px_50px_rgba(15,23,42,0.12)]">
+        {summary}
+      </div>
+    </details>
+  );
+}
+
 const EMPTY_FRAME: V2Frame = {
   roomId: "",
   emittedAt: "",
@@ -188,30 +210,30 @@ export default function V2InsightsPanel({ roomId, ownerId, onFrame }: Props) {
         };
 
   return (
-    <section className="mb-8 space-y-6">
-      <div className="flex items-center justify-between">
+    <section className="mb-8 space-y-4">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <h2 className="text-sm font-black tracking-[0.25em] text-slate-500">심리 가드레일</h2>
-          <p className="mt-2 text-sm text-slate-600">핵심 신호만 바로 읽을 수 있게 묶었습니다.</p>
+          <p className="mt-2 text-sm text-slate-600">핵심 신호만 먼저 읽을 수 있게 묶었습니다.</p>
           {frame.topicLabel ? (
             <div className="mt-3 inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[10px] font-black tracking-[0.2em] text-indigo-600">
               현재 주제 {frame.topicLabel}
             </div>
             ) : null}
         </div>
-        <div className={`rounded-2xl border px-4 py-3 ${connectionState.toneClass}`}>
-          <div className="flex items-center gap-2 text-[11px] font-black tracking-[0.18em]">
-            <span className={`h-2.5 w-2.5 rounded-full ${connectionState.dotClass}`} />
-            <span className={connectionState.labelClass}>{connectionState.label}</span>
+        <div className="flex items-start gap-2 self-start">
+          <div className={`rounded-2xl border px-4 py-3 ${connectionState.toneClass}`}>
+            <div className="flex items-center gap-2 text-[11px] font-black tracking-[0.18em]">
+              <span className={`h-2.5 w-2.5 rounded-full ${connectionState.dotClass}`} />
+              <span className={connectionState.labelClass}>{connectionState.label}</span>
+            </div>
           </div>
-          <p className="mt-2 max-w-[280px] text-xs leading-5 text-slate-600">
-            {connectionState.summary}
-          </p>
+          <CompactInfoDisclosure label="가드레일 연결 상태 설명" summary={connectionState.summary} />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-        <div className="xl:col-span-4 space-y-6">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+        <div className="space-y-5 xl:col-span-4">
           <AudienceBalanceCard
             balance={frame.balance}
             positiveAverage={frame.stats?.positiveAverage ?? 0}
@@ -224,7 +246,7 @@ export default function V2InsightsPanel({ roomId, ownerId, onFrame }: Props) {
           />
         </div>
 
-        <div className="xl:col-span-4 space-y-6">
+        <div className="space-y-5 xl:col-span-4">
           <NarrativeBriefingCard
             summary={frame.briefing?.summary}
             confidence={frame.briefing?.confidence}

@@ -2,7 +2,6 @@
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip } from "recharts";
 import {
   AlertCircle,
   BarChart3,
@@ -25,6 +24,21 @@ import V2InsightsPanel from "@/components/v2/V2InsightsPanel";
 import type { V2Frame } from "@/components/v2/V2InsightsPanel";
 import { usePollSession } from "@/hooks/usePollSession";
 import { appendOwnerId, buildOwnerHeaders } from "@/lib/ownerAuth";
+import {
+  DashboardMetricCard,
+  TrendAreaChart,
+  buildAccessState,
+  buildConnectionState,
+  buildHeroNotice,
+  buildLiveState,
+  buildPrimaryActionState,
+  buildSessionState,
+  readCollectorErrorMessage,
+  requestBroadcastStatus,
+  useOwnerDashboardSession,
+  type BroadcastStatus,
+  type TrendPoint,
+} from "./dashboard-helpers";
 
 interface Highlight {
   id: number;
@@ -62,26 +76,64 @@ interface HistoryItem {
   keywords?: string[];
 }
 
-interface OwnerProfile {
-  authenticated: boolean;
-  channelId?: string;
-  channelName?: string;
-  expiresAt?: string;
-  refreshed?: boolean;
-  message?: string;
+function CompactInfoDisclosure({
+  label,
+  cause,
+  nextStep,
+  align = "left",
+}: {
+  label: string;
+  cause: string;
+  nextStep: string;
+  align?: "left" | "right";
+}) {
+  return (
+    <details className="group relative">
+      <summary
+        aria-label={label}
+        className="flex cursor-pointer list-none items-center justify-center rounded-full border border-slate-200 bg-white p-0 text-[11px] font-black text-slate-500 transition hover:border-slate-300 hover:text-slate-700 [&::-webkit-details-marker]:hidden"
+      >
+        <span className="inline-flex h-6 w-6 items-center justify-center">?</span>
+      </summary>
+      <div
+        className={`absolute top-full z-10 mt-3 w-80 max-w-[calc(100vw-4rem)] rounded-2xl border border-slate-200 bg-white px-3 py-3 text-xs leading-5 text-slate-600 shadow-[0_18px_50px_rgba(15,23,42,0.12)] ${
+          align === "right" ? "right-0" : "left-0"
+        }`}
+      >
+        <p>{cause}</p>
+        <p className="mt-2 font-semibold text-slate-700">{nextStep}</p>
+      </div>
+    </details>
+  );
 }
 
-interface BroadcastStatus {
-  live: boolean;
-  status: "live" | "offline" | "failed";
-  message?: string;
-  liveTitle?: string;
-  viewerCount?: number;
-}
-
-interface InlineNotice {
-  tone: "good" | "warn";
-  message: string;
+function DashboardStateCard({
+  label,
+  value,
+  summary,
+  cause,
+  nextStep,
+  cardClass,
+}: {
+  label: string;
+  value: string;
+  summary: string;
+  cause: string;
+  nextStep: string;
+  cardClass: string;
+}) {
+  return (
+    <div className={`rounded-2xl border p-4 ${cardClass}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">{label}</div>
+          <div className="mt-2 text-sm font-bold text-slate-950">{value}</div>
+        </div>
+        <CompactInfoDisclosure label={`${label} 상세 안내`} cause={cause} nextStep={nextStep} align="right" />
+      </div>
+      <div className="mt-2 text-xs leading-5 text-slate-600">{summary}</div>
+    </div>
+  );
 }
 
 function useMeasuredElement() {
@@ -129,11 +181,6 @@ const EMOTION_MAP: Record<string, { color: string; label: string; icon: string }
   DISGUST: { color: "#fb7185", label: "불쾌", icon: "D" },
 };
 
-const EMPTY_OWNER_PROFILE: OwnerProfile = {
-  authenticated: false,
-  message: "치지직 로그인 후 대시보드를 사용할 수 있습니다.",
-};
-
 export default function ChannelDashboard({
   params,
 }: {
@@ -154,7 +201,7 @@ export default function ChannelDashboard({
   });
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [trendData, setTrendData] = useState<{ time: string; score: number; timestamp?: string }[]>([]);
+  const [trendData, setTrendData] = useState<TrendPoint[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [latestVibe, setLatestVibe] = useState<{
     emotion: string;
@@ -166,10 +213,6 @@ export default function ChannelDashboard({
   const [v2Frame, setV2Frame] = useState<V2Frame | null>(null);
   const [activeTab, setActiveTab] = useState<"live" | "vod">("live");
   const [dashboardMode, setDashboardMode] = useState<"focus" | "detail">("focus");
-  const [ownerChannelId, setOwnerChannelId] = useState("");
-  const [ownerProfile, setOwnerProfile] = useState<OwnerProfile>(EMPTY_OWNER_PROFILE);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [sessionNotice, setSessionNotice] = useState<InlineNotice | null>(null);
   const [broadcastStatus, setBroadcastStatus] = useState<BroadcastStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
 
@@ -178,77 +221,25 @@ export default function ChannelDashboard({
   const focusTrendContainer = useMeasuredElement();
   const detailTrendContainer = useMeasuredElement();
 
-  useEffect(() => {
-    let disposed = false;
-
-    const fetchOwnerProfile = async (silent = false) => {
-      try {
-        if (!silent) {
-          setAuthLoading(true);
-        }
-        const response = await fetch("/api/chzzk/me", {
-          cache: "no-store",
-        });
-        const profile = (await response.json()) as OwnerProfile;
-
-        if (disposed) {
-          return;
-        }
-
-        if (!response.ok || !profile.authenticated) {
-          setOwnerProfile(profile);
-          setOwnerChannelId("");
-           setSessionNotice({
-             tone: "warn",
-             message: profile.message || "다시 로그인해 주세요.",
-           });
-          return;
-        }
-
-        setOwnerProfile(profile);
-        setOwnerChannelId(profile.channelId ?? "");
-        if (profile.refreshed) {
-           setSessionNotice({
-             tone: "good",
-             message: "로그인 세션이 자동으로 연장되었습니다.",
-           });
-        }
-      } catch {
-        if (!disposed) {
-          setOwnerProfile(EMPTY_OWNER_PROFILE);
-          setOwnerChannelId("");
-           setSessionNotice({
-             tone: "warn",
-             message: "치지직 로그인 상태를 확인하지 못했습니다.",
-           });
-        }
-      } finally {
-        if (!disposed) {
-          setAuthLoading(false);
-        }
-      }
-    };
-
-    fetchOwnerProfile();
-
-    const intervalId = window.setInterval(() => {
-      fetchOwnerProfile(true);
-    }, 60_000);
-
-    return () => {
-      disposed = true;
-      window.clearInterval(intervalId);
-    };
+  const clearLiveConnection = useCallback(() => {
+    if (reconnectTimeoutRef.current !== null) {
+      window.clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    eventSourceRef.current?.close();
+    eventSourceRef.current = null;
+    setIsConnected(false);
   }, []);
 
-  useEffect(() => {
-    if (!sessionNotice) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => setSessionNotice(null), 5000);
-    return () => window.clearTimeout(timeoutId);
-  }, [sessionNotice]);
+  const {
+    ownerChannelId,
+    ownerProfile,
+    authLoading,
+    sessionNotice,
+    setSessionNotice,
+    handleUnauthorizedSession,
+    resetOwnerSession,
+  } = useOwnerDashboardSession(clearLiveConnection);
 
   useEffect(() => {
     if (!channelId || ownerChannelId !== channelId) {
@@ -265,22 +256,10 @@ export default function ChannelDashboard({
           setStatusLoading(true);
         }
 
-        const response = await fetch(`/api/channels/${channelId}/status`, {
-          cache: "no-store",
-          credentials: "include",
-        });
-        const data = (await response.json()) as BroadcastStatus;
+        const data = await requestBroadcastStatus(channelId);
 
         if (!disposed) {
           setBroadcastStatus(data);
-        }
-      } catch {
-        if (!disposed) {
-          setBroadcastStatus({
-            live: false,
-            status: "failed",
-            message: "방송 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.",
-          });
         }
       } finally {
         if (!disposed) {
@@ -303,22 +282,6 @@ export default function ChannelDashboard({
 
   const hasOwnerIdentity = !!ownerChannelId;
   const isAuthorizedChannel = ownerChannelId === channelId;
-
-  const handleUnauthorizedSession = useCallback((message = "로그인 세션이 만료되었습니다. 다시 로그인해 주세요.") => {
-    if (reconnectTimeoutRef.current !== null) {
-      window.clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-    eventSourceRef.current?.close();
-    eventSourceRef.current = null;
-    setOwnerProfile({
-      authenticated: false,
-      message,
-    });
-    setOwnerChannelId("");
-    setIsConnected(false);
-    setSessionNotice({ tone: "warn", message });
-  }, []);
 
   const fetchOwned = useCallback(async (url: string, init?: RequestInit) => {
     const response = await fetch(appendOwnerId(url, ownerChannelId), {
@@ -379,9 +342,7 @@ export default function ChannelDashboard({
             color: EMOTION_MAP[latest.emotionType]?.color || "#94a3b8",
           });
         }
-      } catch {
-        // Wait for stream recovery.
-      }
+      } catch {}
     };
 
     const connectSSE = () => {
@@ -540,8 +501,7 @@ export default function ChannelDashboard({
     await fetch("/api/chzzk/logout", {
       method: "DELETE",
     });
-    setOwnerProfile(EMPTY_OWNER_PROFILE);
-    setOwnerChannelId("");
+    resetOwnerSession();
     router.replace("/");
   };
 
@@ -560,47 +520,16 @@ export default function ChannelDashboard({
     } catch {}
   };
 
-  const readCollectorErrorMessage = async (response: Response, fallback: string) => {
-    try {
-      const data = (await response.json()) as { error?: string; message?: string; status?: string };
-      const message = data.message || data.error || data.status;
-      if (!message) {
-        return fallback;
-      }
-      if (message.includes("chatChannelId")) {
-        return "현재 라이브 중이 아니거나 채팅 수집이 허용되지 않은 채널입니다. 방송 상태를 먼저 확인해 주세요.";
-      }
-      if (message.includes("access token")) {
-        return "채팅 접근 토큰을 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.";
-      }
-      return message;
-    } catch {
-      return fallback;
-    }
-  };
-
-  const fetchBroadcastStatusOnce = async () => {
+  const fetchBroadcastStatusOnce = useCallback(async () => {
     setStatusLoading(true);
     try {
-      const response = await fetch(`/api/channels/${channelId}/status`, {
-        cache: "no-store",
-        credentials: "include",
-      });
-      const data = (await response.json()) as BroadcastStatus;
+      const data = await requestBroadcastStatus(channelId);
       setBroadcastStatus(data);
       return data;
-    } catch {
-      const fallback: BroadcastStatus = {
-        live: false,
-        status: "failed",
-        message: "방송 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.",
-      };
-      setBroadcastStatus(fallback);
-      return fallback;
     } finally {
       setStatusLoading(false);
     }
-  };
+  }, [channelId]);
 
   const handleToggleSession = async () => {
     try {
@@ -635,12 +564,12 @@ export default function ChannelDashboard({
 
       const nextState = !isSessionActive;
 
-        if (nextState) {
-          const response = await fetch(`/api/channels/${channelId}/subscribe`, {
-            method: "POST",
-            credentials: "include",
-            headers: buildOwnerHeaders(ownerChannelId),
-          });
+      if (nextState) {
+        const response = await fetch(`/api/channels/${channelId}/subscribe`, {
+          method: "POST",
+          credentials: "include",
+          headers: buildOwnerHeaders(ownerChannelId),
+        });
         if (response.status === 403) {
           setSessionNotice({
             tone: "warn",
@@ -655,12 +584,12 @@ export default function ChannelDashboard({
           }
           throw new Error(await readCollectorErrorMessage(response, "분석 시작에 실패했습니다."));
         }
-        } else {
-          const response = await fetch(`/api/channels/${channelId}/subscribe`, {
-            method: "DELETE",
-            credentials: "include",
-            headers: buildOwnerHeaders(ownerChannelId),
-          });
+      } else {
+        const response = await fetch(`/api/channels/${channelId}/subscribe`, {
+          method: "DELETE",
+          credentials: "include",
+          headers: buildOwnerHeaders(ownerChannelId),
+        });
         if (response.status === 401) {
           handleUnauthorizedSession();
           return;
@@ -687,241 +616,70 @@ export default function ChannelDashboard({
     }
   };
 
-  const renderMetric = (
-    label: string,
-    value: string,
-    description: string,
-    tone: "default" | "good" | "warn" = "default",
-  ) => {
-    const toneClass =
-      tone === "good"
-        ? "border-emerald-200 bg-emerald-50"
-        : tone === "warn"
-          ? "border-amber-200 bg-amber-50"
-          : "border-slate-200 bg-white";
-
-    return (
-      <div className={`rounded-[28px] border p-5 ${toneClass}`}>
-        <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">{label}</div>
-        <div className="mt-4 text-3xl font-black text-slate-950">{value}</div>
-        <div className="mt-2 text-sm text-slate-600">{description}</div>
-      </div>
-    );
-  };
-
-  const renderTrendChart = (width: number, height: number) => {
-    if (width <= 0 || height <= 0) {
-      return (
-        <div className="flex h-full min-h-[260px] items-center justify-center rounded-[24px] border border-dashed border-slate-300 bg-slate-50 text-sm font-semibold text-slate-500">
-          감정 추이 차트를 준비하는 중입니다.
-        </div>
-      );
-    }
-
-    return (
-      <AreaChart width={width} height={height} data={trendData}>
-        <defs>
-          <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.35} />
-            <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.02} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-        <XAxis dataKey="time" tick={{ fill: "#94a3b8", fontSize: 11 }} tickLine={false} axisLine={false} />
-        <YAxis domain={[-1, 1]} tick={{ fill: "#94a3b8", fontSize: 11 }} tickLine={false} axisLine={false} />
-        <Tooltip
-          contentStyle={{
-            background: "rgba(15,23,42,0.94)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            borderRadius: 16,
-            color: "#fff",
-          }}
-        />
-        <Area type="monotone" dataKey="score" stroke="#38bdf8" strokeWidth={3} fill="url(#trendFill)" />
-      </AreaChart>
-    );
-  };
-
-  const heroNotice: InlineNotice | null =
-    sessionNotice ??
-    (!statusLoading && broadcastStatus?.status === "failed" && broadcastStatus.message
-      ? { tone: "warn", message: broadcastStatus.message }
-      : null);
-
-  const accessState = authLoading
-    ? {
-        title: "로그인 상태를 확인하는 중입니다",
-        description: "치지직 로그인과 채널 소유 여부를 확인하고 있습니다.",
-        cause: "대시보드를 열면서 현재 브라우저 세션과 소유자 채널 정보를 조회했습니다.",
-        nextStep: "확인이 끝나면 로그인 필요, 소유자 확인 완료, 또는 제한 상태로 바뀝니다.",
-        badgeLabel: "확인 중",
-        badgeClass: "border-sky-200 bg-sky-50 text-sky-700",
-        panelClass: "border-sky-200 bg-sky-50",
-        cardClass: "border-sky-200 bg-sky-50",
-      }
-    : !hasOwnerIdentity
-      ? {
-          title: "로그인이 필요합니다",
-          description: ownerProfile.message || "치지직 소유자 로그인 없이 열린 상태입니다.",
-          cause: "현재 브라우저에 이 채널을 소유한 계정 세션이 없습니다.",
-          nextStep: "치지직 로그인 후 다시 들어오면 내 채널 대시보드와 실시간 가드레일을 사용할 수 있습니다.",
-          badgeLabel: "로그아웃",
-          badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
-          panelClass: "border-amber-200 bg-amber-50",
-          cardClass: "border-amber-200 bg-amber-50",
-        }
-      : !isAuthorizedChannel
-        ? {
-            title: `${ownerProfile.channelName || "내 채널"} 계정으로 로그인됨`,
-            description: "로그인은 되어 있지만 현재 보고 있는 채널은 이 계정의 소유 채널이 아닙니다.",
-            cause: `현재 세션은 ${ownerProfile.channelId || "내 채널"} 기준이고, 보고 있는 채널은 ${channelId}입니다.`,
-            nextStep: "본인 채널로 이동하거나 올바른 계정으로 다시 로그인해야 분석 시작 버튼이 활성화됩니다.",
-            badgeLabel: "제한됨",
-            badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
-            panelClass: "border-amber-200 bg-amber-50",
-            cardClass: "border-amber-200 bg-amber-50",
-          }
-        : {
-            title: `${ownerProfile.channelName || "내 채널"} 소유자 세션이 확인되었습니다`,
-            description: ownerProfile.expiresAt
-              ? `세션 만료 예정 ${new Date(ownerProfile.expiresAt).toLocaleString()}`
-              : "이 채널 기준으로 실시간 대시보드와 분석 제어를 사용할 수 있습니다.",
-            cause: "로그인한 계정의 소유 채널과 현재 페이지 채널이 일치합니다.",
-            nextStep: "라이브 상태를 확인한 뒤 분석 시작 또는 중지로 실시간 추적을 제어할 수 있습니다.",
-            badgeLabel: "소유자 확인",
-            badgeClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
-            panelClass: "border-emerald-200 bg-emerald-50",
-            cardClass: "border-emerald-200 bg-emerald-50",
-          };
-
-  const liveStatusDescription = statusLoading
-    ? "현재 방송 상태를 확인하고 있습니다."
-    : broadcastStatus?.liveTitle
-      ? `${broadcastStatus.liveTitle}${typeof broadcastStatus.viewerCount === "number" ? ` · 시청자 ${broadcastStatus.viewerCount.toLocaleString()}명` : ""}`
-      : broadcastStatus?.message || "방송 제목과 상태가 여기에 표시됩니다.";
-
-  const liveState = statusLoading
-    ? {
-        label: "상태 확인 중",
-        summary: "현재 방송 상태를 다시 확인하고 있습니다.",
-        cause: "소유자 채널의 라이브 상태를 API로 조회 중입니다.",
-        nextStep: "확인이 끝나면 방송 중, 오프라인, 또는 확인 필요 상태가 표시됩니다.",
-        cardClass: "border-sky-200 bg-sky-50",
-      }
-    : broadcastStatus?.status === "live"
-      ? {
-          label: "방송 중",
-          summary: liveStatusDescription,
-          cause: "현재 소유자 채널이 라이브 상태로 확인되었습니다.",
-          nextStep: isSessionActive ? "지금은 분석을 유지하면서 민심 흐름을 확인하면 됩니다." : "지금 분석 시작을 눌러 실시간 수집과 요약을 켤 수 있습니다.",
-          cardClass: "border-emerald-200 bg-emerald-50",
-        }
-      : broadcastStatus?.status === "failed"
-        ? {
-            label: "상태 확인 필요",
-            summary: liveStatusDescription,
-            cause: "라이브 상태를 안정적으로 확인하지 못했습니다.",
-            nextStep: "잠시 후 다시 확인하거나 방송 페이지에서 실제 라이브 상태를 먼저 확인해 주세요.",
-            cardClass: "border-amber-200 bg-amber-50",
-          }
-        : {
-            label: "오프라인",
-            summary: liveStatusDescription,
-            cause: "현재 이 채널이 라이브 방송 중이 아니어서 채팅 수집을 시작할 수 없습니다.",
-            nextStep: "방송이 켜지면 분석 시작으로 바로 전환할 수 있습니다.",
-            cardClass: "border-amber-200 bg-amber-50",
-          };
-
-  const sessionState = !hasOwnerIdentity
-    ? {
-        label: "잠김",
-        summary: "로그인 전이라 분석 세션을 만들 수 없습니다.",
-        cause: "소유자 인증이 아직 되지 않았습니다.",
-        nextStep: "먼저 치지직 로그인으로 소유자 세션을 연결해 주세요.",
-        cardClass: "border-amber-200 bg-amber-50",
-      }
-    : !isAuthorizedChannel
-      ? {
-          label: "권한 제한",
-          summary: "다른 채널을 보고 있어 분석 시작이 막혀 있습니다.",
-          cause: "소유자 채널과 현재 URL의 채널이 다릅니다.",
-          nextStep: "본인 채널로 이동하거나 올바른 소유자 계정으로 다시 로그인해 주세요.",
-          cardClass: "border-amber-200 bg-amber-50",
-        }
-      : isSessionActive
-        ? {
-            label: "진행 중",
-            summary: "채팅 수집과 분석, 투표 상태 추적이 켜져 있습니다.",
-            cause: "현재 방송에 대해 구독 세션이 활성화되어 있습니다.",
-            nextStep: "필요할 때까지 유지하고, 멈추려면 분석 중지를 누르면 됩니다.",
-            cardClass: "border-emerald-200 bg-emerald-50",
-          }
-        : broadcastStatus?.status === "live"
-          ? {
-              label: "시작 가능",
-              summary: "방송은 켜져 있고 분석 세션만 아직 시작하지 않았습니다.",
-              cause: "소유자 권한은 확인됐지만 실시간 구독 세션은 아직 비활성화 상태입니다.",
-              nextStep: "분석 시작을 누르면 채팅 수집과 대시보드 반영이 바로 시작됩니다.",
-              cardClass: "border-sky-200 bg-sky-50",
-            }
-          : {
-              label: "방송 대기",
-              summary: "분석 세션은 꺼져 있고 라이브 시작을 기다리는 상태입니다.",
-              cause: "현재 방송이 오프라인이거나 상태 확인이 끝나지 않았습니다.",
-              nextStep: "방송이 시작되면 분석 시작으로 바로 전환할 수 있습니다.",
-              cardClass: "border-slate-200 bg-slate-50",
-            };
-
-  const connectionState = !hasOwnerIdentity
-    ? {
-        label: "권한 없음",
-        summary: "로그인 전이라 실시간 스트림 연결을 만들지 않았습니다.",
-        cause: "소유자 세션 없이 라이브 데이터 스트림을 요청할 수 없습니다.",
-        nextStep: "로그인 후 본인 채널에서 들어오면 연결 상태가 실시간으로 바뀝니다.",
-        cardClass: "border-amber-200 bg-amber-50",
-      }
-    : !isAuthorizedChannel
-      ? {
-          label: "연결 제한",
-          summary: "현재 채널은 소유자 채널이 아니어서 실시간 스트림을 열지 않았습니다.",
-          cause: "보안상 본인 채널에서만 실시간 분석 스트림을 연결합니다.",
-          nextStep: "본인 채널로 이동하면 연결 상태가 정상 또는 재연결 상태로 바뀝니다.",
-          cardClass: "border-amber-200 bg-amber-50",
-        }
-      : !isSessionActive
-        ? {
-            label: "세션 시작 전",
-            summary: "실시간 분석 스트림이 아직 열리지 않았습니다.",
-            cause: "분석 세션이 비활성화된 상태입니다.",
-            nextStep: "분석 시작을 누르면 연결이 열리고 이후 프레임이 즉시 반영됩니다.",
-            cardClass: "border-slate-200 bg-slate-50",
-          }
-        : isConnected
-          ? {
-              label: "정상 연결",
-              summary: "이벤트 스트림이 정상이며 새 분석 결과를 바로 반영하고 있습니다.",
-              cause: "실시간 SSE 연결이 열려 있습니다.",
-              nextStep: "연결이 유지되는 동안 최신 민심 흐름과 대표 반응을 그대로 읽으면 됩니다.",
-              cardClass: "border-emerald-200 bg-emerald-50",
-            }
-          : {
-              label: "재연결 중",
-              summary: "실시간 스트림이 잠시 끊겨 다시 연결하고 있습니다.",
-              cause: "네트워크 또는 SSE 스트림 오류가 발생해 자동 재시도를 시작했습니다.",
-              nextStep: "잠시 기다리면 최신 상태로 다시 맞춰집니다.",
-              cardClass: "border-rose-200 bg-rose-50",
-            };
-
-  const primaryActionDisabled = hasOwnerIdentity ? !isAuthorizedChannel || statusLoading : false;
-  const primaryActionLabel = isSessionActive
-    ? "분석 중지"
-    : !isAuthorizedChannel
-      ? "내 채널에서만 시작 가능"
-      : statusLoading
-        ? "방송 상태 확인 중"
-        : broadcastStatus?.status === "live"
-          ? "분석 시작"
-          : "방송 시작 후 분석";
+  const heroNotice = buildHeroNotice({
+    sessionNotice,
+    statusLoading,
+    broadcastStatus,
+  });
+  const accessState = buildAccessState({
+    authLoading,
+    hasOwnerIdentity,
+    ownerProfile,
+    isAuthorizedChannel,
+    channelId,
+  });
+  const liveState = buildLiveState({
+    statusLoading,
+    broadcastStatus,
+    isSessionActive,
+  });
+  const sessionState = buildSessionState({
+    hasOwnerIdentity,
+    isAuthorizedChannel,
+    isSessionActive,
+    broadcastStatus,
+  });
+  const connectionState = buildConnectionState({
+    hasOwnerIdentity,
+    isAuthorizedChannel,
+    isSessionActive,
+    isConnected,
+  });
+  const { disabled: primaryActionDisabled, label: primaryActionLabel } =
+    buildPrimaryActionState({
+      hasOwnerIdentity,
+      isAuthorizedChannel,
+      statusLoading,
+      isSessionActive,
+      broadcastStatus,
+    });
+  const connectionMetricDescription =
+    connectionState.label === "정상 연결"
+      ? "프레임 수신 중"
+      : connectionState.label === "재연결 중"
+        ? "자동 재시도 중"
+        : connectionState.label === "세션 시작 전"
+          ? "연결 전"
+          : connectionState.label === "권한 없음"
+            ? "로그인 필요"
+            : connectionState.label === "연결 제한"
+              ? "본인 채널만 가능"
+              : "준비 중";
+  const sessionMetricDescription =
+    sessionState.label === "진행 중"
+      ? "채팅 수집 중"
+      : sessionState.label === "시작 가능"
+        ? "버튼으로 시작"
+        : sessionState.label === "잠김"
+          ? "로그인 필요"
+          : sessionState.label === "권한 제한"
+            ? "본인 채널만 가능"
+            : sessionState.label === "방송 대기"
+              ? "대기 중"
+              : "준비 중";
+  const latestVibeDescription = latestVibe
+    ? `${(latestVibe.score * 100).toFixed(0)}% ${latestVibe.label}`
+    : "아직 데이터 없음";
 
   return (
     <div className="space-y-8">
@@ -946,7 +704,7 @@ export default function ChannelDashboard({
               </h1>
               <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
                 {activeTab === "live"
-                  ? "핵심 신호부터 보고 필요할 때만 상세 패널을 펼칩니다."
+                  ? "핵심 신호만 먼저 보고 필요할 때 상세를 펼칩니다."
                   : "VOD를 조회한 뒤 바로 분석을 열어 후보를 검토합니다."}
               </p>
             </div>
@@ -981,19 +739,26 @@ export default function ChannelDashboard({
             {activeTab === "live" ? (
               <div className={`rounded-[28px] border p-5 ${accessState.panelClass}`}>
                 <div className="flex items-start justify-between gap-4">
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
                       접근 상태
                     </div>
                     <div className="mt-3 text-xl font-black text-slate-950">{accessState.title}</div>
-                    <div className="mt-2 text-sm leading-6 text-slate-600">{accessState.description}</div>
-                    <div className="mt-3 text-sm font-semibold text-slate-700">{accessState.nextStep}</div>
+                    <div className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{accessState.description}</div>
                   </div>
 
                   <div className={`inline-flex h-10 items-center gap-2 rounded-full border px-4 text-xs font-black uppercase tracking-[0.2em] ${accessState.badgeClass}`}>
                     <ShieldCheck className="h-4 w-4" />
                     {accessState.badgeLabel}
                   </div>
+                </div>
+
+                <div className="mt-4 flex justify-start">
+                  <CompactInfoDisclosure
+                    label="접근 상태 상세 안내"
+                    cause={accessState.cause}
+                    nextStep={accessState.nextStep}
+                  />
                 </div>
 
                 {heroNotice ? (
@@ -1050,21 +815,30 @@ export default function ChannelDashboard({
                     <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">방송 채널</div>
                     <div className="mt-2 truncate font-mono text-sm text-slate-800">{channelId}</div>
                   </div>
-                  <div className={`rounded-2xl border p-4 ${liveState.cardClass}`}>
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">라이브 상태</div>
-                    <div className="mt-2 text-sm font-bold text-slate-950">{liveState.label}</div>
-                    <div className="mt-1 text-xs leading-5 text-slate-600">{liveState.summary}</div>
-                  </div>
-                  <div className={`rounded-2xl border p-4 ${sessionState.cardClass}`}>
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">분석 세션</div>
-                    <div className="mt-2 text-sm font-bold text-slate-950">{sessionState.label}</div>
-                    <div className="mt-1 text-xs leading-5 text-slate-600">{sessionState.summary}</div>
-                  </div>
-                  <div className={`rounded-2xl border p-4 ${connectionState.cardClass}`}>
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">실시간 연결</div>
-                    <div className="mt-2 text-sm font-bold text-slate-950">{connectionState.label}</div>
-                    <div className="mt-1 text-xs leading-5 text-slate-600">{connectionState.summary}</div>
-                  </div>
+                  <DashboardStateCard
+                    label="라이브 상태"
+                    value={liveState.label}
+                    summary={liveState.summary}
+                    cause={liveState.cause}
+                    nextStep={liveState.nextStep}
+                    cardClass={liveState.cardClass}
+                  />
+                  <DashboardStateCard
+                    label="분석 세션"
+                    value={sessionState.label}
+                    summary={sessionState.summary}
+                    cause={sessionState.cause}
+                    nextStep={sessionState.nextStep}
+                    cardClass={sessionState.cardClass}
+                  />
+                  <DashboardStateCard
+                    label="실시간 연결"
+                    value={connectionState.label}
+                    summary={connectionState.summary}
+                    cause={connectionState.cause}
+                    nextStep={connectionState.nextStep}
+                    cardClass={connectionState.cardClass}
+                  />
                 </div>
               </div>
             ) : (
@@ -1099,7 +873,7 @@ export default function ChannelDashboard({
           <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">보기 밀도</div>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">핵심만 보거나, 필요할 때 상세 로그까지 펼칠 수 있습니다.</p>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">핵심만 먼저 보고, 설명은 필요할 때만 펼칩니다.</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -1134,30 +908,29 @@ export default function ChannelDashboard({
           </section>
 
           <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-            {renderMetric(
-              "분석된 채팅 수",
-              `${stats.TOTAL_COUNT || 0}`,
-              "현재 방송에서 분석된 전체 채팅 수입니다.",
-              "default",
-            )}
-            {renderMetric(
-              "연결 상태",
-              connectionState.label,
-              connectionState.summary,
-              isConnected ? "good" : connectionState.label === "세션 시작 전" ? "default" : "warn",
-            )}
-            {renderMetric(
-              "수집 상태",
-              sessionState.label,
-              sessionState.summary,
-              isSessionActive ? "good" : sessionState.label === "방송 대기" ? "default" : "warn",
-            )}
-            {renderMetric(
-              "현재 분위기",
-              latestVibe ? latestVibe.label : "대기 중",
-              latestVibe ? `가장 강한 반응은 ${(latestVibe.score * 100).toFixed(0)}% ${latestVibe.label}입니다.` : "아직 분석된 채팅이 없습니다.",
-              latestVibe ? "good" : "default",
-            )}
+            <DashboardMetricCard
+              label="분석된 채팅 수"
+              value={`${stats.TOTAL_COUNT || 0}`}
+              description="현재 방송 누적"
+            />
+            <DashboardMetricCard
+              label="연결 상태"
+              value={connectionState.label}
+              description={connectionMetricDescription}
+              tone={isConnected ? "good" : connectionState.label === "세션 시작 전" ? "default" : "warn"}
+            />
+            <DashboardMetricCard
+              label="수집 상태"
+              value={sessionState.label}
+              description={sessionMetricDescription}
+              tone={isSessionActive ? "good" : sessionState.label === "방송 대기" ? "default" : "warn"}
+            />
+            <DashboardMetricCard
+              label="현재 분위기"
+              value={latestVibe ? latestVibe.label : "대기 중"}
+              description={latestVibeDescription}
+              tone={latestVibe ? "good" : "default"}
+            />
           </section>
 
           {isAuthorizedChannel ? (
@@ -1225,7 +998,11 @@ export default function ChannelDashboard({
               </div>
 
               <div ref={focusTrendContainer.elementRef} className="h-[260px] min-w-0 min-h-[260px]">
-                {renderTrendChart(focusTrendContainer.width, focusTrendContainer.height)}
+                <TrendAreaChart
+                  width={focusTrendContainer.width}
+                  height={focusTrendContainer.height}
+                  data={trendData}
+                />
               </div>
             </div>
           </div>
@@ -1301,7 +1078,11 @@ export default function ChannelDashboard({
               </div>
 
               <div ref={detailTrendContainer.elementRef} className="h-[260px] min-w-0 min-h-[260px]">
-                {renderTrendChart(detailTrendContainer.width, detailTrendContainer.height)}
+                <TrendAreaChart
+                  width={detailTrendContainer.width}
+                  height={detailTrendContainer.height}
+                  data={trendData}
+                />
               </div>
             </div>
           </div>
