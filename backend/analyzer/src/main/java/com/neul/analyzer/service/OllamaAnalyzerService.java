@@ -74,29 +74,21 @@ public class OllamaAnalyzerService {
         log.info("[Ollama] Requesting analysis for {} compressed messages via local LLM.", chats.size());
         isProcessing.set(true);
 
-        // 1. Create a logical ID map (Logical ID -> Original ID)
-        Map<String, String> logicalIdToOriginalId = new HashMap<>();
+        Map<String, String> originalIdToLogicalId = new HashMap<>();
         for (int i = 0; i < chats.size(); i++) {
-            logicalIdToOriginalId.put(String.valueOf(i + 1), chats.get(i).getRepresentativeId());
+            String logicalId = String.valueOf(i + 1);
+            String originalId = chats.get(i).getRepresentativeId();
+            originalIdToLogicalId.put(originalId, logicalId);
         }
 
         // 2. Build the prompt with logical IDs
-        String promptText = buildSentimentPrompt(chats, logicalIdToOriginalId);
-
-        OllamaRequest requestDto = OllamaRequest.builder()
-                .model(ollamaModel)
-                .messages(List.of(
-                        OllamaMessage.builder().role("system").content(getSentimentSystemPrompt()).build(),
-                        OllamaMessage.builder().role("user").content(promptText).build()
-                ))
-                .stream(false)
-                .format("json") 
-                .options(Map.of(
-                        "temperature", 0.4,
-                        "num_predict", 1024,
-                        "top_p", 0.8
-                ))
-                .build();
+        String promptText = buildSentimentPrompt(chats, originalIdToLogicalId);
+        OllamaRequest requestDto = buildOllamaRequest(
+                getSentimentSystemPrompt(),
+                promptText,
+                0.4,
+                1024
+        );
 
         // 3. Call Ollama API with timeout & metrics
         Timer.Sample sample = (meterRegistry != null) ? Timer.start(meterRegistry) : null;
@@ -114,7 +106,7 @@ public class OllamaAnalyzerService {
                     if (sample != null && meterRegistry != null) {
                         sample.stop(meterRegistry.timer("neul.llm.api.latency"));
                     }
-                    return parseOllamaResponse(response, chats, logicalIdToOriginalId);
+                    return parseOllamaResponse(response, chats, originalIdToLogicalId);
                 })
                 .doFinally(signalType -> isProcessing.set(false));
     }
@@ -145,20 +137,12 @@ public class OllamaAnalyzerService {
                     Map.entry("chatBundle", payload.chatBundle())
             ));
 
-            OllamaRequest requestDto = OllamaRequest.builder()
-                    .model(ollamaModel)
-                    .messages(List.of(
-                            OllamaMessage.builder().role("system").content(getHighlightSystemPrompt()).build(),
-                            OllamaMessage.builder().role("user").content(userPrompt).build()
-                    ))
-                    .stream(false)
-                    .format("json")
-                    .options(Map.of(
-                            "temperature", 0.2,
-                            "num_predict", 768,
-                            "top_p", 0.8
-                    ))
-                    .build();
+            OllamaRequest requestDto = buildOllamaRequest(
+                    getHighlightSystemPrompt(),
+                    userPrompt,
+                    0.2,
+                    768
+            );
 
             return webClient.post()
                     .uri(ollamaApiUrl)
@@ -187,11 +171,9 @@ public class OllamaAnalyzerService {
 
     private String buildSentimentPrompt(List<CompressedChat> chats, Map<String, String> idMap) {
         StringBuilder sb = new StringBuilder();
-        Map<String, String> originalToLogical = idMap.entrySet().stream()
-                .collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
 
         for (CompressedChat chat : chats) {
-            String logicalId = originalToLogical.get(chat.getRepresentativeId());
+            String logicalId = idMap.get(chat.getRepresentativeId());
             sb.append(String.format("[%s] %s (%d occurrences)\n",
                     logicalId, chat.getContent(), chat.getCount()));
         }
@@ -200,7 +182,7 @@ public class OllamaAnalyzerService {
         ));
     }
 
-    private List<AnalyzedChatMessage> parseOllamaResponse(OllamaResponse response, List<CompressedChat> originalChats, Map<String, String> logicalIdToOriginalId) {
+    private List<AnalyzedChatMessage> parseOllamaResponse(OllamaResponse response, List<CompressedChat> originalChats, Map<String, String> originalIdToLogicalId) {
         String content = response.getMessage() != null ? response.getMessage().getContent() : "";
         if (content == null || content.isBlank()) {
             log.warn("[Ollama] Empty content received from LLM.");
@@ -270,12 +252,7 @@ public class OllamaAnalyzerService {
                 ));
 
             return originalChats.stream().map(chat -> {
-                // 원본 ID를 논리 ID로 변환하여 감정 점수 조회
-                String logicalId = logicalIdToOriginalId.entrySet().stream()
-                        .filter(e -> e.getValue().equals(chat.getRepresentativeId()))
-                        .map(Map.Entry::getKey)
-                        .findFirst()
-                        .orElse("-1");
+                String logicalId = originalIdToLogicalId.getOrDefault(chat.getRepresentativeId(), "-1");
 
                 Map<String, Double> scores = emotionMapByLogicalId.get(logicalId);
                 return AnalyzedChatMessage.builder()
@@ -355,17 +332,7 @@ public class OllamaAnalyzerService {
 
     private List<AnalyzedChatMessage> createFallbackList(List<CompressedChat> chats) {
         log.error("[Ollama] Triggering fallback analysis (all NEUTRAL) for {} messages.", chats.size());
-        return chats.stream()
-                .map(chat -> AnalyzedChatMessage.builder()
-                        .messageId(chat.getRepresentativeId())
-                        .roomId(chat.getRoomId())
-                        .content(chat.getContent())
-                        .senderId(chat.getRepresentativeSenderId()) // Added for Phase 23
-                        .emotionScores(createNeutralScores())
-                        .timestamp(chat.getTimestamp())
-                        .analyzedAt(LocalDateTime.now())
-                        .build())
-                .collect(Collectors.toList());
+        return createFallbackMessages(chats);
     }
 
     private Map<String, Double> createNeutralScores() {
@@ -386,18 +353,38 @@ public class OllamaAnalyzerService {
      */
     public Mono<List<AnalyzedChatMessage>> fallbackAnalyzeBatch(List<CompressedChat> chats, Throwable t) {
         log.error("[Ollama] API call failed. CircuitBreaker fallback triggered. Cause: {}", t.getMessage());
-        List<AnalyzedChatMessage> fallbackMessages = chats.stream()
+        return Mono.just(createFallbackMessages(chats));
+    }
+
+    private OllamaRequest buildOllamaRequest(String systemPrompt, String userPrompt, double temperature, int numPredict) {
+        return OllamaRequest.builder()
+                .model(ollamaModel)
+                .messages(List.of(
+                        OllamaMessage.builder().role("system").content(systemPrompt).build(),
+                        OllamaMessage.builder().role("user").content(userPrompt).build()
+                ))
+                .stream(false)
+                .format("json")
+                .options(Map.of(
+                        "temperature", temperature,
+                        "num_predict", numPredict,
+                        "top_p", 0.8
+                ))
+                .build();
+    }
+
+    private List<AnalyzedChatMessage> createFallbackMessages(List<CompressedChat> chats) {
+        return chats.stream()
                 .map(chat -> AnalyzedChatMessage.builder()
                         .messageId(chat.getRepresentativeId())
                         .roomId(chat.getRoomId())
                         .content(chat.getContent())
-                        .senderId(chat.getRepresentativeSenderId()) // Added for Phase 23
+                        .senderId(chat.getRepresentativeSenderId())
                         .emotionScores(createNeutralScores())
                         .timestamp(chat.getTimestamp())
                         .analyzedAt(LocalDateTime.now())
                         .build())
                 .collect(Collectors.toList());
-        return Mono.just(fallbackMessages);
     }
 
 
