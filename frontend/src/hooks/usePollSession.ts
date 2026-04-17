@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { resolvePollMode } from "@/lib/poll/mode-resolver";
 import type { PollMode, PollSession, PollStatus, ResolvedPollMode } from "@/lib/poll/types";
 import { backendChatProvider } from "@/lib/poll/providers/backend-chat";
@@ -26,14 +26,70 @@ interface UsePollSessionParams {
   fetchOwned: (url: string, init?: RequestInit) => Promise<Response | null>;
 }
 
+function normalizePollLabel(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
+function validateComposerItems(items: string[]) {
+  const sanitizedItems = items.map((item) => item.trim()).filter(Boolean);
+  const firstIndexByLabel = new Map<string, number>();
+  const duplicateIndexes = new Set<number>();
+
+  items.forEach((item, index) => {
+    const normalized = normalizePollLabel(item);
+
+    if (!normalized) {
+      return;
+    }
+
+    const firstIndex = firstIndexByLabel.get(normalized);
+    if (firstIndex == null) {
+      firstIndexByLabel.set(normalized, index);
+      return;
+    }
+
+    duplicateIndexes.add(firstIndex);
+    duplicateIndexes.add(index);
+  });
+
+  const issues: string[] = [];
+
+  if (sanitizedItems.length < 2) {
+    issues.push("최소 두 개의 투표 항목을 입력해 주세요.");
+  }
+
+  if (duplicateIndexes.size > 0) {
+    issues.push("중복된 항목 이름은 저장할 수 없습니다.");
+  }
+
+  return {
+    sanitizedItems,
+    duplicateIndexes: [...duplicateIndexes],
+    issues,
+    canSave: issues.length === 0,
+  };
+}
+
 export interface UsePollSessionResult extends PollSession {
   totalVotes: number;
   canManage: boolean;
+  composerCanSave: boolean;
+  composerIssues: string[];
+  composerDuplicateIndexes: number[];
+  composerError?: string;
+  isCreatingPoll: boolean;
+  isClearConfirmOpen: boolean;
+  isClearingPoll: boolean;
+  historyLoadingVoterId: string | null;
+  historyError?: string;
+  actionError?: string;
   setSessionActive: (active: boolean) => Promise<void>;
   toggleComposer: () => void;
   updateComposerItem: (index: number, value: string) => void;
   addComposerItem: () => void;
   createPoll: () => Promise<void>;
+  requestClearPoll: () => void;
+  cancelClearPoll: () => void;
   clearPoll: () => Promise<void>;
   openVoterHistory: (userId: string) => Promise<void>;
   closeVoterHistory: () => void;
@@ -89,6 +145,16 @@ export function usePollSession({
   const [session, setSession] = useState<PollSession>(() =>
     toPollSession(preferredMode, resolvedMode, provider, provider.getCapability().available ? "idle" : "unsupported", provider.getCapability().reason),
   );
+  const [composerError, setComposerError] = useState<string>();
+  const [actionError, setActionError] = useState<string>();
+  const [isCreatingPoll, setIsCreatingPoll] = useState(false);
+  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
+  const [isClearingPoll, setIsClearingPoll] = useState(false);
+  const [historyLoadingVoterId, setHistoryLoadingVoterId] = useState<string | null>(null);
+  const [historyError, setHistoryError] = useState<string>();
+  const latestHistoryRequestRef = useRef<string | null>(null);
+
+  const composerValidation = useMemo(() => validateComposerItems(session.composerItems), [session.composerItems]);
 
   const buildContext = useCallback(
     (): PollProviderContext => ({
@@ -133,6 +199,12 @@ export function usePollSession({
       showComposer: prev.showComposer,
       composerItems: prev.composerItems,
     }));
+    setComposerError(undefined);
+    setActionError(undefined);
+    setIsClearConfirmOpen(false);
+    latestHistoryRequestRef.current = null;
+    setHistoryLoadingVoterId(null);
+    setHistoryError(undefined);
 
     if (!roomId || !ownerId || !isAuthorizedChannel || !provider.getCapability().available) {
       return;
@@ -191,6 +263,7 @@ export function usePollSession({
   }, [buildContext, provider]);
 
   const toggleComposer = useCallback(() => {
+    setComposerError(undefined);
     setSession((prev) => ({
       ...prev,
       showComposer: !prev.showComposer,
@@ -198,6 +271,7 @@ export function usePollSession({
   }, []);
 
   const updateComposerItem = useCallback((index: number, value: string) => {
+    setComposerError(undefined);
     setSession((prev) => ({
       ...prev,
       composerItems: prev.composerItems.map((item, itemIndex) => (itemIndex === index ? value : item)),
@@ -205,55 +279,125 @@ export function usePollSession({
   }, []);
 
   const addComposerItem = useCallback(() => {
+    if (session.composerItems.some((item) => item.trim().length === 0)) {
+      setComposerError("비어 있는 항목을 먼저 채운 뒤 새 항목을 추가해 주세요.");
+      return;
+    }
+
+    setComposerError(undefined);
     setSession((prev) => ({
       ...prev,
       composerItems: [...prev.composerItems, ""],
     }));
-  }, []);
+  }, [session.composerItems]);
 
   const createPoll = useCallback(async () => {
-    const items = session.composerItems.map((item) => item.trim()).filter(Boolean);
-    if (items.length < 2) {
-      window.alert("투표 항목을 두 개 이상 입력해 주세요.");
+    const validation = validateComposerItems(session.composerItems);
+    if (!validation.canSave) {
+      setComposerError(validation.issues[0]);
       return;
     }
 
-    await provider.createPoll(buildContext(), items);
-    setSession((prev) => ({
-      ...prev,
-      showComposer: false,
-      composerItems: items.length > 0 ? items : ["", ""],
-      selectedVoter: null,
-      voterHistory: [],
-    }));
-    await refresh();
+    setComposerError(undefined);
+    setActionError(undefined);
+    setHistoryError(undefined);
+    latestHistoryRequestRef.current = null;
+    setHistoryLoadingVoterId(null);
+    setIsCreatingPoll(true);
+
+    try {
+      await provider.createPoll(buildContext(), validation.sanitizedItems);
+      setSession((prev) => ({
+        ...prev,
+        showComposer: false,
+        composerItems: validation.sanitizedItems.length > 0 ? validation.sanitizedItems : ["", ""],
+        selectedVoter: null,
+        voterHistory: [],
+      }));
+      await refresh();
+    } catch (error) {
+      setComposerError(error instanceof Error ? error.message : "투표를 저장하지 못했습니다.");
+    } finally {
+      setIsCreatingPoll(false);
+    }
   }, [buildContext, provider, refresh, session.composerItems]);
 
-  const clearPoll = useCallback(async () => {
-    if (!window.confirm("현재 투표를 초기화할까요?")) {
-      return;
-    }
+  const requestClearPoll = useCallback(() => {
+    setActionError(undefined);
+    setIsClearConfirmOpen(true);
+  }, []);
 
-    await provider.clearPoll(buildContext());
-    setSession((prev) => ({
-      ...prev,
-      results: {},
-      voters: {},
-      selectedVoter: null,
-      voterHistory: [],
-    }));
-  }, [buildContext, provider]);
+  const cancelClearPoll = useCallback(() => {
+    setIsClearConfirmOpen(false);
+  }, []);
+
+  const clearPoll = useCallback(async () => {
+    setActionError(undefined);
+    setHistoryError(undefined);
+    latestHistoryRequestRef.current = null;
+    setHistoryLoadingVoterId(null);
+    setIsClearingPoll(true);
+
+    try {
+      await provider.clearPoll(buildContext());
+      setSession((prev) => ({
+        ...prev,
+        results: {},
+        voters: {},
+        selectedVoter: null,
+        voterHistory: [],
+      }));
+      setIsClearConfirmOpen(false);
+      await refresh();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "투표를 초기화하지 못했습니다.");
+    } finally {
+      setIsClearingPoll(false);
+    }
+  }, [buildContext, provider, refresh]);
 
   const openVoterHistory = useCallback(async (userId: string) => {
-    const voterHistory = await provider.getVoterHistory(buildContext(), userId);
+    setHistoryError(undefined);
+    setActionError(undefined);
+    setHistoryLoadingVoterId(userId);
+    latestHistoryRequestRef.current = userId;
     setSession((prev) => ({
       ...prev,
       selectedVoter: userId,
-      voterHistory,
+      voterHistory: prev.selectedVoter === userId ? prev.voterHistory : [],
     }));
+
+    try {
+      const voterHistory = await provider.getVoterHistory(buildContext(), userId);
+      if (latestHistoryRequestRef.current !== userId) {
+        return;
+      }
+
+      setSession((prev) => ({
+        ...prev,
+        selectedVoter: userId,
+        voterHistory,
+      }));
+    } catch (error) {
+      if (latestHistoryRequestRef.current !== userId) {
+        return;
+      }
+
+      setHistoryError(error instanceof Error ? error.message : "시청자 기록을 불러오지 못했습니다.");
+      setSession((prev) => ({
+        ...prev,
+        selectedVoter: userId,
+        voterHistory: [],
+      }));
+    } finally {
+      setHistoryLoadingVoterId((current) => (current === userId ? null : current));
+    }
   }, [buildContext, provider]);
 
   const closeVoterHistory = useCallback(() => {
+    latestHistoryRequestRef.current = null;
+    setHistoryLoadingVoterId(null);
+    setHistoryError(undefined);
     setSession((prev) => ({
       ...prev,
       selectedVoter: null,
@@ -269,11 +413,23 @@ export function usePollSession({
     capability: provider.getCapability(),
     totalVotes: Object.values(session.results).reduce((sum, count) => sum + count, 0),
     canManage: isAuthorizedChannel && provider.getCapability().available,
+    composerCanSave: composerValidation.canSave,
+    composerIssues: composerValidation.issues,
+    composerDuplicateIndexes: composerValidation.duplicateIndexes,
+    composerError,
+    isCreatingPoll,
+    isClearConfirmOpen,
+    isClearingPoll,
+    historyLoadingVoterId,
+    historyError,
+    actionError,
     setSessionActive,
     toggleComposer,
     updateComposerItem,
     addComposerItem,
     createPoll,
+    requestClearPoll,
+    cancelClearPoll,
     clearPoll,
     openVoterHistory,
     closeVoterHistory,
