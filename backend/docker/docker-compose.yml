@@ -4,7 +4,7 @@ services:
     image: postgres:15-alpine
     container_name: neul-postgres
     ports:
-      - "5432:5432"
+      - "${NEUL_POSTGRES_HOST_PORT:-5432}:5432"
     environment:
       POSTGRES_USER: neul_user
       POSTGRES_PASSWORD: neul_password
