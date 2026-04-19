@@ -114,6 +114,14 @@ case "$( uname )" in                #(
   NONSTOP* )        nonstop=true ;;
 esac
 
+if "$darwin" && [ -x "/usr/libexec/java_home" ]; then
+    java17_home=$( /usr/libexec/java_home -v 17 2>/dev/null )
+    if [ -n "$java17_home" ]; then
+        JAVA_HOME=$java17_home
+        export JAVA_HOME
+    fi
+fi
+
 
 
 # Determine the Java command to use to start the JVM.
