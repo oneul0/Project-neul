@@ -6,6 +6,7 @@ import { LogIn, ShieldCheck } from "lucide-react";
 
 interface OwnerProfile {
   authenticated: boolean;
+  authUnavailable?: boolean;
   channelId?: string;
   channelName?: string;
   expiresAt?: string;
@@ -27,16 +28,31 @@ export default function Home() {
           cache: "no-store",
         });
         const profile = (await response.json()) as OwnerProfile;
+        if (profile.authUnavailable) {
+          setOwnerProfile((prev) => ({
+            authenticated: prev?.authenticated ?? false,
+            channelId: prev?.channelId,
+            channelName: prev?.channelName,
+            expiresAt: prev?.expiresAt,
+            authUnavailable: true,
+            message: profile.message || "로그인 상태를 일시적으로 확인하지 못했습니다.",
+          }));
+          return;
+        }
         setOwnerProfile(profile);
 
         if (profile.authenticated && profile.channelId) {
           router.replace(`/channels/${profile.channelId}`);
         }
       } catch {
-        setOwnerProfile({
-          authenticated: false,
-          message: "로그인 상태를 확인하지 못했습니다.",
-        });
+        setOwnerProfile((prev) => ({
+          authenticated: prev?.authenticated ?? false,
+          channelId: prev?.channelId,
+          channelName: prev?.channelName,
+          expiresAt: prev?.expiresAt,
+          authUnavailable: true,
+          message: "로그인 상태를 일시적으로 확인하지 못했습니다.",
+        }));
       } finally {
         setAuthLoading(false);
       }

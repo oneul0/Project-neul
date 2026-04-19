@@ -5,6 +5,7 @@ import { Area, AreaChart, CartesianGrid, Tooltip, XAxis, YAxis } from "recharts"
 
 export interface OwnerProfile {
   authenticated: boolean;
+  authUnavailable?: boolean;
   channelId?: string;
   channelName?: string;
   expiresAt?: string;
@@ -96,6 +97,19 @@ export function useOwnerDashboardSession(onUnauthorized: () => void) {
           return;
         }
 
+        if (profile.authUnavailable) {
+          setOwnerProfile((prev) => ({
+            ...prev,
+            message: profile.message || "로그인 상태를 일시적으로 확인하지 못했습니다.",
+            authUnavailable: true,
+          }));
+          setSessionNotice({
+            tone: "warn",
+            message: profile.message || "로그인 상태를 일시적으로 확인하지 못했습니다.",
+          });
+          return;
+        }
+
         if (!response.ok || !profile.authenticated) {
           onUnauthorized();
           setOwnerProfile(profile);
@@ -107,7 +121,10 @@ export function useOwnerDashboardSession(onUnauthorized: () => void) {
           return;
         }
 
-        setOwnerProfile(profile);
+        setOwnerProfile({
+          ...profile,
+          authUnavailable: false,
+        });
         setOwnerChannelId(profile.channelId ?? "");
         if (profile.refreshed) {
           setSessionNotice({
@@ -117,9 +134,11 @@ export function useOwnerDashboardSession(onUnauthorized: () => void) {
         }
       } catch {
         if (!disposed) {
-          onUnauthorized();
-          setOwnerProfile(EMPTY_OWNER_PROFILE);
-          setOwnerChannelId("");
+          setOwnerProfile((prev) => ({
+            ...prev,
+            message: "치지직 로그인 상태를 일시적으로 확인하지 못했습니다.",
+            authUnavailable: true,
+          }));
           setSessionNotice({
             tone: "warn",
             message: "치지직 로그인 상태를 확인하지 못했습니다.",
