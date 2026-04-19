@@ -20,9 +20,21 @@
 확인 항목:
 
 - Docker Desktop 실행 중
-- JDK 17 이상
+- JDK 17 사용 가능
+  - macOS의 `backend/gradlew`는 설치된 JDK 17이 있으면 그 경로를 우선 사용합니다.
+  - Windows는 필요하면 `JAVA17_HOME` 또는 `JAVA_HOME`을 JDK 17로 맞춘 뒤 `gradlew.bat`를 실행합니다.
 - Node.js / npm 사용 가능
 - `backend/.env`에 CHZZK 관련 값 존재
+
+선택 오버라이드:
+
+- 로컬 `5432`가 이미 다른 PostgreSQL에 사용 중이면 `backend/.env`에 아래 값을 추가합니다.
+
+```env
+NEUL_POSTGRES_HOST_PORT=55432
+```
+
+- `core-api`는 `backend/.env`의 `NEUL_POSTGRES_HOST`, `NEUL_POSTGRES_HOST_PORT`, `NEUL_POSTGRES_DB`, `NEUL_POSTGRES_USER`, `NEUL_POSTGRES_PASSWORD`를 읽습니다.
 
 ## 3. 권장 실행 순서
 
@@ -30,7 +42,7 @@
 
 ```powershell
 cd C:\Users\Oneul\Desktop\Projects\Project-neul\backend
-docker-compose up -d
+docker compose up -d
 ```
 
 확인:
@@ -44,6 +56,8 @@ docker ps
 중요:
 
 - core-api 시작 시 Flyway가 DB 스키마를 최신 상태로 맞춥니다.
+- `backend/.env`에 `NEUL_POSTGRES_HOST_PORT`를 넣었다면 같은 값으로 Docker 포트와 core-api 연결이 함께 바뀝니다.
+- `8083` 포트가 이미 다른 프로세스에 사용 중이면 core-api가 시작되지 않습니다. 이 경우 먼저 해당 프로세스를 종료한 뒤 다시 실행합니다.
 
 ```powershell
 cd C:\Users\Oneul\Desktop\Projects\Project-neul\backend
@@ -112,6 +126,8 @@ curl.exe -X POST "http://localhost:8081/api/v1/dev/mock-chat/채널ID?count=10"
 ## 8. 자주 하는 실수
 
 - 로컬 PostgreSQL이 5432를 잡고 있어 Docker DB 대신 그쪽으로 붙는 경우
+- 위 상황이면 `backend/.env`에 `NEUL_POSTGRES_HOST_PORT=55432`처럼 별도 포트를 지정하고 `docker compose up -d`부터 다시 실행합니다.
+- 로컬에서 다른 서버가 8083을 사용 중이라 core-api가 `Port 8083 was already in use`로 종료되는 경우
 - core-api보다 먼저 collector를 띄워 상태 조회가 꼬이는 경우
 - analyzer가 늦게 떠서 completion 이벤트를 놓치는 경우
 - 브라우저가 backend를 직접 치는 구조라고 가정하고 디버깅하는 경우
@@ -124,12 +140,12 @@ curl.exe -X POST "http://localhost:8081/api/v1/dev/mock-chat/채널ID?count=10"
 
 ```powershell
 cd C:\Users\Oneul\Desktop\Projects\Project-neul\backend
-docker-compose down
+docker compose down
 ```
 
 데이터까지 초기화하려면:
 
 ```powershell
 cd C:\Users\Oneul\Desktop\Projects\Project-neul\backend
-docker-compose down -v
+docker compose down -v
 ```
