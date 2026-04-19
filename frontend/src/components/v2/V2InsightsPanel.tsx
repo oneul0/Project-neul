@@ -6,7 +6,6 @@ import MentalBufferBar from "@/components/v2/MentalBufferBar";
 import AnchorChatPanel from "@/components/v2/AnchorChatPanel";
 import NarrativeBriefingCard from "@/components/v2/NarrativeBriefingCard";
 import TrustFilterWidget from "@/components/v2/TrustFilterWidget";
-import { appendOwnerId, buildOwnerHeaders } from "@/lib/ownerAuth";
 
 interface AnchorChat {
   messageId: string;
@@ -122,11 +121,10 @@ export default function V2InsightsPanel({ roomId, ownerId, onFrame }: Props) {
       onFrame?.(nextFrame);
     };
 
-    const fetchInitialState = async () => {
+      const fetchInitialState = async () => {
       try {
-        const response = await fetch(`http://localhost:8083/api/v2/state/${roomId}`, {
+        const response = await fetch(`/api/channels/${roomId}/v2/state`, {
           credentials: "include",
-          headers: buildOwnerHeaders(ownerId),
         });
         if (!response.ok) return;
 
@@ -140,10 +138,7 @@ export default function V2InsightsPanel({ roomId, ownerId, onFrame }: Props) {
     };
 
     const connect = () => {
-      const es = new EventSource(
-        appendOwnerId(`http://localhost:8083/api/v2/stream/${roomId}`, ownerId),
-        { withCredentials: true },
-      );
+      const es = new EventSource(`/api/channels/${roomId}/v2/stream`, { withCredentials: true });
       eventSourceRef.current = es;
 
       es.onopen = () => {

@@ -23,7 +23,6 @@ import PollCard from "@/components/poll/PollCard";
 import V2InsightsPanel from "@/components/v2/V2InsightsPanel";
 import type { V2Frame } from "@/components/v2/V2InsightsPanel";
 import { usePollSession } from "@/hooks/usePollSession";
-import { appendOwnerId, buildOwnerHeaders } from "@/lib/ownerAuth";
 import {
   DashboardMetricCard,
   TrendAreaChart,
@@ -284,11 +283,10 @@ export default function ChannelDashboard({
   const isAuthorizedChannel = ownerChannelId === channelId;
 
   const fetchOwned = useCallback(async (url: string, init?: RequestInit) => {
-    const response = await fetch(appendOwnerId(url, ownerChannelId), {
+    const response = await fetch(url, {
       credentials: "include",
       ...init,
       headers: {
-        ...buildOwnerHeaders(ownerChannelId),
         ...(init?.headers ?? {}),
       },
     });
@@ -327,7 +325,7 @@ export default function ChannelDashboard({
 
     const fetchHistory = async () => {
       try {
-        const data = await fetchOwnedJson<HistoryItem[]>(`http://localhost:8083/api/v1/stream/${channelId}/history`);
+        const data = await fetchOwnedJson<HistoryItem[]>(`/api/channels/${channelId}/stream/history`);
         if (!data) {
           return;
         }
@@ -346,8 +344,7 @@ export default function ChannelDashboard({
     };
 
     const connectSSE = () => {
-      const url = appendOwnerId(`http://localhost:8083/api/v1/stream/${channelId}`, ownerChannelId);
-      const es = new EventSource(url, { withCredentials: true });
+      const es = new EventSource(`/api/channels/${channelId}/stream`, { withCredentials: true });
       eventSourceRef.current = es;
 
       es.onopen = () => setIsConnected(true);
@@ -568,7 +565,6 @@ export default function ChannelDashboard({
         const response = await fetch(`/api/channels/${channelId}/subscribe`, {
           method: "POST",
           credentials: "include",
-          headers: buildOwnerHeaders(ownerChannelId),
         });
         if (response.status === 403) {
           setSessionNotice({
@@ -588,7 +584,6 @@ export default function ChannelDashboard({
         const response = await fetch(`/api/channels/${channelId}/subscribe`, {
           method: "DELETE",
           credentials: "include",
-          headers: buildOwnerHeaders(ownerChannelId),
         });
         if (response.status === 401) {
           handleUnauthorizedSession();
