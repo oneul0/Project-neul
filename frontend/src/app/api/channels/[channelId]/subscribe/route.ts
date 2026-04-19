@@ -10,14 +10,12 @@ type RouteContext = {
 async function proxySubscribe(request: NextRequest, context: RouteContext, method: "POST" | "DELETE") {
   const { channelId } = await context.params;
   const cookieStore = await cookies();
-  const ownerId = request.headers.get("x-chzzk-owner-id");
 
   try {
     const upstream = await fetch(`http://localhost:8081/api/v1/channels/${channelId}/subscribe`, {
       method,
       headers: {
         cookie: cookieStore.toString(),
-        ...(ownerId ? { "X-Chzzk-Owner-Id": ownerId } : {}),
       },
       cache: "no-store",
     });

@@ -16,10 +16,10 @@ export const backendChatProvider: PollProvider = {
   getCapability: () => capability,
   loadSnapshot: async ({ roomId, fetchOwned }) => {
     const [session, results, items, voters] = await Promise.all([
-      readJson<boolean>(await fetchOwned(`http://localhost:8083/api/v1/poll/${roomId}/session`)),
-      readJson<Record<string, number>>(await fetchOwned(`http://localhost:8083/api/v1/poll/${roomId}/results`)),
-      readJson<string[]>(await fetchOwned(`http://localhost:8083/api/v1/poll/${roomId}/items`)),
-      readJson<Record<string, string>>(await fetchOwned(`http://localhost:8083/api/v1/poll/${roomId}/voters`)),
+      readJson<boolean>(await fetchOwned(`/api/channels/${roomId}/poll/session`)),
+      readJson<Record<string, number>>(await fetchOwned(`/api/channels/${roomId}/poll/results`)),
+      readJson<string[]>(await fetchOwned(`/api/channels/${roomId}/poll/items`)),
+      readJson<Record<string, string>>(await fetchOwned(`/api/channels/${roomId}/poll/voters`)),
     ]);
 
     return {
@@ -31,8 +31,8 @@ export const backendChatProvider: PollProvider = {
   },
   refreshSnapshot: async ({ roomId, fetchOwned }) => {
     const [results, voters] = await Promise.all([
-      readJson<Record<string, number>>(await fetchOwned(`http://localhost:8083/api/v1/poll/${roomId}/results`)),
-      readJson<Record<string, string>>(await fetchOwned(`http://localhost:8083/api/v1/poll/${roomId}/voters`)),
+      readJson<Record<string, number>>(await fetchOwned(`/api/channels/${roomId}/poll/results`)),
+      readJson<Record<string, string>>(await fetchOwned(`/api/channels/${roomId}/poll/voters`)),
     ]);
 
     return {
@@ -41,35 +41,34 @@ export const backendChatProvider: PollProvider = {
     };
   },
   setSessionActive: async ({ roomId, fetchOwned }, active) => {
-    await readJson<boolean>(await fetchOwned(`http://localhost:8083/api/v1/poll/${roomId}/session?active=${active}`, {
+    await readJson<boolean>(await fetchOwned(`/api/channels/${roomId}/poll/session?active=${active}`, {
       method: "POST",
     }));
   },
-  createPoll: async ({ roomId, ownerId, fetchOwned }, items) => {
+  createPoll: async ({ roomId, fetchOwned }, items) => {
     await readJson<boolean>(
-      await fetchOwned(`http://localhost:8083/api/v1/poll/${roomId}/items`, {
+      await fetchOwned(`/api/channels/${roomId}/poll/items`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Chzzk-Owner-Id": ownerId,
         },
         body: JSON.stringify(items),
       }),
     );
 
-    await fetchOwned(`http://localhost:8083/api/v1/poll/${roomId}`, {
+    await fetchOwned(`/api/channels/${roomId}/poll`, {
       method: "DELETE",
     });
   },
   clearPoll: async ({ roomId, fetchOwned }) => {
-    await fetchOwned(`http://localhost:8083/api/v1/poll/${roomId}`, {
+    await fetchOwned(`/api/channels/${roomId}/poll`, {
       method: "DELETE",
     });
   },
   getVoterHistory: async ({ roomId, fetchOwned }, userId) => {
     return (
       (await readJson<PollHistoryEntry[]>(
-        await fetchOwned(`http://localhost:8083/api/v1/poll/${roomId}/voters/${userId}/history`),
+        await fetchOwned(`/api/channels/${roomId}/poll/voters/${userId}/history`),
       )) ?? []
     );
   },
