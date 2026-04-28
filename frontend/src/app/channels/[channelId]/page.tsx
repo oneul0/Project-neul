@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
@@ -80,19 +80,22 @@ function CompactInfoDisclosure({
   cause,
   nextStep,
   align = "left",
+  cueLabel,
 }: {
   label: string;
   cause: string;
   nextStep: string;
   align?: "left" | "right";
+  cueLabel?: string;
 }) {
   return (
     <details className="group relative">
       <summary
         aria-label={label}
-        className="flex cursor-pointer list-none items-center justify-center rounded-full border border-slate-200 bg-white p-0 text-[11px] font-black text-slate-500 transition hover:border-slate-300 hover:text-slate-700 [&::-webkit-details-marker]:hidden"
+        className={`flex cursor-pointer list-none items-center justify-center border border-slate-200 bg-white text-[11px] font-black text-slate-500 transition hover:border-slate-300 hover:text-slate-700 [&::-webkit-details-marker]:hidden ${cueLabel ? "gap-1.5 rounded-full px-2.5 py-1.5" : "rounded-full p-0"}`}
       >
-        <span className="inline-flex h-6 w-6 items-center justify-center">?</span>
+        <span className={`inline-flex items-center justify-center ${cueLabel ? "h-5 w-5 rounded-full border border-slate-200 text-[10px]" : "h-6 w-6"}`}>?</span>
+        {cueLabel ? <span className="pr-0.5 tracking-[0.08em]">{cueLabel}</span> : null}
       </summary>
       <div
         className={`absolute top-full z-10 mt-3 w-80 max-w-[calc(100vw-4rem)] rounded-2xl border border-slate-200 bg-white px-3 py-3 text-xs leading-5 text-slate-600 shadow-[0_18px_50px_rgba(15,23,42,0.12)] ${
@@ -106,31 +109,51 @@ function CompactInfoDisclosure({
   );
 }
 
-function DashboardStateCard({
+function getStatusToneClasses(surfaceClass: string) {
+  if (surfaceClass.includes("emerald")) {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+  if (surfaceClass.includes("sky")) {
+    return "border-sky-200 bg-sky-50 text-sky-700";
+  }
+  if (surfaceClass.includes("rose")) {
+    return "border-rose-200 bg-rose-50 text-rose-700";
+  }
+  if (surfaceClass.includes("amber")) {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+  return "border-slate-200 bg-white text-slate-600";
+}
+
+function StatusPictogram({
+  icon: Icon,
   label,
-  value,
-  summary,
-  cause,
-  nextStep,
-  cardClass,
+  state,
+  toneClass,
+  animateIcon = false,
 }: {
+  icon: ComponentType<{ className?: string }>;
   label: string;
-  value: string;
-  summary: string;
-  cause: string;
-  nextStep: string;
-  cardClass: string;
+  state: string;
+  toneClass: string;
+  animateIcon?: boolean;
 }) {
+  const tooltip = `${label} · ${state}`;
+
   return (
-    <div className={`rounded-2xl border p-4 ${cardClass}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">{label}</div>
-          <div className="mt-2 text-sm font-bold text-slate-950">{value}</div>
-        </div>
-        <CompactInfoDisclosure label={`${label} 상세 안내`} cause={cause} nextStep={nextStep} align="right" />
+    <div className="group relative">
+      <div
+        aria-label={tooltip}
+        role="img"
+        tabIndex={0}
+        title={tooltip}
+        className={`flex h-11 w-11 cursor-help items-center justify-center rounded-2xl border shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 ${toneClass}`}
+      >
+        <Icon className={`h-5 w-5 ${animateIcon ? "animate-pulse" : ""}`} />
       </div>
-      <div className="mt-2 text-xs leading-5 text-slate-600">{summary}</div>
+      <div className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 -translate-x-1/2 whitespace-nowrap rounded-full bg-slate-950 px-3 py-1.5 text-[11px] font-black text-white opacity-0 shadow-[0_18px_40px_rgba(15,23,42,0.18)] transition duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
+        {tooltip}
+      </div>
     </div>
   );
 }
@@ -578,7 +601,7 @@ export default function ChannelDashboard({
             handleUnauthorizedSession();
             return;
           }
-          throw new Error(await readCollectorErrorMessage(response, "분석 시작에 실패했습니다."));
+          throw new Error(await readCollectorErrorMessage(response, "반응 확인을 시작하지 못했습니다."));
         }
       } else {
         const response = await fetch(`/api/channels/${channelId}/subscribe`, {
@@ -595,8 +618,8 @@ export default function ChannelDashboard({
       setSessionNotice({
         tone: "good",
         message: nextState
-          ? "실시간 분석을 시작했습니다. 방송 흐름을 바로 반영합니다."
-          : "실시간 분석을 중지했습니다.",
+          ? "반응 확인을 시작했습니다. 방송 흐름을 바로 반영합니다."
+          : "반응 확인을 중지했습니다.",
       });
     } catch (error) {
       console.error("Failed to toggle session:", error);
@@ -606,7 +629,7 @@ export default function ChannelDashboard({
       }
       setSessionNotice({
         tone: "warn",
-        message: "분석 상태를 변경하지 못했습니다. 백엔드 상태를 확인해 주세요.",
+        message: "반응 확인 상태를 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요.",
       });
     }
   };
@@ -664,17 +687,169 @@ export default function ChannelDashboard({
     sessionState.label === "진행 중"
       ? "채팅 수집 중"
       : sessionState.label === "시작 가능"
-        ? "버튼으로 시작"
+        ? "라이브 감지됨"
         : sessionState.label === "잠김"
-          ? "로그인 필요"
+          ? "소유자 로그인 필요"
           : sessionState.label === "권한 제한"
-            ? "본인 채널만 가능"
+            ? "채널 불일치"
             : sessionState.label === "방송 대기"
-              ? "대기 중"
-              : "준비 중";
+              ? "라이브 대기"
+              : sessionState.label === "상태 확인 대기"
+                ? "상태 재확인 중"
+               : "준비 중";
   const latestVibeDescription = latestVibe
     ? `${(latestVibe.score * 100).toFixed(0)}% ${latestVibe.label}`
     : "아직 데이터 없음";
+  const headerCopy = useMemo(() => {
+    if (authLoading) {
+      return {
+        eyebrow: "준비 중",
+        title: "방송 화면을 확인하고 있어요",
+        description: "아이콘에 마우스를 올리면 로그인, 방송, 분석, 실시간 반영 상태를 짧게 볼 수 있어요.",
+      };
+    }
+
+    if (!hasOwnerIdentity) {
+      return {
+        eyebrow: "로그인 필요",
+        title: "내 방송을 열려면 먼저 로그인해 주세요",
+        description: ownerProfile.message || "로그인 후 바로 방송 준비 상태를 확인할 수 있어요.",
+      };
+    }
+
+    if (!isAuthorizedChannel) {
+      return {
+        eyebrow: "다른 방송 화면",
+        title: "내 방송 화면에서만 반응 흐름을 열 수 있어요",
+        description: "지금 보는 화면은 로그인한 계정의 방송과 달라서 시작 버튼이 잠겨 있어요.",
+      };
+    }
+
+    if (isSessionActive) {
+      return {
+        eyebrow: "반응 확인 중",
+        title: "지금 들어오는 반응을 바로 읽고 있어요",
+        description: "위 아이콘에 마우스를 올리면 현재 준비 상태를 한 줄로 빠르게 확인할 수 있어요.",
+      };
+    }
+
+    if (statusLoading) {
+      return {
+        eyebrow: "상태 확인 중",
+        title: "방송 준비 상태를 확인하고 있어요",
+        description: "잠시 후 아이콘과 버튼이 최신 상태로 정리됩니다.",
+      };
+    }
+
+    if (broadcastStatus?.status === "live") {
+      return {
+        eyebrow: "방송 감지됨",
+        title: "방송은 켜져 있고 반응 보기만 남았어요",
+        description: "시작 버튼을 누르면 새로 들어오는 반응을 바로 모아볼 수 있어요.",
+      };
+    }
+
+    if (broadcastStatus?.status === "failed") {
+      return {
+        eyebrow: "다시 확인 필요",
+        title: "방송 상태를 한 번 더 확인해 볼게요",
+        description: broadcastStatus.message || "잠시 후 자동으로 다시 확인합니다.",
+      };
+    }
+
+    return {
+      eyebrow: "방송 대기",
+      title: "방송 시작을 기다리고 있어요",
+      description: broadcastStatus?.message || "방송이 켜지면 반응 보기 버튼이 바로 열립니다.",
+    };
+  }, [
+    authLoading,
+    broadcastStatus?.message,
+    broadcastStatus?.status,
+    hasOwnerIdentity,
+    isAuthorizedChannel,
+    isSessionActive,
+    ownerProfile.message,
+    statusLoading,
+  ]);
+  const statusStrip = useMemo(
+    () => [
+      {
+        key: "account",
+        icon: authLoading ? RefreshCw : hasOwnerIdentity && isAuthorizedChannel ? ShieldCheck : Lock,
+        label: "내 방송",
+        state: authLoading
+          ? "확인 중"
+          : !hasOwnerIdentity
+            ? "로그인 필요"
+            : isAuthorizedChannel
+              ? ownerProfile.channelName || "확인됨"
+              : "다른 방송 화면",
+        toneClass: getStatusToneClasses(accessState.badgeClass),
+        animateIcon: authLoading,
+      },
+      {
+        key: "live",
+        icon: statusLoading ? RefreshCw : broadcastStatus?.status === "failed" ? AlertCircle : Radio,
+        label: "방송",
+        state: statusLoading
+          ? "확인 중"
+          : broadcastStatus?.status === "live"
+            ? "방송 중"
+            : broadcastStatus?.status === "failed"
+              ? "확인 필요"
+              : "대기 중",
+        toneClass: getStatusToneClasses(liveState.cardClass),
+        animateIcon: statusLoading,
+      },
+      {
+        key: "analysis",
+        icon: Target,
+        label: "반응 확인",
+        state: !hasOwnerIdentity
+          ? "잠김"
+          : !isAuthorizedChannel
+            ? "제한됨"
+            : isSessionActive
+              ? "진행 중"
+              : broadcastStatus?.status === "live"
+                ? "시작 가능"
+                : "대기 중",
+        toneClass: getStatusToneClasses(sessionState.cardClass),
+        animateIcon: isSessionActive,
+      },
+      {
+        key: "realtime",
+        icon: Waves,
+        label: "실시간 반영",
+        state: !hasOwnerIdentity
+          ? "열 수 없음"
+          : !isAuthorizedChannel
+            ? "내 방송에서만"
+            : !isSessionActive
+              ? "대기 중"
+              : isConnected
+                ? "반영 중"
+                : "다시 연결",
+        toneClass: getStatusToneClasses(connectionState.cardClass),
+        animateIcon: isSessionActive,
+      },
+    ],
+    [
+      accessState.badgeClass,
+      authLoading,
+      broadcastStatus?.status,
+      connectionState.cardClass,
+      hasOwnerIdentity,
+      isAuthorizedChannel,
+      isConnected,
+      isSessionActive,
+      liveState.cardClass,
+      ownerProfile.channelName,
+      sessionState.cardClass,
+      statusLoading,
+    ],
+  );
 
   return (
     <div className="space-y-8">
@@ -733,127 +908,94 @@ export default function ChannelDashboard({
 
             {activeTab === "live" ? (
               <div className={`rounded-[28px] border p-5 ${accessState.panelClass}`}>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
-                      접근 상태
+                <div className="flex flex-col gap-5">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+                        {headerCopy.eyebrow}
+                      </div>
+                      <div className="mt-3 text-xl font-black text-slate-950">{headerCopy.title}</div>
+                      <div className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{headerCopy.description}</div>
                     </div>
-                    <div className="mt-3 text-xl font-black text-slate-950">{accessState.title}</div>
-                    <div className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{accessState.description}</div>
+
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3" aria-label="대시보드 상태 요약">
+                      {statusStrip.map((item) => (
+                        <StatusPictogram
+                          key={item.key}
+                          icon={item.icon}
+                          label={item.label}
+                          state={item.state}
+                          toneClass={item.toneClass}
+                          animateIcon={item.animateIcon}
+                        />
+                      ))}
+                    </div>
                   </div>
 
-                  <div className={`inline-flex h-10 items-center gap-2 rounded-full border px-4 text-xs font-black uppercase tracking-[0.2em] ${accessState.badgeClass}`}>
-                    <ShieldCheck className="h-4 w-4" />
-                    {accessState.badgeLabel}
-                  </div>
-                </div>
-
-                <div className="mt-4 flex justify-start">
-                  <CompactInfoDisclosure
-                    label="접근 상태 상세 안내"
-                    cause={accessState.cause}
-                    nextStep={accessState.nextStep}
-                  />
-                </div>
-
-                {heroNotice ? (
-                  <div
-                    className={`mt-4 rounded-2xl border px-4 py-3 text-sm font-semibold ${
-                      heroNotice.tone === "good"
-                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                        : "border-amber-200 bg-amber-50 text-amber-700"
-                    }`}
-                  >
-                    {heroNotice.message}
-                  </div>
-                ) : null}
-
-                <div className="mt-5 flex flex-wrap items-center gap-3">
-                  {!hasOwnerIdentity ? (
-                    <button
-                      onClick={handleLogin}
-                      className="inline-flex items-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-emerald-400"
-                    >
-                      <Sparkles className="h-4 w-4" />
-                      치지직 로그인
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleToggleSession}
-                      disabled={primaryActionDisabled}
-                      className={`inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-black transition ${
-                        primaryActionDisabled
-                          ? "cursor-not-allowed bg-slate-200 text-slate-500"
-                          : isSessionActive
-                            ? "bg-rose-500 text-white hover:bg-rose-400"
-                            : "bg-sky-500 text-slate-950 hover:bg-sky-400"
+                  {heroNotice ? (
+                    <div
+                      className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${
+                        heroNotice.tone === "good"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          : "border-amber-200 bg-amber-50 text-amber-700"
                       }`}
                     >
-                      <RefreshCw className="h-4 w-4" />
-                      {primaryActionLabel}
-                    </button>
-                  )}
-
-                  {hasOwnerIdentity ? (
-                    <button
-                      onClick={handleLogout}
-                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-100"
-                    >
-                      <Lock className="h-4 w-4" />
-                      로그아웃
-                    </button>
+                      {heroNotice.message}
+                    </div>
                   ) : null}
-                </div>
 
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">방송 채널</div>
-                    <div className="mt-2 truncate font-mono text-sm text-slate-800">{channelId}</div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    {!hasOwnerIdentity ? (
+                      <button
+                        onClick={handleLogin}
+                        className="inline-flex items-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-emerald-400"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        치지직 로그인
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleToggleSession}
+                        disabled={primaryActionDisabled}
+                        className={`inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-black transition ${
+                          primaryActionDisabled
+                            ? "cursor-not-allowed bg-slate-200 text-slate-500"
+                            : isSessionActive
+                              ? "bg-rose-500 text-white hover:bg-rose-400"
+                              : "bg-sky-500 text-slate-950 hover:bg-sky-400"
+                        }`}
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                        {primaryActionLabel}
+                      </button>
+                    )}
+
+                    {hasOwnerIdentity ? (
+                      <button
+                        onClick={handleLogout}
+                        className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-100"
+                      >
+                        <Lock className="h-4 w-4" />
+                        로그아웃
+                      </button>
+                    ) : null}
                   </div>
-                  <DashboardStateCard
-                    label="라이브 상태"
-                    value={liveState.label}
-                    summary={liveState.summary}
-                    cause={liveState.cause}
-                    nextStep={liveState.nextStep}
-                    cardClass={liveState.cardClass}
-                  />
-                  <DashboardStateCard
-                    label="분석 세션"
-                    value={sessionState.label}
-                    summary={sessionState.summary}
-                    cause={sessionState.cause}
-                    nextStep={sessionState.nextStep}
-                    cardClass={sessionState.cardClass}
-                  />
-                  <DashboardStateCard
-                    label="실시간 연결"
-                    value={connectionState.label}
-                    summary={connectionState.summary}
-                    cause={connectionState.cause}
-                    nextStep={connectionState.nextStep}
-                    cardClass={connectionState.cardClass}
-                  />
                 </div>
               </div>
             ) : (
               <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
-                <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">VOD 진행 순서</div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {[
-                    "1. 조회",
-                    "2. 상태 확인",
-                    "3. 워크스페이스 열기",
-                  ].map((step) => (
-                    <div
-                      key={step}
-                      className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700"
-                    >
-                      {step}
-                    </div>
-                  ))}
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">VOD 진행</div>
+                    <div className="mt-2 text-sm font-black text-slate-950">조회한 VOD 기준으로 이어집니다.</div>
+                  </div>
+                  <CompactInfoDisclosure
+                    label="VOD 진행 안내"
+                    cause="VOD 워크스페이스는 마지막으로 조회한 영상 상태에 맞춰 버튼과 결과를 정리합니다."
+                    nextStep="기존 결과가 있으면 바로 열리고, 없으면 분석을 시작한 뒤 같은 흐름으로 이어집니다."
+                    align="right"
+                  />
                 </div>
-                <div className="mt-3 text-sm text-slate-600">선택한 VOD 하나를 기준으로 바로 이어집니다.</div>
               </div>
             )}
           </div>
@@ -866,9 +1008,15 @@ export default function ChannelDashboard({
       ) : (
         <>
           <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">보기 밀도</div>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">핵심만 먼저 보고, 설명은 필요할 때만 펼칩니다.</p>
+            <div className="flex items-start gap-3">
+              <div>
+                <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">보기 밀도</div>
+              </div>
+              <CompactInfoDisclosure
+                label="보기 밀도 안내"
+                cause="핵심 보기는 먼저 봐야 할 카드만 남기고, 상세 보기는 추이와 세부 패널까지 함께 보여줍니다."
+                nextStep="방송 상황에 따라 두 보기 사이를 오가며 필요한 밀도로 확인하면 됩니다."
+              />
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -935,9 +1083,9 @@ export default function ChannelDashboard({
               <div className="flex items-start gap-3">
                 <AlertCircle className="mt-0.5 h-5 w-5 text-amber-600" />
                 <div>
-                  <h2 className="text-lg font-black text-slate-950">인증된 소유자 계정에서만 상세 분석을 볼 수 있습니다</h2>
+                  <h2 className="text-lg font-black text-slate-950">자세한 반응 화면은 내 방송에서만 열려요</h2>
                   <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                    이 채널을 소유한 치지직 계정으로 로그인해야 실시간 가드레일과 상세 분석을 열 수 있습니다.
+                    치지직 로그인 후 내 방송 화면으로 들어오면 더 자세한 반응 흐름과 실시간 화면을 바로 볼 수 있어요.
                   </p>
                 </div>
               </div>
