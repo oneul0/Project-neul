@@ -31,6 +31,37 @@ const HIGHLIGHT_FILTERS: Array<{ key: HighlightFilter; label: string }> = [
   { key: "GOOD", label: "좋아요" },
 ];
 
+function CompactInfoDisclosure({
+  label,
+  summary,
+  align = "right",
+  cueLabel,
+}: {
+  label: string;
+  summary: string;
+  align?: "left" | "right";
+  cueLabel?: string;
+}) {
+  return (
+    <details className="group relative">
+      <summary
+        aria-label={label}
+        className={`flex cursor-pointer list-none items-center justify-center border border-slate-200 bg-white text-[11px] font-black text-slate-500 transition hover:border-slate-300 hover:text-slate-700 [&::-webkit-details-marker]:hidden ${cueLabel ? "gap-1.5 rounded-full px-2.5 py-1.5" : "rounded-full p-0"}`}
+      >
+        <span className={`inline-flex items-center justify-center ${cueLabel ? "h-5 w-5 rounded-full border border-slate-200 text-[10px]" : "h-6 w-6"}`}>?</span>
+        {cueLabel ? <span className="pr-0.5 tracking-[0.08em]">{cueLabel}</span> : null}
+      </summary>
+      <div
+        className={`absolute top-full z-10 mt-3 w-72 max-w-[calc(100vw-4rem)] rounded-2xl border border-slate-200 bg-white px-3 py-3 text-xs leading-5 text-slate-600 shadow-[0_18px_50px_rgba(15,23,42,0.12)] ${
+          align === "left" ? "left-0" : "right-0"
+        }`}
+      >
+        {summary}
+      </div>
+    </details>
+  );
+}
+
 function AnalysisStatusIcon({
   status,
   isAnalysisActive,
@@ -126,17 +157,21 @@ export function VodLookupSection({
   return (
     <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
       <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-        <div className="space-y-2">
-          <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-black tracking-[0.18em] text-indigo-700">
-            <Film className="h-3.5 w-3.5" />
-            1. VOD 조회
+        <div className="flex items-start gap-3">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-black tracking-[0.18em] text-indigo-700">
+              <Film className="h-3.5 w-3.5" />
+              1. VOD 조회
+            </div>
+            <h3 className="text-2xl font-black text-slate-950">
+              다시보기를 찾고 편집 후보 검토를 시작하세요
+            </h3>
           </div>
-          <h3 className="text-2xl font-black text-slate-950">
-            다시보기를 찾고 편집 후보 검토를 시작하세요
-          </h3>
-          <p className="max-w-2xl text-sm leading-6 text-slate-600">
-            번호나 링크를 조회한 뒤 바로 열거나 분석을 시작하면 됩니다.
-          </p>
+          <CompactInfoDisclosure
+            label="VOD 조회 안내"
+            summary="번호만 입력하거나 전체 URL을 붙여 넣은 뒤 조회하면 됩니다. 조회 후에는 기존 결과를 열거나 새 분석을 시작할 수 있습니다."
+            align="left"
+          />
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row">
@@ -172,7 +207,7 @@ export function VodLookupSection({
       ) : null}
 
       <div className={`mt-4 rounded-[24px] border px-5 py-4 ${board.lookupState.toneClass}`}>
-        <div className="flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-4">
           <div>
             <div className="inline-flex items-center rounded-full border border-white/70 bg-white/85 px-3 py-1 text-[11px] font-black tracking-[0.18em] text-slate-700">
               {board.lookupState.label}
@@ -181,14 +216,13 @@ export function VodLookupSection({
               {board.lookupState.summary}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2 text-[11px] font-black tracking-[0.18em]">
-            <span className="inline-flex items-center rounded-full border border-white/70 bg-white/85 px-3 py-1 text-slate-700">
-              {board.lookupState.actionLabel}
-            </span>
-            <span className="inline-flex items-center rounded-full border border-white/70 bg-white/70 px-3 py-1 text-slate-600">
-              {board.lookupState.detailLabel}
-            </span>
-          </div>
+          {board.lookupState.helpSummary ? (
+            <CompactInfoDisclosure
+              label="VOD 조회 상태 안내"
+              summary={board.lookupState.helpSummary}
+              cueLabel={/amber|slate-50/.test(board.lookupState.toneClass) ? "도움" : undefined}
+            />
+          ) : null}
         </div>
       </div>
     </section>
@@ -222,7 +256,7 @@ export function VodSelectedVideoSection({
 
       {!metadata ? (
         <div className="mt-5 rounded-[26px] border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-sm font-semibold text-slate-500">
-          조회한 VOD의 상태와 버튼이 여기에 표시됩니다.
+          조회한 VOD가 아직 없습니다.
         </div>
       ) : metadata.exists ? (
         <div className="mt-5 grid gap-5 lg:grid-cols-[280px_1fr]">
@@ -298,7 +332,7 @@ export function VodSelectedVideoSection({
             </div>
 
             <div className={`rounded-[22px] border px-5 py-4 ${board.selectedVodState.toneClass}`}>
-              <div className="flex flex-col gap-3">
+              <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="inline-flex items-center rounded-full border border-white/70 bg-white/85 px-3 py-1 text-[11px] font-black tracking-[0.18em] text-slate-700">
                     {board.selectedVodState.label}
@@ -307,14 +341,13 @@ export function VodSelectedVideoSection({
                     {board.selectedVodState.summary}
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2 text-[11px] font-black tracking-[0.18em]">
-                  <span className="inline-flex items-center rounded-full border border-white/70 bg-white/85 px-3 py-1 text-slate-700">
-                    {board.selectedVodState.actionLabel}
-                  </span>
-                  <span className="inline-flex items-center rounded-full border border-white/70 bg-white/70 px-3 py-1 text-slate-600">
-                    {board.selectedVodState.detailLabel}
-                  </span>
-                </div>
+                {board.selectedVodState.helpSummary ? (
+                  <CompactInfoDisclosure
+                    label="선택한 VOD 상태 안내"
+                    summary={board.selectedVodState.helpSummary}
+                    cueLabel={/amber|slate-50/.test(board.selectedVodState.toneClass) ? "도움" : undefined}
+                  />
+                ) : null}
               </div>
             </div>
 
@@ -364,25 +397,26 @@ export function VodWorkspaceSection({
 
     return (
       <section className="rounded-[30px] border border-indigo-200 bg-indigo-50 p-5">
-        <div className="flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-4">
           <div>
             <div className="inline-flex items-center rounded-full border border-white/70 bg-white/85 px-3 py-1 text-[11px] font-black tracking-[0.18em] text-indigo-700">
               {board.hasExistingResults ? "결과 대기" : "워크스페이스 대기"}
             </div>
             <p className="mt-3 text-sm font-semibold text-slate-900">
               {board.hasExistingResults
-                ? "위 버튼으로 이 VOD의 기존 결과를 바로 열 수 있습니다."
-                : "위 버튼으로 분석을 시작하면 워크스페이스가 열립니다."}
+                ? "선택한 VOD가 준비되었습니다."
+                : "선택한 VOD 분석을 아직 시작하지 않았습니다."}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2 text-[11px] font-black tracking-[0.18em]">
-            <span className="inline-flex items-center rounded-full border border-white/70 bg-white/85 px-3 py-1 text-slate-700">
-              {board.hasExistingResults ? "기존 결과 열기" : "분석 시작"}
-            </span>
-            <span className="inline-flex items-center rounded-full border border-white/70 bg-white/70 px-3 py-1 text-slate-600">
-              바로 이어서 보기
-            </span>
-          </div>
+          <CompactInfoDisclosure
+            label="워크스페이스 대기 안내"
+            summary={
+              board.hasExistingResults
+                ? "기존 결과가 있어 다시 계산하지 않고 바로 이어서 검토할 수 있습니다."
+                : "분석을 시작하면 완료 후 워크스페이스가 자동으로 채워집니다."
+            }
+            cueLabel="도움"
+          />
         </div>
       </section>
     );
@@ -391,16 +425,20 @@ export function VodWorkspaceSection({
   return (
     <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
       <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-        <div>
-          <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
-            3. 분석 워크스페이스
+        <div className="flex items-start gap-3">
+          <div>
+            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+              3. 분석 워크스페이스
+            </div>
+            <h4 className="mt-2 text-2xl font-black text-slate-950">
+              선택한 VOD의 흐름과 편집 후보를 한곳에서 확인합니다
+            </h4>
           </div>
-          <h4 className="mt-2 text-2xl font-black text-slate-950">
-            선택한 VOD의 흐름과 편집 후보를 한곳에서 확인합니다
-          </h4>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            타임라인에서 고르고, 오른쪽 패널에서 바로 액션을 남기면 됩니다.
-          </p>
+          <CompactInfoDisclosure
+            label="분석 워크스페이스 안내"
+            summary="왼쪽 타임라인과 목록에서 장면을 고르면 오른쪽 상세 패널이 같은 후보로 맞춰집니다. 평가와 복사, 원본 열기는 선택한 장면 기준으로 바로 이어집니다."
+            align="left"
+          />
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">
@@ -470,6 +508,10 @@ export function VodWorkspaceSection({
                     상세 보기
                   </button>
                 </div>
+                <CompactInfoDisclosure
+                  label="타임라인 범례 안내"
+                  summary={`초록 막대는 채팅량, 파란 막대는 참여자 수를 뜻합니다.${board.chartMode === "DETAIL" ? " 상세 보기에서는 긴 방송도 가로 스크롤로 끝까지 확인할 수 있습니다." : " 자동 요약에서는 화면 폭에 맞춰 구간을 묶어 보여줍니다."}`}
+                />
                 <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700">
                   <Zap className="h-3.5 w-3.5" />
                   채팅량
@@ -552,13 +594,6 @@ export function VodWorkspaceSection({
                   </div>
                 </div>
               )}
-            </div>
-
-            <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-              초록 막대는 채팅량, 파란 막대는 참여자 수를 뜻합니다.
-              {board.chartMode === "DETAIL"
-                ? " 상세 보기에서는 긴 방송도 가로 스크롤로 끝까지 확인할 수 있어요."
-                : " 자동 요약에서는 화면 폭에 맞춰 구간을 묶어서 보여줍니다."}
             </div>
 
             {board.selectedTimelinePoint ? (
@@ -671,11 +706,14 @@ export function VodWorkspaceSection({
                         </div>
                       </div>
 
-                      <div className="text-xs font-semibold text-slate-500">
-                        {board.selectedCluster.items.length > 1
-                          ? "시간이 가까운 후보들은 묶음으로 보여드려요."
-                          : "마커를 누르면 오른쪽 상세 패널이 해당 장면으로 맞춰집니다."}
-                      </div>
+                      <CompactInfoDisclosure
+                        label="후보 마커 레일 안내"
+                        summary={
+                          board.selectedCluster.items.length > 1
+                            ? "시간이 가까운 후보들은 묶음으로 정리합니다. 아래 시간칩을 누르면 같은 묶음 안에서 빠르게 비교할 수 있습니다."
+                            : "마커를 누르면 오른쪽 상세 패널이 같은 장면으로 맞춰집니다."
+                        }
+                      />
                     </div>
 
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -759,28 +797,30 @@ export function VodWorkspaceSection({
                     </div>
 
                     <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-4">
-                      <div className="flex flex-wrap gap-2">
-                        <a
-                          href={buildOriginalVodUrl(selectedHighlight.videoNo)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-3.5 py-2 text-xs font-black text-indigo-700 transition hover:bg-indigo-100"
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" />원본 VOD 열기
-                        </a>
-                        <button
-                          type="button"
-                          onClick={() => void board.handleCopyHighlightTimecode(selectedHighlight)}
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-black transition ${selectedTimecodeCopied ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"}`}
-                        >
-                          <Copy className="h-3.5 w-3.5" />
-                          {selectedTimecodeCopied ? "타임코드 복사됨" : "타임코드 복사"}
-                        </button>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex flex-wrap gap-2">
+                          <a
+                            href={buildOriginalVodUrl(selectedHighlight.videoNo)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-3.5 py-2 text-xs font-black text-indigo-700 transition hover:bg-indigo-100"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />원본 VOD 열기
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => void board.handleCopyHighlightTimecode(selectedHighlight)}
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-black transition ${selectedTimecodeCopied ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"}`}
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                            {selectedTimecodeCopied ? "타임코드 복사됨" : "타임코드 복사"}
+                          </button>
+                        </div>
+                        <CompactInfoDisclosure
+                          label="선택한 장면 사용 안내"
+                          summary={`원본 VOD를 연 뒤 ${formatSeconds(selectedHighlight.startSeconds)}부터 ${formatSeconds(selectedHighlight.endSeconds)} 사이를 확인하면 같은 구간을 바로 찾을 수 있습니다.`}
+                        />
                       </div>
-                      <p className="mt-3 text-xs font-semibold leading-5 text-indigo-700">
-                        원본 VOD를 연 뒤 {formatSeconds(selectedHighlight.startSeconds)}부터{" "}
-                        {formatSeconds(selectedHighlight.endSeconds)} 사이를 확인해 보세요.
-                      </p>
                     </div>
 
                     <div>
@@ -831,15 +871,19 @@ export function VodWorkspaceSection({
                       isAnalysisActive={board.isAnalysisActive}
                     />
                   </div>
-                  <div>
-                    <div className="text-base font-black">{board.resultsEmptyState.title}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="text-base font-black">{board.resultsEmptyState.title}</div>
+                      {board.resultsEmptyState.helpSummary ? (
+                        <CompactInfoDisclosure
+                          label="선택한 장면 상세 상태 안내"
+                          summary={board.resultsEmptyState.helpSummary}
+                          cueLabel="도움"
+                        />
+                      ) : null}
+                    </div>
                     <div className="mt-1 text-sm leading-6 text-slate-600">
                       {board.resultsEmptyState.description}
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-black tracking-[0.18em]">
-                      <span className="inline-flex items-center rounded-full border border-white/70 bg-white/85 px-3 py-1 text-slate-700">
-                        {board.resultsEmptyState.actionLabel}
-                      </span>
                     </div>
                   </div>
                 </div>
@@ -889,16 +933,20 @@ export function VodWorkspaceSection({
                       className="h-8 w-8"
                     />
                   </div>
-                  <div className="mt-3 text-base font-black text-slate-900">
-                    {board.resultsEmptyState.title}
+                  <div className="mt-3 flex items-start justify-center gap-2">
+                    <div className="text-base font-black text-slate-900">
+                      {board.resultsEmptyState.title}
+                    </div>
+                    {board.resultsEmptyState.helpSummary ? (
+                      <CompactInfoDisclosure
+                        label="하이라이트 목록 빈 상태 안내"
+                        summary={board.resultsEmptyState.helpSummary}
+                        cueLabel="도움"
+                      />
+                    ) : null}
                   </div>
                   <div className="mt-2 text-sm text-slate-600">
                     {board.resultsEmptyState.description}
-                  </div>
-                  <div className="mt-3 flex justify-center">
-                    <span className="inline-flex items-center rounded-full border border-white/70 bg-white/85 px-3 py-1 text-[11px] font-black tracking-[0.18em] text-slate-700">
-                      {board.resultsEmptyState.actionLabel}
-                    </span>
                   </div>
                 </div>
               ) : (

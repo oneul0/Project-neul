@@ -497,7 +497,6 @@ export function useVodHighlightBoard(
     lookupLoading,
     metadata,
     hasExistingResults,
-    selectedVideoNo,
   });
   const selectedVodState = buildSelectedVodState({
     metadata,
