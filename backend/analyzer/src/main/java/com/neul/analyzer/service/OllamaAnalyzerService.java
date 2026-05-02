@@ -24,13 +24,22 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.Set;
+import java.util.concurrent.Semaphore;
 import java.util.stream.Collectors;
 
 @Service
 public class OllamaAnalyzerService {
 
     private static final Logger log = LoggerFactory.getLogger(OllamaAnalyzerService.class);
+
+    // ─── 입력 가드레일 상수 ───────────────────────────────────────────────────
+    private static final int MAX_BATCH_SIZE = 30;
+    private static final int MAX_INPUT_CHARS = 3000;
+
+    // ─── 출력 가드레일 상수 ───────────────────────────────────────────────────
+    private static final Set<String> VALID_EMOTIONS =
+            Set.of("JOY", "HOPE", "NEUTRAL", "SADNESS", "ANGER", "WONDER", "DISGUST");
 
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
@@ -58,7 +67,10 @@ public class OllamaAnalyzerService {
     @Value("${app.ollama.model}")
     private String ollamaModel;
 
-    private final AtomicBoolean isProcessing = new AtomicBoolean(false);
+    // ─── 동시성 가드레일: AtomicBoolean 대신 Semaphore 사용 ──────────────────
+    // Semaphore(1): 슬롯 1개. 스킵 시 neul.llm.batch.skipped 카운터로 관측 가능.
+    // 향후 병렬 분석이 필요하면 Semaphore(N)으로 확장 가능.
+    private final Semaphore llmSlot = new Semaphore(1);
 
     @CircuitBreaker(name = "geminiApi", fallbackMethod = "fallbackAnalyzeBatch")
     public Mono<List<AnalyzedChatMessage>> analyzeBatch(List<CompressedChat> chats) {
@@ -66,22 +78,30 @@ public class OllamaAnalyzerService {
             return Mono.just(List.of());
         }
 
-        if (isProcessing.get()) {
-            log.warn("[Ollama] Still processing previous batch. Skipping current batch of {} messages to prevent queue buildup.", chats.size());
+        // [가드레일 입력] 배치 크기 및 총 문자 수 상한 적용
+        List<CompressedChat> capped = applyInputGuardrails(chats);
+        if (capped.isEmpty()) {
             return Mono.just(List.of());
         }
-        
+
+        if (!llmSlot.tryAcquire()) {
+            log.warn("[Ollama] LLM slot busy. Skipping batch of {} chats.", chats.size());
+            recordCount("neul.llm.batch.skipped");
+            return Mono.just(List.of());
+        }
+
+        return doAnalyzeBatch(capped)
+                .doFinally(ignored -> llmSlot.release());
+    }
+
+    private Mono<List<AnalyzedChatMessage>> doAnalyzeBatch(List<CompressedChat> chats) {
         log.info("[Ollama] Requesting analysis for {} compressed messages via local LLM.", chats.size());
-        isProcessing.set(true);
 
         Map<String, String> originalIdToLogicalId = new HashMap<>();
         for (int i = 0; i < chats.size(); i++) {
-            String logicalId = String.valueOf(i + 1);
-            String originalId = chats.get(i).getRepresentativeId();
-            originalIdToLogicalId.put(originalId, logicalId);
+            originalIdToLogicalId.put(chats.get(i).getRepresentativeId(), String.valueOf(i + 1));
         }
 
-        // 2. Build the prompt with logical IDs
         String promptText = buildSentimentPrompt(chats, originalIdToLogicalId);
         OllamaRequest requestDto = buildOllamaRequest(
                 getSentimentSystemPrompt(),
@@ -90,25 +110,22 @@ public class OllamaAnalyzerService {
                 1024
         );
 
-        // 3. Call Ollama API with timeout & metrics
         Timer.Sample sample = (meterRegistry != null) ? Timer.start(meterRegistry) : null;
-        if (meterRegistry != null) {
-            meterRegistry.counter("neul.llm.api.calls.total").increment();
-        }
+        recordCount("neul.llm.api.calls.total");
 
         return webClient.post()
                 .uri(ollamaApiUrl)
                 .bodyValue(requestDto)
                 .retrieve()
                 .bodyToMono(OllamaResponse.class)
-                .timeout(Duration.ofSeconds(60))
+                // [가드레일 타임아웃] 배치 크기에 비례한 동적 타임아웃
+                .timeout(computeTimeout(chats.size()))
                 .map(response -> {
                     if (sample != null && meterRegistry != null) {
                         sample.stop(meterRegistry.timer("neul.llm.api.latency"));
                     }
                     return parseOllamaResponse(response, chats, originalIdToLogicalId);
-                })
-                .doFinally(signalType -> isProcessing.set(false));
+                });
     }
 
     public Mono<HighlightDecision> analyzeHighlight(HighlightPromptPayload payload) {
@@ -161,6 +178,88 @@ public class OllamaAnalyzerService {
         }
     }
 
+    // ─── 입력 가드레일 ────────────────────────────────────────────────────────
+
+    /**
+     * 빈 채팅 제거 → 배치 크기 상한(MAX_BATCH_SIZE) → 총 입력 문자 상한(MAX_INPUT_CHARS) 순서로 적용.
+     * LLM 입력 토큰 폭발과 타임아웃을 예방하기 위한 경계 조건 강제.
+     */
+    private List<CompressedChat> applyInputGuardrails(List<CompressedChat> chats) {
+        List<CompressedChat> filtered = chats.stream()
+                .filter(c -> c.getContent() != null && !c.getContent().isBlank())
+                .collect(Collectors.toList());
+
+        List<CompressedChat> sized = filtered.size() > MAX_BATCH_SIZE
+                ? filtered.subList(0, MAX_BATCH_SIZE)
+                : filtered;
+
+        List<CompressedChat> result = new ArrayList<>();
+        int totalChars = 0;
+        for (CompressedChat chat : sized) {
+            int len = chat.getContent().length();
+            if (totalChars + len > MAX_INPUT_CHARS) break;
+            result.add(chat);
+            totalChars += len;
+        }
+
+        if (result.size() < chats.size()) {
+            log.info("[Ollama] Input guardrail applied: {} -> {} chats (chars={})",
+                    chats.size(), result.size(), totalChars);
+            recordCount("neul.llm.batch.capped");
+        }
+        return result;
+    }
+
+    /**
+     * 배치 크기에 비례한 동적 타임아웃. 고정 60초 대신 실제 부하에 맞게 조정.
+     * 기본 20초 + 채팅 1개당 1.5초, 최대 90초.
+     */
+    private Duration computeTimeout(int batchSize) {
+        long seconds = Math.min(90L, 20L + (long) (batchSize * 1.5));
+        return Duration.ofSeconds(seconds);
+    }
+
+    // ─── 출력 가드레일 ────────────────────────────────────────────────────────
+
+    /**
+     * LLM 응답의 감정 점수를 검증하고 정규화.
+     * - 7개 감정 키 완결성 보장 (누락 키는 0.0으로 채움)
+     * - 각 점수를 0.0~1.0 범위로 클램핑
+     * - 합계가 0이면 NEUTRAL로 교정 (의미 없는 결과 방지)
+     * - 예상 외 키 포함 시 경고 로그
+     */
+    private Map<String, Double> validateScores(Map<String, Double> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return createNeutralScores();
+        }
+
+        Map<String, Double> validated = new HashMap<>();
+        for (String emotion : VALID_EMOTIONS) {
+            double score = raw.getOrDefault(emotion, 0.0);
+            validated.put(emotion, Math.max(0.0, Math.min(1.0, score)));
+        }
+
+        double total = validated.values().stream().mapToDouble(Double::doubleValue).sum();
+        if (total < 0.001) {
+            log.warn("[Ollama] All emotion scores are zero, falling back to NEUTRAL.");
+            recordCount("neul.llm.output.zeroed");
+            return createNeutralScores();
+        }
+
+        raw.keySet().stream()
+                .filter(k -> !VALID_EMOTIONS.contains(k))
+                .findFirst()
+                .ifPresent(k -> log.warn("[Ollama] Unexpected emotion key in LLM output: {}", k));
+
+        return validated;
+    }
+
+    // ─── 내부 유틸 ───────────────────────────────────────────────────────────
+
+    private void recordCount(String name) {
+        if (meterRegistry != null) meterRegistry.counter(name).increment();
+    }
+
     private String getSentimentSystemPrompt() {
         return promptTemplateService.render(promptProperties.getSentimentSystem(), Map.of());
     }
@@ -196,7 +295,7 @@ public class OllamaAnalyzerService {
             log.info("[Ollama] Extracted JSON: {}", jsonStr);
             List<Map<String, Object>> resultList;
             List<Map<String, String>> rawKeywords = List.of();
-            
+
             if (jsonStr.startsWith("{")) {
                 Map<String, Object> root = objectMapper.readValue(jsonStr, new TypeReference<Map<String, Object>>() {});
                 if (root.containsKey("results")) {
@@ -222,10 +321,9 @@ public class OllamaAnalyzerService {
                 resultList = objectMapper.readValue(jsonStr, new TypeReference<List<Map<String, Object>>>() {});
             }
 
-            // Keyword Mapping (Phase 24)
             final Map<String, String> keywordToGroup = new HashMap<>();
             final List<String> finalKeywords = new ArrayList<>();
-            
+
             for (Map<String, String> kwMap : rawKeywords) {
                 String text = kwMap.get("text");
                 String group = kwMap.get("representativeName");
@@ -237,30 +335,34 @@ public class OllamaAnalyzerService {
                     }
                 }
             }
+
             Map<String, Map<String, Double>> emotionMapByLogicalId = resultList.stream()
-                .filter(map -> map != null && map.containsKey("messageId") && map.containsKey("scores"))
-                .collect(Collectors.toMap(
-                    map -> String.valueOf(map.get("messageId")),
-                    map -> {
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> rawScores = (Map<String, Object>) map.get("scores");
-                        Map<String, Double> scores = new HashMap<>();
-                        rawScores.forEach((k, v) -> scores.put(k, ((Number) v).doubleValue()));
-                        return scores;
-                    },
-                    (a, b) -> a
-                ));
+                    .filter(map -> map != null && map.containsKey("messageId") && map.containsKey("scores"))
+                    .collect(Collectors.toMap(
+                            map -> String.valueOf(map.get("messageId")),
+                            map -> {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> rawScores = (Map<String, Object>) map.get("scores");
+                                Map<String, Double> scores = new HashMap<>();
+                                rawScores.forEach((k, v) -> scores.put(k, ((Number) v).doubleValue()));
+                                return scores;
+                            },
+                            (a, b) -> a
+                    ));
 
             return originalChats.stream().map(chat -> {
                 String logicalId = originalIdToLogicalId.getOrDefault(chat.getRepresentativeId(), "-1");
+                Map<String, Double> rawScores = emotionMapByLogicalId.get(logicalId);
 
-                Map<String, Double> scores = emotionMapByLogicalId.get(logicalId);
+                // [가드레일 출력] 점수 범위 및 감정 키 완결성 검증
+                Map<String, Double> scores = validateScores(rawScores);
+
                 return AnalyzedChatMessage.builder()
                         .messageId(chat.getRepresentativeId())
                         .roomId(chat.getRoomId())
                         .content(chat.getContent())
-                        .senderId(chat.getRepresentativeSenderId()) // Preserve senderId
-                        .emotionScores(scores != null ? scores : createNeutralScores())
+                        .senderId(chat.getRepresentativeSenderId())
+                        .emotionScores(scores)
                         .keywords(finalKeywords)
                         .keywordGroups(!keywordToGroup.isEmpty() ? keywordToGroup : null)
                         .timestamp(chat.getTimestamp())
@@ -276,10 +378,10 @@ public class OllamaAnalyzerService {
 
     private String extractJsonText(String text) {
         if (text == null) return "";
-        
+
         int firstBrace = text.indexOf('{');
         int firstBracket = text.indexOf('[');
-        
+
         int start;
         if (firstBrace != -1 && firstBracket != -1) start = Math.min(firstBrace, firstBracket);
         else if (firstBrace != -1) start = firstBrace;
@@ -288,15 +390,14 @@ public class OllamaAnalyzerService {
 
         int lastBrace = text.lastIndexOf('}');
         int lastBracket = text.lastIndexOf(']');
-        
+
         int end = Math.max(lastBrace, lastBracket);
-        
+
         if (start != -1 && end != -1 && start < end) {
             String result = text.substring(start, end + 1);
-            // Remove markdown code block markers if accidentally included
             return result.replace("```json", "").replace("```", "").trim();
         }
-        
+
         return text.trim();
     }
 
@@ -347,10 +448,6 @@ public class OllamaAnalyzerService {
         return scores;
     }
 
-    /**
-     * Fallback 메서드. Gemini API 호출 실패 시 (타임아웃, 서킷브레이커 오픈 등)
-     * 배치 전체를 NEUTRAL로 처리합니다.
-     */
     public Mono<List<AnalyzedChatMessage>> fallbackAnalyzeBatch(List<CompressedChat> chats, Throwable t) {
         log.error("[Ollama] API call failed. CircuitBreaker fallback triggered. Cause: {}", t.getMessage());
         return Mono.just(createFallbackMessages(chats));
@@ -386,6 +483,4 @@ public class OllamaAnalyzerService {
                         .build())
                 .collect(Collectors.toList());
     }
-
-
 }

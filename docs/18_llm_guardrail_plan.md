@@ -1,0 +1,202 @@
+# LLM 가드레일 및 VOD 동시성 제한 구현 기록
+
+작성일: 2026-05-02
+
+## 1. 배경 및 문제 상황
+
+### 1-1. LLM 입력 무제한
+
+`OllamaAnalyzerService.analyzeBatch()`는 `ChatOptimizer`가 압축한 배치를 그대로 LLM에 전달했다.
+배치 크기나 총 입력 문자 수에 상한이 없어 다음 문제가 발생할 수 있었다.
+
+- 배치가 클수록 고정 60초 타임아웃이 부족해 `TimeoutException` → CircuitBreaker 오픈
+- 빈 콘텐츠나 극단적으로 긴 채팅이 LLM 입력에 포함되어 응답 품질 저하
+
+### 1-2. LLM 출력 무검증
+
+LLM이 반환한 JSON의 감정 점수를 파싱 성공만 하면 그대로 사용했다.
+
+- 감정 키 7개 중 일부가 누락돼도 `getOrDefault(emotion, 0.0)` 없이 통과
+- 점수가 0~1 범위를 벗어나도 DB에 저장
+- 모든 점수가 0인 의미 없는 결과가 NEUTRAL 처리 없이 저장
+
+### 1-3. 데이터 손실이 측정 불가
+
+배치 처리 중 새 배치가 들어오면 `AtomicBoolean.isProcessing`이 `true`일 때
+`Mono.just(List.of())`를 반환하며 채팅을 조용히 버렸다.
+스킵 발생 여부를 추적할 메트릭이 없었다.
+
+### 1-4. VOD 동시 분석 무제한
+
+`VodController.triggerAnalysis()`는 호출 즉시 collector에 크롤 요청을 보냈다.
+사용자별 또는 시스템 전체 동시 분석 수 제한이 없어 다음이 우려됐다.
+
+- 여러 사용자가 동시에 분석을 요청하면 Ollama LLM 큐에 요청이 쌓임
+- 한 사용자가 먼저 점유한 LLM으로 인해 다른 사용자의 분석 시간이 예측 불가
+- collector 메모리와 Kafka lag이 선형적으로 증가
+
+관련 설계 문서: `14_vod_concurrency_plan.md`
+
+---
+
+## 2. 고려한 대안
+
+### 입력 가드레일
+
+| 옵션 | 설명 | 선택 여부 |
+|---|---|---|
+| ChatOptimizer 상한 추가 | 압축 단계에서 크기 제한 | 기각 — ChatOptimizer는 Port & Adapter 구조로 Java/Rust 교체 대상이므로 책임 분리 |
+| analyzeBatch 내 가드레일 | LLM 호출 직전에 강제 | **채택** — LLM 경계에서 강제하는 것이 의미 명확 |
+
+### 동시성 제어
+
+| 옵션 | 설명 | 선택 여부 |
+|---|---|---|
+| AtomicBoolean 유지 + 메트릭만 추가 | 최소 변경 | 기각 — 다중 슬롯 확장이 불가, 스킵 이유 구분 불가 |
+| `Semaphore(1)` | 슬롯 1개, 다중 슬롯 확장 가능 | **채택** |
+| BlockingQueue | 보류 큐 구현 가능 | 기각 — 현재는 스킵이 맞음. 큐 쌓임 자체가 분석 지연을 의미 |
+
+### VOD 동시성
+
+| 옵션 | 설명 | 선택 여부 |
+|---|---|---|
+| in-memory ConcurrentHashMap | 단일 인스턴스에서만 동작 | 기각 — 향후 수평 확장 불가 |
+| Redis 카운터 + TTL | 분산 환경 지원, stuck 자동 만료 | **채택** |
+| DB 기반 상태 조회 | 정확하지만 느림 | 기각 — 요청 진입 시점에서 즉시 판단 필요 |
+
+---
+
+## 3. 최종 결정 및 구현 내용
+
+### 3-1. LLM 입력 가드레일 (`OllamaAnalyzerService`)
+
+**변경 위치:** `applyInputGuardrails()` 신규 메서드, `analyzeBatch()` 호출부
+
+```
+빈 채팅 제거 → 배치 크기 상한(MAX_BATCH_SIZE=30) → 총 문자 수 상한(MAX_INPUT_CHARS=3000)
+```
+
+- 상한 초과 시 `neul.llm.batch.capped` 카운터 기록
+- 입력이 모두 걸러지면 LLM 호출 없이 빈 리스트 반환
+
+### 3-2. 동적 타임아웃 (`computeTimeout()`)
+
+```
+timeout = min(90, 20 + batchSize × 1.5) 초
+```
+
+기존 고정 60초를 대체. 배치 크기 10 → 35초, 30 → 65초, 상한 90초.
+
+### 3-3. LLM 출력 가드레일 (`validateScores()`)
+
+**변경 위치:** `parseOllamaResponse()` 내 scores 적용 시점
+
+- `VALID_EMOTIONS` Set으로 7개 감정 키 완결성 보장
+- 각 점수를 `Math.max(0.0, Math.min(1.0, score))`로 클램핑
+- 합계 < 0.001이면 NEUTRAL로 교정 + `neul.llm.output.zeroed` 카운터
+- 예상 외 키 포함 시 WARN 로그
+
+### 3-4. Semaphore 교체 (`AtomicBoolean` → `Semaphore(1)`)
+
+**변경 위치:** `OllamaAnalyzerService` 필드, `analyzeBatch()` 흐름
+
+```java
+// 변경 전
+private final AtomicBoolean isProcessing = new AtomicBoolean(false);
+if (isProcessing.get()) return Mono.just(List.of()); // 조용한 손실
+
+// 변경 후
+private final Semaphore llmSlot = new Semaphore(1);
+if (!llmSlot.tryAcquire()) {
+    recordCount("neul.llm.batch.skipped"); // 관측 가능한 이벤트로 전환
+    return Mono.just(List.of());
+}
+return doAnalyzeBatch(capped).doFinally(ignored -> llmSlot.release());
+```
+
+- `doFinally`로 성공·실패·취소 모든 경우에서 슬롯 반납 보장
+- `Semaphore(N)`으로 확장 시 다중 슬롯 지원 가능
+
+### 3-5. VOD 분석 동시성 제한
+
+**신규 파일:** `VodAnalysisSlotService.java`, `VodAnalysisEventConsumer.java`
+**변경 파일:** `VodController.java`, `RedisConfig.java`
+
+#### Redis 키 구조
+
+```
+vod:active:global          → INCR/DECR, 시스템 전체 카운터 (상한 3)
+vod:active:user:{ownerId}  → INCR/DECR, 사용자별 카운터 (상한 1)
+vod:owner:{videoNo}        → ownerId 문자열, 슬롯 반납 시 역매핑용
+```
+
+모든 키에 TTL 30분 설정 → stuck 상태 자동 만료.
+
+#### 슬롯 생애주기
+
+```
+triggerAnalysis() 요청
+    └─ slotService.tryAcquire(ownerId, videoNo)
+           ├─ REJECTED_USER   → HTTP 429 반환
+           ├─ REJECTED_GLOBAL → HTTP 503 반환
+           └─ ACQUIRED
+                  └─ 분석 파이프라인 시작 (collector → analyzer → core-api)
+                         └─ Kafka: vod-analysis-complete-topic 또는 vod-analysis-failed-topic
+                                └─ VodAnalysisEventConsumer
+                                       └─ slotService.releaseByVideoNo(videoNo)
+```
+
+#### Redis 장애 시 동작 (fail-open 전략)
+
+`tryAcquire()`가 Redis 오류를 만나면 `ACQUIRED`를 반환. 분석은 허용되지만
+슬롯 카운터가 갱신되지 않으므로 일시적으로 제한이 풀릴 수 있다.
+Redis 없이 분석이 막히는 것보다 분석이 진행되는 편이 낫다고 판단.
+
+#### HTTP 응답 코드 선택 근거
+
+| 상태 | HTTP | 이유 |
+|---|---|---|
+| REJECTED_USER | 429 Too Many Requests | 사용자가 직접 발생시킨 제한 |
+| REJECTED_GLOBAL | 503 Service Unavailable | 시스템 자원 소진, 사용자 귀책 아님 |
+
+---
+
+## 4. 신규 메트릭
+
+| 메트릭 이름 | 발생 조건 |
+|---|---|
+| `neul.llm.batch.skipped` | Semaphore 슬롯이 사용 중이어서 배치를 스킵 |
+| `neul.llm.batch.capped` | 입력 가드레일이 배치 크기 또는 문자 수를 줄임 |
+| `neul.llm.output.zeroed` | 감정 점수 합계가 0이어서 NEUTRAL로 교정 |
+
+---
+
+## 5. 변경 파일 목록
+
+| 파일 | 변경 유형 | 주요 내용 |
+|---|---|---|
+| `analyzer/.../OllamaAnalyzerService.java` | 수정 | 입력/출력 가드레일, Semaphore, 동적 타임아웃 |
+| `core-api/.../VodAnalysisSlotService.java` | 신규 | Redis 기반 VOD 동시성 슬롯 관리 |
+| `core-api/.../VodAnalysisEventConsumer.java` | 신규 | 분석 완료/실패 시 슬롯 반납 Kafka 컨슈머 |
+| `core-api/.../VodController.java` | 수정 | triggerAnalysis에 슬롯 가드레일 연결, 429/503 반환 |
+| `core-api/.../RedisConfig.java` | 수정 | `ReactiveStringRedisTemplate` 빈 추가 |
+
+---
+
+## 6. 체크리스트 업데이트
+
+`09_evolution_roadmap.md` 섹션 D 항목:
+
+- [x] 사용자별 동시 분석 제한 추가 (`VodAnalysisSlotService.MAX_PER_USER = 1`)
+- [x] 시스템 전체 동시 분석 제한 추가 (`VodAnalysisSlotService.MAX_GLOBAL = 3`)
+- [ ] 실제 인프라 기준 동시 분석 가능량 측정 후 MAX_GLOBAL 조정
+- [ ] `QUEUED` 상태 도입 검토 (현재는 즉시 거절)
+- [ ] 슬롯 반납 실패 시 알림 또는 자동 복구 전략
+
+---
+
+## 7. 향후 고려사항
+
+- **MAX_GLOBAL 조정**: 현재 보수적으로 3으로 설정. Ollama 서버 스펙과 실측 데이터를 기반으로 조정 필요.
+- **QUEUED 상태**: `REJECTED_*` 대신 대기열에 등록하고 순차 처리하는 방식. 프론트엔드 상태 표시와 함께 고려.
+- **Semaphore 슬롯 수**: 실시간 분석과 VOD 분석이 같은 Ollama 인스턴스를 공유하므로, LLM 부하 실측 후 조정.

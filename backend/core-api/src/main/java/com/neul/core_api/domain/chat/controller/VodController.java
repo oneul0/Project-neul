@@ -6,8 +6,12 @@ import com.neul.core_api.domain.chat.repository.VodHighlightRepository;
 import com.neul.core_api.domain.chat.repository.VodTimelinePointRepository;
 import com.neul.core_api.domain.chat.service.OwnerIdentityResolver;
 import com.neul.core_api.domain.chat.service.UserVodLibraryService;
+import com.neul.core_api.domain.chat.service.VodAnalysisSlotService;
+import com.neul.core_api.domain.chat.service.VodAnalysisSlotService.SlotResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,6 +32,7 @@ public class VodController {
     private final VodTimelinePointRepository vodTimelinePointRepository;
     private final OwnerIdentityResolver ownerIdentityResolver;
     private final UserVodLibraryService userVodLibraryService;
+    private final VodAnalysisSlotService slotService;
     private final WebClient collectorWebClient = WebClient.builder()
             .baseUrl("http://localhost:8081")
             .build();
@@ -82,12 +87,47 @@ public class VodController {
                 });
     }
 
+    /**
+     * VOD 분석 시작. 슬롯 가드레일로 사용자/시스템 동시 분석 수를 제한.
+     *
+     * - REJECTED_USER(429): 해당 사용자가 이미 분석 중
+     * - REJECTED_GLOBAL(503): 시스템 전체 분석 슬롯 소진
+     * - ACQUIRED: 분석 파이프라인 시작, 슬롯은 완료/실패 Kafka 이벤트 수신 시 자동 반납
+     */
     @PostMapping("/{videoNo}/analyze")
-    public Mono<String> triggerAnalysis(
+    public Mono<ResponseEntity<String>> triggerAnalysis(
             @PathVariable String videoNo,
             ServerHttpRequest request
     ) {
         String ownerId = ownerIdentityResolver.resolveOwnerId(request);
+
+        return slotService.tryAcquire(ownerId, videoNo)
+                .flatMap(result -> switch (result) {
+                    case REJECTED_USER -> {
+                        log.info("[VodController] Analysis rejected (user limit): ownerId={}, videoNo={}", ownerId, videoNo);
+                        yield Mono.just(ResponseEntity
+                                .status(HttpStatus.TOO_MANY_REQUESTS)
+                                .<String>body("이미 분석 중인 VOD가 있습니다. 완료 후 다시 시도해주세요."));
+                    }
+                    case REJECTED_GLOBAL -> {
+                        log.info("[VodController] Analysis rejected (global limit): ownerId={}, videoNo={}", ownerId, videoNo);
+                        yield Mono.just(ResponseEntity
+                                .status(HttpStatus.SERVICE_UNAVAILABLE)
+                                .<String>body("현재 분석 요청이 많습니다. 잠시 후 다시 시도해주세요."));
+                    }
+                    case ACQUIRED -> doTriggerAnalysis(videoNo, ownerId)
+                            .map(ResponseEntity::ok)
+                            .onErrorResume(e -> {
+                                log.error("[VodController] Analysis trigger failed, releasing slot: videoNo={}", videoNo, e);
+                                return slotService.releaseByVideoNo(videoNo)
+                                        .then(Mono.just(ResponseEntity
+                                                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                                .<String>body("분석 요청 처리 중 오류가 발생했습니다.")));
+                            });
+                });
+    }
+
+    private Mono<String> doTriggerAnalysis(String videoNo, String ownerId) {
         return vodHighlightRepository.deleteAllByVideoNo(videoNo)
                 .onErrorResume(error -> {
                     log.warn("[VodController] Failed to clear existing highlights for videoNo={}, continuing anyway", videoNo, error);
