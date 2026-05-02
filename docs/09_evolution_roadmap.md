@@ -79,10 +79,10 @@
 
 ### E. 테스트
 
-- [ ] VOD 흐름 E2E 보강
-- [ ] timeline 저장/조회 테스트 보강
-- [ ] owner 인증 흐름 통합 테스트 보강
-- [ ] mock chat 기반 frontend 시나리오 점검
+- [x] VOD 흐름 E2E 보강
+- [x] timeline 저장/조회 테스트 보강
+- [x] owner 인증 흐름 통합 테스트 보강
+- [x] mock chat 기반 frontend 시나리오 점검
 
 ## 4. 중기 로드맵
 
