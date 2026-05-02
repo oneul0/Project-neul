@@ -645,11 +645,21 @@ export function VodWorkspaceSection({
               <>
                 <div className="relative h-[84px] overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-5">
                   <div className="absolute left-4 right-4 top-[36px] h-[8px] rounded-full bg-slate-200" />
-                  {board.markerClusters.map((cluster) => {
+                  {board.markerClusters.map((cluster, idx) => {
                     const lead = cluster.items[0];
                     const selected = cluster.items.some(
                       (item) => item.id === board.selectedHighlightId,
                     );
+
+                    // 인접 클러스터와의 거리가 좁으면 타임코드 라벨 숨김.
+                    // 타임코드 문자열 너비 ≈ 7.5% 기준 — 이보다 가까우면 겹침 발생.
+                    const LABEL_SUPPRESS_GAP = 7.5;
+                    const prev = board.markerClusters[idx - 1];
+                    const next = board.markerClusters[idx + 1];
+                    const tooClose =
+                      (prev !== undefined && cluster.left - prev.left < LABEL_SUPPRESS_GAP) ||
+                      (next !== undefined && next.left - cluster.left < LABEL_SUPPRESS_GAP);
+                    const showLabel = selected || !tooClose;
 
                     return (
                       <button
@@ -669,9 +679,11 @@ export function VodWorkspaceSection({
                                 : "h-3.5 w-3.5 border-rose-300 bg-white"
                           }`}
                         />
-                        <div className="absolute left-1/2 top-[52px] -translate-x-1/2 whitespace-nowrap text-[10px] font-black tracking-[0.12em] text-slate-500">
-                          {formatSeconds(lead.startSeconds)}
-                        </div>
+                        {showLabel && (
+                          <div className="absolute left-1/2 top-[52px] -translate-x-1/2 whitespace-nowrap text-[10px] font-black tracking-[0.12em] text-slate-500">
+                            {formatSeconds(lead.startSeconds)}
+                          </div>
+                        )}
                         {cluster.items.length > 1 ? (
                           <div className="absolute left-1/2 top-[2px] -translate-x-1/2 rounded-full border border-rose-200 bg-white px-2 py-0.5 text-[10px] font-black text-rose-600 shadow-sm">
                             +{cluster.items.length}

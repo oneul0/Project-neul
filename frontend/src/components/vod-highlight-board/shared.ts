@@ -389,9 +389,12 @@ export function buildMarkerClusters(
 
   for (let index = 1; index < markers.length; index += 1) {
     const marker = markers[index];
-    const last = currentItems[currentItems.length - 1];
+    // 마지막 아이템이 아닌 첫 아이템과 비교 — greedy chain 방지.
+    // last 기준 시: [2,5,8,11,14] → span=12% 클러스터 1개
+    // first 기준 시: {2,5}, {8,11}, {14} → span≤3.5% 유지
+    const first = currentItems[0];
 
-    if (Math.abs(marker.left - last.left) <= threshold) {
+    if (Math.abs(marker.left - first.left) <= threshold) {
       currentItems.push(marker);
       continue;
     }
