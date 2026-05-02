@@ -64,13 +64,13 @@
 - [x] ANALYZING -> COMPLETED fallback 보정
 - [x] analyzer completion 이벤트 누락 케이스 더 줄이기
 - [x] status polling 간격/정책 재검토
-- [ ] 서비스 기동 순서가 꼬였을 때 재복구 전략 문서화
+- [x] 서비스 기동 순서가 꼬였을 때 재복구 전략 문서화
 
 ### D. 동시성 및 안전장치
 
 - [ ] 실제 인프라 기준 동시 분석 가능량 측정
-- [ ] 사용자별 동시 분석 제한 추가
-- [ ] 시스템 전체 동시 분석 제한 추가
+- [x] 사용자별 동시 분석 제한 추가 (VodAnalysisSlotService.MAX_PER_USER = 1)
+- [x] 시스템 전체 동시 분석 제한 추가 (VodAnalysisSlotService.MAX_GLOBAL = 3)
 - [ ] QUEUED / REJECTED_LIMIT 상태 도입 검토
 
 관련 문서:
