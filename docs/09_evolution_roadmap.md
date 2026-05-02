@@ -62,8 +62,9 @@
 - [x] Flyway 도입
 - [x] completion 이벤트 도입
 - [x] ANALYZING -> COMPLETED fallback 보정
+- [x] analyzer completion 이벤트 누락 케이스 더 줄이기
+- [x] status polling 간격/정책 재검토
 - [ ] 서비스 기동 순서가 꼬였을 때 재복구 전략 문서화
-- [ ] status polling 간격/정책 재검토
 
 ### D. 동시성 및 안전장치
 

@@ -292,9 +292,14 @@ export function useVodHighlightBoard(
     if (!selectedVideoNo) return;
     if (!ACTIVE_STATUSES.includes(status.status)) return;
 
+    const pollInterval =
+      status.status === "REQUESTED" ? 3000
+      : status.status === "ANALYZING" ? 8000
+      : 5000;
+
     const intervalId = window.setInterval(() => {
       void syncData(selectedVideoNo);
-    }, 5000);
+    }, pollInterval);
 
     return () => window.clearInterval(intervalId);
   }, [selectedVideoNo, status.status, syncData]);
