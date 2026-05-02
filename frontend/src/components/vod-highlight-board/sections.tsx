@@ -477,7 +477,7 @@ export function VodWorkspaceSection({
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
         <div className="space-y-4">
           <div className="min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-slate-50 p-5">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
               <div>
                 <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
                   Broadcast Flow
@@ -512,11 +512,11 @@ export function VodWorkspaceSection({
                   label="타임라인 범례 안내"
                   summary={`초록 막대는 채팅량, 파란 막대는 참여자 수를 뜻합니다.${board.chartMode === "DETAIL" ? " 상세 보기에서는 긴 방송도 가로 스크롤로 끝까지 확인할 수 있습니다." : " 자동 요약에서는 화면 폭에 맞춰 구간을 묶어 보여줍니다."}`}
                 />
-                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700">
+                <span className="hidden items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700 sm:inline-flex">
                   <Zap className="h-3.5 w-3.5" />
                   채팅량
                 </span>
-                <span className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-indigo-700">
+                <span className="hidden items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-indigo-700 sm:inline-flex">
                   <Users className="h-3.5 w-3.5" />
                   참여자 수
                 </span>
@@ -680,7 +680,7 @@ export function VodWorkspaceSection({
                           }`}
                         />
                         {showLabel && (
-                          <div className="absolute left-1/2 top-[52px] -translate-x-1/2 whitespace-nowrap text-[10px] font-black tracking-[0.12em] text-slate-500">
+                          <div className={`absolute left-1/2 top-[52px] -translate-x-1/2 whitespace-nowrap text-[10px] font-black tracking-[0.12em] ${selected ? "text-rose-600" : "text-slate-500"}`}>
                             {formatSeconds(lead.startSeconds)}
                           </div>
                         )}
@@ -704,7 +704,11 @@ export function VodWorkspaceSection({
                             : "선택한 편집 후보"}
                         </div>
                         <div className="mt-1 text-base font-black text-slate-950">
-                          {getDisplaySceneLabel(board.selectedCluster.items[0])}
+                          {getDisplaySceneLabel(
+                            board.selectedCluster.items.find(
+                              (item) => item.id === board.selectedHighlightId,
+                            ) ?? board.selectedCluster.items[0],
+                          )}
                         </div>
                         <div className="mt-3 flex max-w-xl flex-wrap gap-2">
                           {board.selectedClusterPoints.map((point) => (
