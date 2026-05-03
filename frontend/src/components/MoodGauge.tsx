@@ -50,7 +50,7 @@ export default function MoodGauge({ emotion, score, label, color }: MoodGaugePro
       </div>
 
       <div className="mt-4 text-center">
-        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Current Mood</span>
+        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">현재 분위기</span>
         <div className="flex items-center justify-center gap-2 mt-1">
           <span className="text-2xl font-black text-white" style={{ textShadow: `0 0 15px ${color}88` }}>
             {label}

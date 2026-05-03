@@ -21,7 +21,7 @@ export default function EmotionHeatmap({ history, emotionMap }: EmotionHeatmapPr
   return (
     <div className="w-full flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Sentiment Stream (Last 200)</h4>
+        <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">감정 흐름 (최근 200개)</h4>
         <div className="flex items-center gap-3">
           {Object.entries(emotionMap).filter(([k]) => k !== 'VOTE').map(([key, value]) => (
             <div key={key} className="flex items-center gap-1">
@@ -47,7 +47,7 @@ export default function EmotionHeatmap({ history, emotionMap }: EmotionHeatmapPr
           ))
         ) : (
           <div className="w-full h-full flex items-center justify-center text-[9px] text-slate-700 font-bold uppercase tracking-widest">
-            Collecting historical data...
+            채팅이 들어오면 여기에 흐름이 쌓입니다
           </div>
         )}
       </div>

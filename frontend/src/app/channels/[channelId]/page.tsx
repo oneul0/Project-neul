@@ -7,12 +7,14 @@ import {
   BarChart3,
   Clock3,
   Download,
+  Film,
   Lock,
   Radio,
   RefreshCw,
   ShieldCheck,
   Sparkles,
   Target,
+  Users,
   Waves,
 } from "lucide-react";
 import KeywordBubbleChart from "@/components/KeywordBubbleChart";
@@ -233,7 +235,7 @@ export default function ChannelDashboard({
   } | null>(null);
   const [keywordStats, setKeywordStats] = useState<Record<string, number>>({});
   const [v2Frame, setV2Frame] = useState<V2Frame | null>(null);
-  const [activeTab, setActiveTab] = useState<"live" | "vod">("live");
+  const [activeTab, setActiveTab] = useState<"live" | "poll" | "vod">("live");
   const [dashboardMode, setDashboardMode] = useState<"focus" | "detail">("focus");
   const [broadcastStatus, setBroadcastStatus] = useState<BroadcastStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
@@ -701,6 +703,22 @@ export default function ChannelDashboard({
     ? `${(latestVibe.score * 100).toFixed(0)}% ${latestVibe.label}`
     : "아직 데이터 없음";
   const headerCopy = useMemo(() => {
+    if (activeTab === "poll") {
+      return {
+        eyebrow: "투표 관리",
+        title: "시청자 반응을 직접 정의하는 투표 화면",
+        description: "항목을 만들고 실시간 집계 결과와 참여 시청자 기록을 한 화면에서 관리합니다.",
+      };
+    }
+
+    if (activeTab === "vod") {
+      return {
+        eyebrow: "VOD 하이라이트",
+        title: "VOD 편집 후보를 고르는 워크스페이스",
+        description: "VOD를 조회한 뒤 바로 분석을 열어 하이라이트 후보를 검토합니다.",
+      };
+    }
+
     if (authLoading) {
       return {
         eyebrow: "준비 중",
@@ -763,6 +781,7 @@ export default function ChannelDashboard({
       description: broadcastStatus?.message || "방송이 켜지면 반응 보기 버튼이 바로 열립니다.",
     };
   }, [
+    activeTab,
     authLoading,
     broadcastStatus?.message,
     broadcastStatus?.status,
@@ -860,28 +879,26 @@ export default function ChannelDashboard({
               className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.25em] ${
                 activeTab === "live"
                   ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
-                  : "border border-indigo-200 bg-indigo-50 text-indigo-700"
+                  : activeTab === "poll"
+                    ? "border border-sky-200 bg-sky-50 text-sky-700"
+                    : "border border-indigo-200 bg-indigo-50 text-indigo-700"
               }`}
             >
-              {activeTab === "live" ? <Radio className="h-3.5 w-3.5" /> : <BarChart3 className="h-3.5 w-3.5" />}
-              {activeTab === "live" ? "내 방송 대시보드" : "방송 다시보기"}
+              {activeTab === "live" ? <Radio className="h-3.5 w-3.5" /> : activeTab === "poll" ? <Users className="h-3.5 w-3.5" /> : <Film className="h-3.5 w-3.5" />}
+              {activeTab === "live" ? "실시간 분석" : activeTab === "poll" ? "투표 관리" : "VOD 하이라이트"}
             </div>
             <div>
               <h1 className="text-4xl font-black tracking-tight text-slate-950">
-                {activeTab === "live"
-                  ? "내 방송을 바로 읽는 대시보드"
-                  : "VOD 편집 후보를 고르는 워크스페이스"}
+                {headerCopy.title}
               </h1>
               <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
-                {activeTab === "live"
-                  ? "핵심 신호만 먼저 보고 필요할 때 상세를 펼칩니다."
-                  : "VOD를 조회한 뒤 바로 분석을 열어 후보를 검토합니다."}
+                {headerCopy.description}
               </p>
             </div>
           </div>
 
           <div className="w-full max-w-xl space-y-4">
-            <div className="grid grid-cols-2 rounded-[24px] border border-slate-200 bg-slate-100 p-1.5">
+            <div className="grid grid-cols-3 rounded-[24px] border border-slate-200 bg-slate-100 p-1.5">
               <button
                 onClick={() => setActiveTab("live")}
                 className={`inline-flex items-center justify-center gap-2 rounded-[18px] px-4 py-3 text-sm font-black transition ${
@@ -891,7 +908,18 @@ export default function ChannelDashboard({
                 }`}
               >
                 <Radio className="h-4 w-4" />
-                실시간 보기
+                실시간
+              </button>
+              <button
+                onClick={() => setActiveTab("poll")}
+                className={`inline-flex items-center justify-center gap-2 rounded-[18px] px-4 py-3 text-sm font-black transition ${
+                  activeTab === "poll"
+                    ? "bg-slate-950 text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-950"
+                }`}
+              >
+                <Users className="h-4 w-4" />
+                투표
               </button>
               <button
                 onClick={() => setActiveTab("vod")}
@@ -901,8 +929,8 @@ export default function ChannelDashboard({
                     : "text-slate-500 hover:text-slate-950"
                 }`}
               >
-                <BarChart3 className="h-4 w-4" />
-                다시보기
+                <Film className="h-4 w-4" />
+                VOD
               </button>
             </div>
 
@@ -982,6 +1010,23 @@ export default function ChannelDashboard({
                   </div>
                 </div>
               </div>
+            ) : activeTab === "poll" ? (
+              <div className="rounded-[28px] border border-sky-200 bg-sky-50 p-5">
+                <div className="flex items-start gap-3">
+                  <Users className="mt-0.5 h-5 w-5 text-sky-500" />
+                  <div>
+                    <div className="text-[11px] font-black uppercase tracking-[0.22em] text-sky-600">투표 관리</div>
+                    <div className="mt-2 text-sm font-black text-slate-950">항목을 만들고 실시간 집계를 관리합니다.</div>
+                    <div className="mt-1 text-sm text-slate-600">
+                      {pollSession.isSessionActive
+                        ? `진행 중 · ${pollSession.totalVotes}표 집계됨`
+                        : pollSession.items.length > 0
+                          ? `${pollSession.items.length}개 항목 대기 중`
+                          : "항목이 없습니다. 아래에서 만들어 주세요."}
+                    </div>
+                  </div>
+                </div>
+              </div>
             ) : (
               <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
                 <div className="flex items-start justify-between gap-4">
@@ -1004,6 +1049,11 @@ export default function ChannelDashboard({
       {activeTab === "vod" ? (
         <div className="min-h-[780px]">
           <VodHighlightBoard personalizationEnabled={hasOwnerIdentity} />
+        </div>
+      ) : activeTab === "poll" ? (
+        <div className="space-y-6">
+          <PollCard session={pollSession} />
+          <PollCard session={pollSession} variant="history" />
         </div>
       ) : (
         <>
@@ -1264,8 +1314,8 @@ export default function ChannelDashboard({
           <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-5 flex items-center justify-between">
               <div>
-                <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Mix</div>
-                <div className="mt-2 text-xl font-black text-slate-950">Emotion composition</div>
+                <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">감정 비중</div>
+                <div className="mt-2 text-xl font-black text-slate-950">감정 구성비</div>
               </div>
               <BarChart3 className="h-5 w-5 text-amber-300" />
             </div>
@@ -1300,8 +1350,6 @@ export default function ChannelDashboard({
               })}
             </div>
           </div>
-
-          <PollCard session={pollSession} />
 
           <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-5 flex items-center justify-between">
@@ -1345,8 +1393,6 @@ export default function ChannelDashboard({
         </div>
       </section>
           )}
-
-          {dashboardMode === "detail" ? <PollCard session={pollSession} variant="history" /> : null}
 
         </>
       )}
