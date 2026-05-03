@@ -26,3 +26,5 @@ app:
       sentiment-user: classpath:prompts/ollama-sentiment-user.txt
       highlight-system: classpath:prompts/ollama-highlight-system.txt
       highlight-user: classpath:prompts/ollama-highlight-user.txt
+  core-api:
+    base-url: ${CORE_API_BASE_URL:http://127.0.0.1:8083}

@@ -21,6 +21,15 @@ public record HighlightPromptPayload(
         double goodbyeRatio,
         String keywordSummary,
         String negativeSignals,
-        String chatBundle
+        String chatBundle,
+        // RAG few-shot 예시 (없으면 빈 문자열)
+        String fewShotExamples,
+        // 신호 비율 (few-shot 요청용)
+        double laughRatio,
+        double hypeRatio,
+        double surpriseRatio,
+        double tensionRatio,
+        double uniqueUserRatio,
+        String emotionDominance
 ) {
 }

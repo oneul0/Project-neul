@@ -1,34 +1,19 @@
 [후보 구간]
-- videoNo: {{videoNo}}
-- 제목: {{videoTitle}}
-- 카테고리: {{videoCategory}}
-- 전체 길이: {{durationSeconds}}초
-- 구간: {{startSeconds}}초 ~ {{endSeconds}}초
-- 전체 진행률: {{progressRatio}}
+- 제목: {{videoTitle}} / 카테고리: {{videoCategory}}
+- 구간: {{startSeconds}}초 ~ {{endSeconds}}초 (전체 {{durationSeconds}}초 중 {{progressRatio}})
 
-[통계 지표]
-- 현재 구간 채팅 수: {{messageCount}}
-- 현재 구간 참여자 수: {{uniqueUsers}}
-- 채팅 밀도: 평소 대비 {{densityRatio}}배
-- 채팅 폭발 Z-Score: {{zScore}}
-- 반응 버스트 점수: {{burstScore}}
-- 다중 시청자 합의 비율: {{consensusRatio}}
-- 세부 구간 피크 비율: {{peakWindowRatio}}
-- 키워드 집중도: {{keywordConcentration}}
-- 반복 메시지 비율: {{repeatedRatio}}
-- 동일 발화자 점유율: {{dominantSenderRatio}}
-- 방종/인사 키워드 비율: {{goodbyeRatio}}
+[핵심 신호]
+- 밀도: 평소 대비 {{densityRatio}}배 / Z-Score: {{zScore}}
+- 반응 분포: hype={{hypeRatio}} laugh={{laughRatio}} surprise={{surpriseRatio}} tension={{tensionRatio}}
+- 네거티브: 반복={{repeatedRatio}} 도배={{dominantSenderRatio}} 방종={{goodbyeRatio}}
 
-[핵심 키워드 빈도]
+[주요 키워드]
 {{keywordSummary}}
-
-[네거티브 신호]
-{{negativeSignals}}
 
 [채팅 목록]
 {{chatBundle}}
 
-scene_label은 category를 그대로 반복하지 말고, 사람이 장면을 바로 이해할 수 있는 짧은 표현으로 작성해.
-예: 비틱, 클러치, 억까, 채팅폭주, 훈수타임, 역전각, 아슬아슬 세이브.
+{{fewShotExamples}}
 
-위 정보를 바탕으로 반드시 JSON만 반환해.
+scene_label은 사람이 장면을 바로 이해할 수 있는 짧은 표현으로 작성해 (예: 비틱, 클러치, 억까, 채팅폭주).
+반드시 JSON만 반환해.
