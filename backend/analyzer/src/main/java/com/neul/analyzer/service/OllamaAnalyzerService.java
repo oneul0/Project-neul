@@ -67,6 +67,9 @@ public class OllamaAnalyzerService {
     @Value("${app.ollama.model}")
     private String ollamaModel;
 
+    @Value("${app.core-api.base-url}")
+    private String coreApiBaseUrl;
+
     // ─── 동시성 가드레일: AtomicBoolean 대신 Semaphore 사용 ──────────────────
     // Semaphore(1): 슬롯 1개. 스킵 시 neul.llm.batch.skipped 카운터로 관측 가능.
     // 향후 병렬 분석이 필요하면 Semaphore(N)으로 확장 가능.
@@ -129,29 +132,59 @@ public class OllamaAnalyzerService {
     }
 
     public Mono<HighlightDecision> analyzeHighlight(HighlightPromptPayload payload) {
+        return fetchFewShotExamples(payload)
+                .flatMap(fewShot -> doAnalyzeHighlight(payload, fewShot))
+                .onErrorResume(error -> {
+                    log.warn("[Ollama] Highlight analysis failed: {}", error.getMessage());
+                    return Mono.just(HighlightDecision.fallback("LLM highlight analysis failed, fallback to heuristic ranking."));
+                });
+    }
+
+    private Mono<String> fetchFewShotExamples(HighlightPromptPayload payload) {
+        Map<String, Object> body = Map.ofEntries(
+                Map.entry("videoNo", payload.videoNo()),
+                Map.entry("category", payload.videoCategory() != null ? payload.videoCategory() : ""),
+                Map.entry("sceneLabel", ""),
+                Map.entry("emotionDominance", payload.emotionDominance() != null ? payload.emotionDominance() : ""),
+                Map.entry("densityRatio", payload.densityRatio()),
+                Map.entry("uniqueUserRatio", payload.uniqueUserRatio()),
+                Map.entry("hypeRatio", payload.hypeRatio()),
+                Map.entry("laughRatio", payload.laughRatio()),
+                Map.entry("surpriseRatio", payload.surpriseRatio()),
+                Map.entry("tensionRatio", payload.tensionRatio()),
+                Map.entry("keywordSummary", payload.keywordSummary() != null ? payload.keywordSummary() : "")
+        );
+
+        return webClient.post()
+                .uri(coreApiBaseUrl + "/internal/rag/few-shot?k=3")
+                .bodyValue(body)
+                .retrieve()
+                .bodyToMono(String.class)
+                .timeout(Duration.ofSeconds(5))
+                .onErrorReturn("");
+    }
+
+    private Mono<HighlightDecision> doAnalyzeHighlight(HighlightPromptPayload payload, String fewShot) {
         try {
             String userPrompt = promptTemplateService.render(promptProperties.getHighlightUser(), Map.ofEntries(
-                    Map.entry("videoNo", payload.videoNo()),
                     Map.entry("videoTitle", payload.videoTitle()),
                     Map.entry("videoCategory", payload.videoCategory()),
                     Map.entry("durationSeconds", String.valueOf(payload.durationSeconds())),
                     Map.entry("progressRatio", formatDecimal(payload.progressRatio())),
                     Map.entry("startSeconds", String.valueOf(payload.startSeconds())),
                     Map.entry("endSeconds", String.valueOf(payload.endSeconds())),
-                    Map.entry("messageCount", String.valueOf(payload.messageCount())),
-                    Map.entry("uniqueUsers", String.valueOf(payload.uniqueUsers())),
                     Map.entry("densityRatio", formatDecimal(payload.densityRatio())),
                     Map.entry("zScore", formatDecimal(payload.zScore())),
-                    Map.entry("burstScore", formatDecimal(payload.burstScore())),
-                    Map.entry("consensusRatio", formatDecimal(payload.consensusRatio())),
-                    Map.entry("peakWindowRatio", formatDecimal(payload.peakWindowRatio())),
-                    Map.entry("keywordConcentration", formatDecimal(payload.keywordConcentration())),
+                    Map.entry("hypeRatio", formatDecimal(payload.hypeRatio())),
+                    Map.entry("laughRatio", formatDecimal(payload.laughRatio())),
+                    Map.entry("surpriseRatio", formatDecimal(payload.surpriseRatio())),
+                    Map.entry("tensionRatio", formatDecimal(payload.tensionRatio())),
                     Map.entry("repeatedRatio", formatDecimal(payload.repeatedRatio())),
                     Map.entry("dominantSenderRatio", formatDecimal(payload.dominantSenderRatio())),
                     Map.entry("goodbyeRatio", formatDecimal(payload.goodbyeRatio())),
                     Map.entry("keywordSummary", payload.keywordSummary()),
-                    Map.entry("negativeSignals", payload.negativeSignals()),
-                    Map.entry("chatBundle", payload.chatBundle())
+                    Map.entry("chatBundle", payload.chatBundle()),
+                    Map.entry("fewShotExamples", fewShot)
             ));
 
             OllamaRequest requestDto = buildOllamaRequest(
@@ -167,11 +200,7 @@ public class OllamaAnalyzerService {
                     .retrieve()
                     .bodyToMono(OllamaResponse.class)
                     .timeout(Duration.ofSeconds(45))
-                    .map(this::parseHighlightDecision)
-                    .onErrorResume(error -> {
-                        log.warn("[Ollama] Highlight analysis failed: {}", error.getMessage());
-                        return Mono.just(HighlightDecision.fallback("LLM highlight analysis failed, fallback to heuristic ranking."));
-                    });
+                    .map(this::parseHighlightDecision);
         } catch (Exception error) {
             log.warn("[Ollama] Highlight prompt preparation failed: {}", error.getMessage());
             return Mono.just(HighlightDecision.fallback("LLM highlight prompt preparation failed, fallback to heuristic ranking."));

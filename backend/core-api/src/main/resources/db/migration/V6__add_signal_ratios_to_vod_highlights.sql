@@ -1,0 +1,9 @@
+ALTER TABLE vod_highlights
+    ADD COLUMN IF NOT EXISTS laugh_ratio        DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS hype_ratio         DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS surprise_ratio     DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS tension_ratio      DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS density_ratio      DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS unique_user_ratio  DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS emotion_dominance  VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS keyword_summary    TEXT;

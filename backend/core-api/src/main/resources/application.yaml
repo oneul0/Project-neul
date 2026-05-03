@@ -44,6 +44,9 @@ app:
     live-status-base-url: https://api.chzzk.naver.com/service/v2/channels
   collector:
     base-url: http://localhost:8081
+  ollama:
+    embed-url: ${OLLAMA_EMBED_URL:http://127.0.0.1:11434/api/embeddings}
+    embed-model: ${OLLAMA_EMBED_MODEL:nomic-embed-text}
 
 # Chzzk Open API 설정 (환경변수로 주입)
 chzzk:

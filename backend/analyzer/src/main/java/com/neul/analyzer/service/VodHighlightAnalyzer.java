@@ -302,6 +302,14 @@ public class VodHighlightAnalyzer {
                     .description(ranked.description())
                     .reasonSummary(ranked.reasonSummary())
                     .topMessage(ranked.topMessage())
+                    .laughRatio(ranked.laughRatio())
+                    .hypeRatio(ranked.hypeRatio())
+                    .surpriseRatio(ranked.surpriseRatio())
+                    .tensionRatio(ranked.tensionRatio())
+                    .densityRatio(ranked.densityRatio())
+                    .uniqueUserRatio(ranked.uniqueUserRatio())
+                    .emotionDominance(ranked.emotionDominance())
+                    .keywordSummary(ranked.keywordSummary())
                     .build();
 
             kafkaTemplate.send("vod-analyzed-topic", videoNo, objectMapper.writeValueAsString(point));
@@ -547,6 +555,20 @@ public class VodHighlightAnalyzer {
         String reasonSummary = buildReasonSummary(window, sceneLabel, reactionLabel, intensityScore, transitionScore, editabilityScore);
         String description = buildDescription(window, sceneLabel);
 
+        // 신호 비율 계산 (RAG 임베딩 소스용 — 채널 규모 무관 정규화)
+        int totalSignals = window.laughCount() + window.hypeCount() + window.surpriseCount() + window.tensionCount();
+        double laughRatio   = totalSignals > 0 ? (double) window.laughCount()    / totalSignals : 0.0;
+        double hypeRatio    = totalSignals > 0 ? (double) window.hypeCount()     / totalSignals : 0.0;
+        double surpriseRatio= totalSignals > 0 ? (double) window.surpriseCount() / totalSignals : 0.0;
+        double tensionRatio = totalSignals > 0 ? (double) window.tensionCount()  / totalSignals : 0.0;
+        double computedDensityRatio    = averageMessages == 0 ? 1.0 : (double) window.messageCount() / averageMessages;
+        double computedUniqueUserRatio = window.messageCount() == 0 ? 0.0 : (double) window.uniqueUsers() / window.messageCount();
+        String emotionDominance = resolveEmotionDominance(laughRatio, hypeRatio, surpriseRatio, tensionRatio);
+        String keywordSummary = window.topKeywords(5).entrySet().stream()
+                .map(e -> e.getKey() + "(" + e.getValue() + ")")
+                .reduce((a, b) -> a + " " + b)
+                .orElse("");
+
         return new WindowScore(
                 videoContext.videoNo(),
                 window.startSeconds(),
@@ -563,8 +585,25 @@ public class VodHighlightAnalyzer {
                 window.representativeMessage(),
                 messageZScore,
                 burstZScore,
-                hardRejected
+                hardRejected,
+                laughRatio,
+                hypeRatio,
+                surpriseRatio,
+                tensionRatio,
+                computedDensityRatio,
+                computedUniqueUserRatio,
+                emotionDominance,
+                keywordSummary
         );
+    }
+
+    private String resolveEmotionDominance(double laugh, double hype, double surprise, double tension) {
+        double max = Math.max(Math.max(laugh, hype), Math.max(surprise, tension));
+        if (max < 0.1) return "neutral";
+        if (max == laugh)   return "laugh";
+        if (max == hype)    return "hype";
+        if (max == surprise) return "surprise";
+        return "tension";
     }
 
     private List<WindowScore> enrichWithLlmReview(VideoContext videoContext, List<WindowScore> scored, Map<Integer, WindowStats> windowByStart, int targetCount) {
@@ -653,7 +692,14 @@ public class VodHighlightAnalyzer {
                 window.goodbyeRatio(),
                 keywordSummary,
                 negativeSignals,
-                chatBundle
+                chatBundle,
+                "",  // fewShotExamples — analyzeHighlight()에서 비동기 주입
+                score.laughRatio(),
+                score.hypeRatio(),
+                score.surpriseRatio(),
+                score.tensionRatio(),
+                score.uniqueUserRatio(),
+                score.emotionDominance()
         );
     }
 
@@ -1287,7 +1333,16 @@ public class VodHighlightAnalyzer {
             String topMessage,
             double messageZScore,
             double burstZScore,
-            boolean hardRejected
+            boolean hardRejected,
+            // 신호 비율 (RAG 임베딩용)
+            double laughRatio,
+            double hypeRatio,
+            double surpriseRatio,
+            double tensionRatio,
+            double densityRatio,
+            double uniqueUserRatio,
+            String emotionDominance,
+            String keywordSummary
     ) {
 
         private WindowScore withDecision(
@@ -1315,7 +1370,15 @@ public class VodHighlightAnalyzer {
                     topMessage,
                     messageZScore,
                     burstZScore,
-                    hardRejected || rejectedByLlm
+                    hardRejected || rejectedByLlm,
+                    laughRatio,
+                    hypeRatio,
+                    surpriseRatio,
+                    tensionRatio,
+                    densityRatio,
+                    uniqueUserRatio,
+                    emotionDominance,
+                    keywordSummary
             );
         }
     }
