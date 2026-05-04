@@ -3,6 +3,7 @@ package com.neul.collector.controller;
 import com.neul.collector.auth.ChzzkAuthService;
 import com.neul.collector.auth.ChzzkAuthSession;
 import com.neul.collector.auth.ChzzkAuthStore;
+import com.neul.collector.auth.ChzzkSessionRegistry;
 import com.neul.common.auth.OwnerTokenCodec;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +37,7 @@ public class ChzzkAuthController {
 
     private final ChzzkAuthStore authStore;
     private final ChzzkAuthService authService;
+    private final ChzzkSessionRegistry sessionRegistry;
 
     @Value("${neul.frontend-url:http://localhost:3000}")
     private String frontendUrl;
@@ -93,6 +95,9 @@ public class ChzzkAuthController {
                     return authService.exchangeCode(code, state)
                             .flatMap(tokenResponse -> authService.fetchProfile(tokenResponse.getAccessToken())
                                     .flatMap(profile -> authStore.createSession(tokenResponse, profile)))
+                            .flatMap(session -> sessionRegistry
+                                    .register(session.getChannelId(), session.getSessionId(), session.getExpiresIn())
+                                    .thenReturn(session))
                             .map(session -> redirect(frontendUrl + "/channels/" + session.getChannelId() + "?auth=success",
                                     clearStateCookie(),
                                     sessionCookie(session),
@@ -137,6 +142,7 @@ public class ChzzkAuthController {
         return authStore.getSession(sessionId)
                 .flatMap(session -> authService.revokeToken(session.getAccessToken(), "access_token")
                         .onErrorResume(error -> Mono.empty())
+                        .then(sessionRegistry.unregister(session.getChannelId()))
                         .then(authStore.invalidateSession(sessionId)))
                 .switchIfEmpty(authStore.invalidateSession(sessionId))
                 .then(Mono.fromSupplier(() -> ResponseEntity.ok()

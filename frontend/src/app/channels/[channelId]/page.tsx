@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { Film, Lock, LogIn, Radio, Users } from "lucide-react";
 import VodHighlightBoard from "@/components/VodHighlightBoard";
 import PollCard from "@/components/poll/PollCard";
+import RouletteCard from "@/components/RouletteCard";
 import { usePollSession } from "@/hooks/usePollSession";
+import { useDonationRoulette } from "@/hooks/useDonationRoulette";
 import { useOwnerDashboardSession } from "./dashboard-helpers";
 
 export default function ChannelDashboard({
@@ -49,6 +51,12 @@ export default function ChannelDashboard({
     preferredMode: "AUTO",
   });
 
+  const roulette = useDonationRoulette({
+    roomId: channelId,
+    isOwner: isAuthorizedChannel,
+    fetchOwned,
+  });
+
   const handleLogin = () => {
     window.location.href = "/api/chzzk/login";
   };
@@ -80,6 +88,17 @@ export default function ChannelDashboard({
         }
         if (res.status === 403) {
           setSessionNotice({ tone: "warn", message: "본인 채널만 수집할 수 있습니다." });
+          return;
+        }
+        if (res.status === 422) {
+          const body = await res.json().catch(() => ({})) as { error?: string; message?: string };
+          const isLoginRequired = body.error === "adult_stream_login_required";
+          setSessionNotice({
+            tone: "warn",
+            message: isLoginRequired
+              ? "성인 방송입니다. 치지직 공식 로그인 후 다시 시도해 주세요."
+              : body.message ?? "성인 방송 수집이 지원되지 않습니다.",
+          });
           return;
         }
         if (!res.ok) {
@@ -227,6 +246,15 @@ export default function ChannelDashboard({
       ) : (
         <div className="space-y-6">
           <PollCard session={pollSession} />
+          <RouletteCard
+            donations={roulette.donations}
+            winner={roulette.winner}
+            isSpinning={roulette.isSpinning}
+            isClearing={roulette.isClearing}
+            onSpin={roulette.spin}
+            onClear={roulette.clearPool}
+            isOwner={isAuthorizedChannel}
+          />
           <PollCard session={pollSession} variant="history" />
         </div>
       )}

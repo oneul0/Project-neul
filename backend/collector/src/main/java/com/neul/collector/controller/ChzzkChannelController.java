@@ -3,6 +3,7 @@ package com.neul.collector.controller;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.neul.collector.service.ChatCollector;
+import com.neul.collector.service.NidChatCollector.AdultStreamException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -82,6 +83,16 @@ public class ChzzkChannelController {
 
                 return chatCollector.subscribe(channelId)
                                 .thenReturn(ResponseEntity.ok(buildResponse(channelId, "subscribed", null)))
+                                .onErrorResume(AdultStreamException.class, e -> {
+                                        log.warn("[Chzzk] Adult stream detected for channel {}: {}", channelId, e.getMessage());
+                                        Map<String, Object> body = new HashMap<>();
+                                        body.put("channelId", channelId);
+                                        body.put("error", e.isHasCredentials() ? "adult_stream_login_required" : "adult_stream_api_unconfigured");
+                                        body.put("message", e.isHasCredentials()
+                                                ? "성인 방송은 채널 소유자가 치지직 공식 로그인을 완료해야 수집할 수 있습니다."
+                                                : "성인 방송 수집을 위한 API 설정이 되어 있지 않습니다.");
+                                        return Mono.just(ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(body));
+                                })
                                 .onErrorResume(e -> {
                                         log.error("[Chzzk] Subscribe failed for channel {}: {}", channelId,
                                                         e.getMessage());

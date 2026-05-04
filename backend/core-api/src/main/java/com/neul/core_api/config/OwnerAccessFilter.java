@@ -67,6 +67,7 @@ public class OwnerAccessFilter implements WebFilter {
     private boolean isProtectedPath(String path) {
         return path.startsWith("/api/v1/stream/")
                 || path.startsWith("/api/v1/poll/")
+                || path.startsWith("/api/v1/donations/")
                 || path.startsWith("/api/v2/stream/")
                 || path.startsWith("/api/v2/state/");
     }
@@ -74,7 +75,7 @@ public class OwnerAccessFilter implements WebFilter {
     private String extractRoomId(String path) {
         String[] segments = path.split("/");
         for (int i = 0; i < segments.length; i++) {
-            if (("stream".equals(segments[i]) || "poll".equals(segments[i]) || "state".equals(segments[i]))
+            if (("stream".equals(segments[i]) || "poll".equals(segments[i]) || "donations".equals(segments[i]) || "state".equals(segments[i]))
                     && i + 1 < segments.length) {
                 return segments[i + 1];
             }

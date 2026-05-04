@@ -6,11 +6,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.neul.common.dto.RawChatBatch;
 import com.neul.common.dto.RawChatMessage;
+import com.neul.collector.auth.ChzzkAuthStore;
+import com.neul.collector.auth.ChzzkSessionRegistry;
+import com.neul.collector.config.ChzzkProperties;
 import com.neul.collector.jni.NativeBridge;
 import com.neul.collector.v2.producer.V2ChatProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Primary;
+import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.socket.client.ReactorNettyWebSocketClient;
@@ -42,10 +46,14 @@ public class NidChatCollector implements ChatCollector {
 
     private final WebClient chzzkWebClient;
     private final ChatProducer chatProducer;
+    private final DonationProducer donationProducer;
     private final V2ChatProducer v2ChatProducer;
     private final NativeBridge nativeBridge;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
+    private final ChzzkSessionRegistry sessionRegistry;
+    private final ChzzkAuthStore authStore;
+    private final ChzzkProperties chzzkProperties;
 
     private final Map<String, Disposable> activeSubscriptions = new ConcurrentHashMap<>();
     private final WebSocketClient wsClient = new ReactorNettyWebSocketClient();
@@ -88,25 +96,112 @@ public class NidChatCollector implements ChatCollector {
 
     // ─── 내부 API 호출 ────────────────────────────────────────────────────────
 
+    /**
+     * chatChannelId 조회.
+     *  1단계: NID 비공식 API (쿼터 없음, 성인 방송 불가)
+     *  2단계: NID 실패 시 → 공식 Open API (OAuth access_token 필요)
+     *  공식 API에도 토큰이 없으면 AdultStreamException 발생
+     */
     private Mono<String> getChatChannelId(String channelId) {
+        return getChatChannelIdViaNid(channelId)
+                .switchIfEmpty(
+                    tryOAuthFallback(channelId)
+                );
+    }
+
+    private Mono<String> getChatChannelIdViaNid(String channelId) {
         return chzzkWebClient.get()
                 .uri("https://api.chzzk.naver.com/polling/v2/channels/" + channelId + "/live-status")
                 .retrieve()
                 .bodyToMono(ObjectNode.class)
-                .map(node -> {
+                .flatMap(node -> {
                     JsonNode content = node.path("content");
                     if (content.isMissingNode() || content.isNull()) {
-                        log.error("[NidChat] Chzzk API returned empty content for channel {}. Maybe adult-only or restricted? Response: {}", channelId, node);
-                        return "";
+                        log.warn("[NidChat] NID API returned empty content for channel={}. Possibly adult-only. Will try OAuth fallback.", channelId);
+                        return Mono.empty(); // switchIfEmpty 트리거
                     }
-                    String id = content.path("chatChannelId").asText();
-                    if (!id.isEmpty()) {
-                        log.info("[NidChat] Fetched chatChannelId: {} for channel: {}", id, channelId);
+                    String id = content.path("chatChannelId").asText("");
+                    if (id.isBlank()) {
+                        log.warn("[NidChat] chatChannelId empty for channel={}. Possibly offline.", channelId);
+                        return Mono.empty();
                     }
-                    return id;
+                    log.info("[NidChat] chatChannelId via NID: {} for channel={}", id, channelId);
+                    return Mono.just(id);
+                });
+    }
+
+    /**
+     * 공식 Open API (Client-Id/Secret)로 chatChannelId를 조회한다.
+     * GET /open/v1/lives/{channelId} — adult 방송도 응답한다.
+     * OAuth access_token이 없으면 AdultStreamException을 던진다.
+     */
+    private Mono<String> tryOAuthFallback(String channelId) {
+        String clientId = chzzkProperties.getClientId();
+        String clientSecret = chzzkProperties.getClientSecret();
+        String baseUrl = chzzkProperties.getBaseUrl();
+
+        boolean hasClientCredentials = clientId != null && !clientId.isBlank()
+                && clientSecret != null && !clientSecret.isBlank()
+                && !clientId.contains("CHZZK_CLIENT_ID");
+
+        if (!hasClientCredentials) {
+            log.warn("[NidChat] No Chzzk API credentials. Cannot collect adult stream channel={}.", channelId);
+            return Mono.error(new AdultStreamException(channelId, false));
+        }
+
+        log.info("[NidChat] Attempting Open API fallback for adult stream channel={}", channelId);
+
+        return sessionRegistry.getSessionId(channelId)
+                .flatMap(authStore::peekSession)
+                .flatMap(session -> {
+                    log.info("[NidChat] Found OAuth session for channel={}, trying official live API.", channelId);
+                    return WebClient.builder().baseUrl(baseUrl).build()
+                            .get()
+                            .uri("/open/v1/lives/" + channelId)
+                            .header("Client-Id", clientId)
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + session.getAccessToken())
+                            .retrieve()
+                            .bodyToMono(ObjectNode.class)
+                            .flatMap(node -> {
+                                JsonNode content = node.path("content");
+                                if (content.isMissingNode() || content.isNull()) {
+                                    log.warn("[NidChat] Official API also returned no content for channel={} (offline?).", channelId);
+                                    return Mono.error(new RuntimeException("Channel " + channelId + " appears to be offline."));
+                                }
+                                String id = content.path("chatChannelId").asText("");
+                                if (id.isBlank()) {
+                                    return Mono.error(new RuntimeException("Official API returned no chatChannelId for " + channelId));
+                                }
+                                log.info("[NidChat] chatChannelId via Official API: {} (adult stream={})",
+                                        id, content.path("adult").asBoolean(false));
+                                return Mono.just(id);
+                            });
                 })
-                .filter(id -> !id.isEmpty())
-                .switchIfEmpty(Mono.error(new RuntimeException("Could not find chatChannelId for " + channelId + ". Check if the channel is adult-only or restricted.")));
+                .switchIfEmpty(
+                    Mono.error(new AdultStreamException(channelId, true))
+                );
+    }
+
+    // ─── 예외 타입 ────────────────────────────────────────────────────────────
+
+    /**
+     * 성인 방송 수집 불가 예외.
+     * hasCredentials=true  → API credentials는 있지만 채널 소유자 OAuth 로그인 없음
+     * hasCredentials=false → Chzzk API credentials 자체가 미설정
+     */
+    public static class AdultStreamException extends RuntimeException {
+        private final String channelId;
+        private final boolean hasCredentials;
+
+        public AdultStreamException(String channelId, boolean hasCredentials) {
+            super("Adult stream detected for channel=" + channelId
+                    + (hasCredentials ? ": owner OAuth session not found." : ": API credentials not configured."));
+            this.channelId = channelId;
+            this.hasCredentials = hasCredentials;
+        }
+
+        public String getChannelId() { return channelId; }
+        public boolean isHasCredentials() { return hasCredentials; }
     }
 
     private Mono<String> getAccessToken(String chatChannelId) {
@@ -197,6 +292,8 @@ public class NidChatCollector implements ChatCollector {
                             if ("CHAT".equals(chatMsg.getMessageType())) {
                                 chatSink.tryEmitNext(chatMsg);
                                 v2ChatProducer.sendRawChat(chatMsg);
+                            } else if ("DONATION".equals(chatMsg.getMessageType())) {
+                                donationProducer.sendDonation(chatMsg);
                             } else {
                                 chatProducer.sendChat(chatMsg);
                             }
@@ -258,21 +355,26 @@ public class NidChatCollector implements ChatCollector {
     }
 
     private RawChatMessage buildRawMessage(String roomId, JsonNode msgNode, int cmd) {
-        // 프로토콜 분석 결과에 기초한 매핑
         String extra = msgNode.path("extras").asText();
         String senderNickname = "Anonymous";
         String messageType = "CHAT";
-        
+
         if (cmd == 93102) messageType = "DONATION";
         else if (cmd == 93103) messageType = "SUBSCRIPTION";
 
         String senderId = "Anonymous";
+        String payAmount = null;
+        String donationType = null;
         try {
             JsonNode extraNode = objectMapper.readTree(extra);
             senderId = extraNode.path("uid").asText("Anonymous");
             senderNickname = extraNode.path("extra").path("userName").asText(
                 extraNode.path("nickname").asText("Anonymous")
             );
+            if (cmd == 93102) {
+                payAmount = extraNode.path("payAmount").asText(null);
+                donationType = extraNode.path("donationType").asText(null);
+            }
         } catch (Exception e) {}
 
         long timeMs = msgNode.path("msgTime").asLong(System.currentTimeMillis());
@@ -282,14 +384,22 @@ public class NidChatCollector implements ChatCollector {
             content = content.trim().replaceAll(":[\\w_.]+:", "[이모티콘]");
         }
 
-        return RawChatMessage.builder()
+        RawChatMessage.RawChatMessageBuilder builder = RawChatMessage.builder()
                 .messageId(UUID.randomUUID().toString())
-                .roomId(roomId) // Use the original long channelId
+                .roomId(roomId)
                 .messageType(messageType)
                 .sender(senderNickname)
                 .senderId(senderId)
                 .content(content)
-                .timestamp(LocalDateTime.ofInstant(Instant.ofEpochMilli(timeMs), ZoneId.systemDefault()))
-                .build();
+                .timestamp(LocalDateTime.ofInstant(Instant.ofEpochMilli(timeMs), ZoneId.systemDefault()));
+
+        if (cmd == 93102) {
+            builder.donatorNickname(senderNickname)
+                   .donationText(content)
+                   .payAmount(payAmount)
+                   .donationType(donationType);
+        }
+
+        return builder.build();
     }
 }
