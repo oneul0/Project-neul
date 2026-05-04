@@ -9,6 +9,12 @@ import RouletteCard from "@/components/RouletteCard";
 import { usePollSession } from "@/hooks/usePollSession";
 import { useDonationRoulette } from "@/hooks/useDonationRoulette";
 import { useOwnerDashboardSession } from "./dashboard-helpers";
+import dynamic from "next/dynamic";
+
+const DevSeedPanel =
+  process.env.NODE_ENV === "development"
+    ? dynamic(() => import("@/components/dev/DevSeedPanel"), { ssr: false })
+    : null;
 
 export default function ChannelDashboard({
   params,
@@ -258,6 +264,8 @@ export default function ChannelDashboard({
           <PollCard session={pollSession} variant="history" />
         </div>
       )}
+
+      {DevSeedPanel ? <DevSeedPanel channelId={channelId} /> : null}
     </div>
   );
 }

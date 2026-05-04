@@ -48,6 +48,11 @@ app:
     embed-url: ${OLLAMA_EMBED_URL:http://127.0.0.1:11434/api/embeddings}
     embed-model: ${OLLAMA_EMBED_MODEL:nomic-embed-text}
 
+# 개발 전용 시드 엔드포인트 (.env 에 NEUL_DEV_SEED_ENABLED=true 추가 시 활성화)
+neul:
+  dev-seed:
+    enabled: ${NEUL_DEV_SEED_ENABLED:false}
+
 # Chzzk Open API 설정 (환경변수로 주입)
 chzzk:
   api:
