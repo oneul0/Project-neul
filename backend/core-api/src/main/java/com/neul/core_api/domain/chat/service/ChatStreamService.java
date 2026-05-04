@@ -214,12 +214,19 @@ public class ChatStreamService {
                                 roomId, message.getSender(), message.getSenderId(),
                                 message.getContent());
 
-                // 1. Record Vote in Redis
+                // 1. Record Vote in Redis (option number) + display name mapping
                 String content = message.getContent() != null ? message.getContent().trim() : "";
                 String voteOption = content.substring(1).split(" ")[0];
-                
-                streamRedisService.recordVote(roomId, message.getSenderId(), voteOption)
-                        .subscribe(success -> log.debug("Vote recorded from VOTE type: user={}, option={}", message.getSenderId(), voteOption));
+                String senderId = message.getSenderId() != null ? message.getSenderId() : message.getSender();
+                String displayName = message.getSender() != null ? message.getSender() : senderId;
+
+                streamRedisService.recordVote(roomId, senderId, voteOption)
+                        .subscribe(success -> log.debug("Vote recorded: user={}, option={}", senderId, voteOption));
+
+                if (displayName != null && !displayName.equals(senderId)) {
+                        streamRedisService.recordVoterName(roomId, senderId, displayName)
+                                .subscribe();
+                }
 
                 // 2. Save to DB for history (if session active)
                 streamRedisService.isCollectionActive(roomId)
