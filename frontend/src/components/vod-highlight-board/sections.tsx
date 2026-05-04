@@ -1,9 +1,11 @@
 import {
+  AlignJustify,
   CheckCircle2,
   Clock3,
   Copy,
   ExternalLink,
   Film,
+  LayoutList,
   LoaderCircle,
   Pin,
   Search,
@@ -570,7 +572,7 @@ export function VodWorkspaceSection({
                     {board.chartBars.map((item) => (
                       <div
                         key={item.id}
-                        className="flex h-full min-w-0 items-end gap-px"
+                        className="flex h-full min-w-0 cursor-pointer items-end gap-px"
                         title={`${formatSeconds(item.startSeconds)} ~ ${formatSeconds(item.endSeconds)} · 채팅 ${item.messageCount}개 · 참여자 ${item.participantCount}명`}
                         onMouseEnter={() =>
                           board.setHoveredChartBar({
@@ -579,6 +581,9 @@ export function VodWorkspaceSection({
                             messageCount: item.messageCount,
                             participantCount: item.participantCount,
                           })
+                        }
+                        onClick={() =>
+                          board.jumpToNearestHighlight(item.startSeconds, item.endSeconds)
                         }
                       >
                         <div
@@ -908,19 +913,33 @@ export function VodWorkspaceSection({
           </div>
 
           <div className="min-w-0 rounded-[24px] border border-slate-200 bg-slate-50 p-5">
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
                   Highlights
                 </div>
                 <div className="mt-2 text-lg font-black text-slate-950">하이라이트 목록</div>
               </div>
-              <div className="text-xs font-semibold text-slate-500">
-                {board.filteredHighlights.length} / {board.highlights.length}개 표시
+              <div className="flex shrink-0 items-center gap-2">
+                <div className="text-xs font-semibold text-slate-500">
+                  {board.filteredHighlights.length} / {board.highlights.length}개
+                </div>
+                <button
+                  type="button"
+                  title={board.compactHighlightList ? "상세 보기로 전환" : "간략 보기로 전환"}
+                  onClick={() => board.setCompactHighlightList((v) => !v)}
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full border transition ${board.compactHighlightList ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700"}`}
+                >
+                  {board.compactHighlightList ? (
+                    <LayoutList className="h-3.5 w-3.5" />
+                  ) : (
+                    <AlignJustify className="h-3.5 w-3.5" />
+                  )}
+                </button>
               </div>
             </div>
 
-            <div className="mb-3 flex flex-wrap gap-2">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
               {HIGHLIGHT_FILTERS.map((filter) => {
                 const active = board.highlightFilter === filter.key;
 
@@ -935,9 +954,25 @@ export function VodWorkspaceSection({
                   </button>
                 );
               })}
+              <div className="ml-auto inline-flex rounded-full border border-slate-200 bg-white p-0.5">
+                <button
+                  type="button"
+                  onClick={() => board.setHighlightSort("TIME")}
+                  className={`rounded-full px-3 py-1.5 text-[11px] font-black transition ${board.highlightSort === "TIME" ? "bg-slate-900 text-white" : "text-slate-500"}`}
+                >
+                  시간순
+                </button>
+                <button
+                  type="button"
+                  onClick={() => board.setHighlightSort("SCORE")}
+                  className={`rounded-full px-3 py-1.5 text-[11px] font-black transition ${board.highlightSort === "SCORE" ? "bg-slate-900 text-white" : "text-slate-500"}`}
+                >
+                  점수순
+                </button>
+              </div>
             </div>
 
-            <div className="max-h-[720px] space-y-3 overflow-y-auto pr-1">
+            <div className={`overflow-y-auto pr-1 ${board.compactHighlightList ? "max-h-[720px] space-y-1.5" : "max-h-[720px] space-y-3"}`}>
               {board.filteredHighlights.length === 0 ? (
                 <div
                   className={`rounded-2xl border px-5 py-6 text-center ${board.resultsEmptyState.toneClass}`}
@@ -965,6 +1000,45 @@ export function VodWorkspaceSection({
                     {board.resultsEmptyState.description}
                   </div>
                 </div>
+              ) : board.compactHighlightList ? (
+                board.filteredHighlights.map((item) => {
+                  const active = board.selectedHighlightId === item.id;
+                  const currentAction = normalizeHighlightAction(board.highlightActions[item.id]);
+
+                  return (
+                    <div
+                      key={item.id}
+                      ref={(element) => {
+                        board.cardRefs.current[item.id] = element;
+                      }}
+                      onMouseEnter={() => board.setSelectedHighlightId(item.id)}
+                      onClick={() => board.moveToCard(item.id)}
+                      className={`flex cursor-pointer items-center gap-3 rounded-[16px] border px-4 py-2.5 transition ${active ? "border-rose-300 bg-rose-50/70 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                    >
+                      <div className="min-w-0 flex-1 text-sm font-black text-slate-950">
+                        {formatSeconds(item.startSeconds)}
+                        <span className="ml-1.5 text-xs font-semibold text-slate-400">
+                          ~ {formatSeconds(item.endSeconds)}
+                        </span>
+                      </div>
+                      <span className="shrink-0 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-black text-indigo-700">
+                        {getDisplaySceneLabel(item)}
+                      </span>
+                      {currentAction === "PIN" ? (
+                        <span className="shrink-0 rounded-full border border-indigo-200 bg-white px-2.5 py-1 text-[10px] font-black text-indigo-700">
+                          편집점
+                        </span>
+                      ) : currentAction === "GOOD" ? (
+                        <span className="shrink-0 rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[10px] font-black text-emerald-700">
+                          좋아요
+                        </span>
+                      ) : null}
+                      <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-700">
+                        {item.highlightScore.toFixed(1)}
+                      </span>
+                    </div>
+                  );
+                })
               ) : (
                 board.filteredHighlights.map((item) => {
                   const active = board.selectedHighlightId === item.id;
