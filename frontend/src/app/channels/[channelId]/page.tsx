@@ -263,7 +263,6 @@ export default function ChannelDashboard({
             onClearAll={roulette.clearAll}
             isOwner={isAuthorizedChannel}
           />
-          <PollCard session={pollSession} variant="history" />
         </div>
       )}
 
