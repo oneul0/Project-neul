@@ -81,7 +81,7 @@ export default function Home() {
           </h1>
 
           <p className="mt-4 text-base leading-8 text-slate-600">
-            늘은 스트리머가 자신의 방송 채팅 흐름을 빠르게 파악하고,
+            늘 스트리머가 자신의 방송 채팅 흐름을 빠르게 파악하고,
             악성 반응에 과몰입하지 않도록 돕는 실시간 심리 가드레일 대시보드입니다.
           </p>
 

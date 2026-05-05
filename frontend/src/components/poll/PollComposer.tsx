@@ -79,6 +79,22 @@ export default function PollComposer({
         </div>
       ) : null}
 
+      <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-600">투표 방법 안내</div>
+        <p className="mt-1.5 leading-6">
+          저장 후 시청자는 채팅에{" "}
+          {items.slice(0, 3).map((item, i) => (
+            <span key={i}>
+              <span className="rounded bg-sky-100 px-1.5 py-0.5 font-black">!투표 {i + 1}</span>
+              {item.trim() ? <span className="mx-1 text-sky-700">({item.trim()})</span> : null}
+              {i < Math.min(items.length, 3) - 1 ? ", " : ""}
+            </span>
+          ))}
+          {items.length > 3 ? <span className="text-sky-600"> 등</span> : null}
+          {" "}형식으로 입력해 투표합니다.
+        </p>
+      </div>
+
       <div className="flex flex-wrap gap-3">
         <button
           onClick={onAddItem}

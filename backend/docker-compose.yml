@@ -1,7 +1,7 @@
 services:
   # 1. PostgreSQL
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: neul-postgres
     ports:
       - "${NEUL_POSTGRES_HOST_PORT:-5432}:5432"

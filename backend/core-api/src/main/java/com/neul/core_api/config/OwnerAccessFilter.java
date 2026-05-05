@@ -29,7 +29,8 @@ public class OwnerAccessFilter implements WebFilter {
         }
 
         String path = exchange.getRequest().getPath().value();
-        if (!isProtectedPath(path)) {
+        HttpMethod method = exchange.getRequest().getMethod();
+        if (!isProtectedPath(path, method)) {
             return chain.filter(exchange);
         }
 
@@ -64,9 +65,13 @@ public class OwnerAccessFilter implements WebFilter {
         return chain.filter(exchange);
     }
 
-    private boolean isProtectedPath(String path) {
+    private boolean isProtectedPath(String path, HttpMethod method) {
+        // 룰렛 상태 조회(GET)는 공개 — 시청자도 현황을 볼 수 있어야 함
+        if (HttpMethod.GET == method && path.startsWith("/api/v1/roulette/")) return false;
         return path.startsWith("/api/v1/stream/")
                 || path.startsWith("/api/v1/poll/")
+                || path.startsWith("/api/v1/donations/")
+                || path.startsWith("/api/v1/roulette/")
                 || path.startsWith("/api/v2/stream/")
                 || path.startsWith("/api/v2/state/");
     }
@@ -74,7 +79,9 @@ public class OwnerAccessFilter implements WebFilter {
     private String extractRoomId(String path) {
         String[] segments = path.split("/");
         for (int i = 0; i < segments.length; i++) {
-            if (("stream".equals(segments[i]) || "poll".equals(segments[i]) || "state".equals(segments[i]))
+            if (("stream".equals(segments[i]) || "poll".equals(segments[i])
+                    || "donations".equals(segments[i]) || "roulette".equals(segments[i])
+                    || "state".equals(segments[i]))
                     && i + 1 < segments.length) {
                 return segments[i + 1];
             }

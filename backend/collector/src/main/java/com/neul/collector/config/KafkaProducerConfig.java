@@ -85,6 +85,14 @@ public class KafkaProducerConfig {
     }
 
     @Bean
+    public NewTopic donationEventsTopic() {
+        return TopicBuilder.name("donation-events")
+                .partitions(3)
+                .replicas(1)
+                .build();
+    }
+
+    @Bean
     public ConsumerFactory<String, String> consumerFactory() {
         Map<String, Object> configProps = new HashMap<>();
         configProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);

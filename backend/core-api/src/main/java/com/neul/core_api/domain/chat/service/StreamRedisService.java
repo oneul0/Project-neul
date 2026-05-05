@@ -44,6 +44,21 @@ public class StreamRedisService {
         return redisTemplate.opsForHash().put(key, userId, option);
     }
 
+    /**
+     * userId → displayName 매핑을 저장합니다.
+     * 투표자 목록 표시 시 내부 ID 대신 닉네임을 보여주기 위해 사용합니다.
+     */
+    public Mono<Boolean> recordVoterName(String roomId, String userId, String displayName) {
+        String key = "poll:" + roomId + ":voter-names";
+        return redisTemplate.opsForHash().put(key, userId, displayName);
+    }
+
+    public Mono<Map<Object, Object>> getVoterNames(String roomId) {
+        String key = "poll:" + roomId + ":voter-names";
+        return redisTemplate.opsForHash().entries(key)
+                .collectMap(Map.Entry::getKey, Map.Entry::getValue);
+    }
+
     public Mono<Map<Object, Object>> getPollResults(String roomId) {
         String key = "poll:" + roomId + ":votes";
         return redisTemplate.opsForHash().entries(key)
@@ -51,7 +66,9 @@ public class StreamRedisService {
     }
 
     public Mono<Void> clearPoll(String roomId) {
-        return redisTemplate.delete("poll:" + roomId + ":votes").then();
+        return redisTemplate.delete("poll:" + roomId + ":votes")
+                .then(redisTemplate.delete("poll:" + roomId + ":voter-names"))
+                .then();
     }
 
     public Mono<Boolean> setCollectionActive(String roomId, boolean active) {
