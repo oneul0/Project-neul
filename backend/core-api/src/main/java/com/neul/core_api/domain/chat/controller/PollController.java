@@ -3,8 +3,10 @@ package com.neul.core_api.domain.chat.controller;
 import com.neul.core_api.domain.chat.entity.AnalyzedChat;
 import com.neul.core_api.domain.chat.repository.AnalyzedChatRepository;
 import com.neul.core_api.domain.chat.service.StreamRedisService;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
@@ -14,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 @Slf4j
+@Validated
 @RestController
 @RequestMapping("/api/v1/poll")
 @RequiredArgsConstructor
@@ -123,7 +126,8 @@ public class PollController {
      * 투표 항목 설정
      */
     @PostMapping("/{roomId}/items")
-    public Mono<Boolean> setPollItems(@PathVariable String roomId, @RequestBody List<String> items) {
+    public Mono<Boolean> setPollItems(@PathVariable String roomId,
+            @RequestBody @Size(min = 2, max = 20) List<@Size(min = 1, max = 50) String> items) {
         log.info("[Poll] Setting poll items for room {}: {}", roomId, items);
         return streamRedisService.setPollItems(roomId, items);
     }

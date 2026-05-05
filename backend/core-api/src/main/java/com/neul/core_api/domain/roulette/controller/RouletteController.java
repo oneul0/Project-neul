@@ -5,6 +5,7 @@ import com.neul.core_api.domain.roulette.dto.RouletteResult;
 import com.neul.core_api.domain.roulette.dto.RouletteState;
 import com.neul.core_api.domain.roulette.service.RouletteService;
 import lombok.RequiredArgsConstructor;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
@@ -39,7 +40,7 @@ public class RouletteController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public Mono<Void> setConfig(
             @PathVariable String channelId,
-            @RequestBody RouletteConfigRequest request) {
+            @Valid @RequestBody RouletteConfigRequest request) {
         return rouletteService.setConfig(channelId, request);
     }
 

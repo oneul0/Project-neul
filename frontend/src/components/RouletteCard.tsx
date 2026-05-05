@@ -26,27 +26,29 @@ function ProbabilityBar({ item, isWinner, baseProbability }: { item: RouletteIte
   const isBoosted = item.probability - baseProbability > 0.0005;
   return (
     <div
-      className={`rounded-2xl border px-4 py-3 transition ${
-        isWinner ? "border-violet-300 bg-violet-50" : "border-slate-100 bg-slate-50"
+      className={`rounded-[18px] border px-4 py-3 transition ${
+        isWinner
+          ? "border-[#00FFA3]/30 bg-[#00FFA3]/10"
+          : "border-white/[0.06] bg-[#1A1A1A]"
       }`}
     >
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className={`text-sm font-black ${isWinner ? "text-violet-900" : "text-slate-800"}`}>
-          {isWinner && <Sparkles className="mr-1 inline h-3.5 w-3.5 text-violet-500" />}
+        <span className={`text-sm font-black ${isWinner ? "text-[#00FFA3]" : "text-white/90"}`}>
+          {isWinner && <Sparkles className="mr-1 inline h-3.5 w-3.5 text-[#00FFA3]" />}
           {item.name}
         </span>
-        <span className={`text-xs font-black tabular-nums ${isWinner ? "text-violet-600" : "text-slate-500"}`}>
+        <span className={`text-xs font-black tabular-nums ${isWinner ? "text-[#00FFA3]" : "text-white/50"}`}>
           {pct}%
         </span>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.08]">
         <div
-          className={`h-full rounded-full transition-all duration-500 ${isWinner ? "bg-violet-500" : "bg-slate-400"}`}
+          className={`h-full rounded-full transition-all duration-500 ${isWinner ? "bg-[#00FFA3]" : "bg-white/30"}`}
           style={{ width: `${item.probability * 100}%` }}
         />
       </div>
       {isBoosted && (
-        <div className="mt-1 text-right text-[10px] text-emerald-500">
+        <div className="mt-1 text-right text-[10px] text-[#00FFA3]/70">
           +{boostedPct}% 도네이션으로 상승
         </div>
       )}
@@ -102,12 +104,12 @@ function ConfigPanel({ initialItems, initialRate, hasExistingConfig, onSave, onC
   };
 
   return (
-    <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4">
+    <div className="mt-4 rounded-[18px] border border-[#00FFA3]/15 bg-[#00FFA3]/[0.06] p-4">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-sky-600">
+        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-[#00FFA3]/70">
           항목 및 배율 설정
         </span>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+        <button onClick={onClose} className="text-white/30 transition hover:text-white">
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -120,10 +122,10 @@ function ConfigPanel({ initialItems, initialRate, hasExistingConfig, onSave, onC
               value={item}
               onChange={(e) => updateItem(i, e.target.value)}
               placeholder={`항목 ${i + 1}`}
-              className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-sky-400"
+              className="flex-1 rounded-xl border border-white/[0.08] bg-[#111111] px-3 py-2 text-sm font-semibold text-white outline-none placeholder:text-white/25 focus:border-[#00FFA3]/40"
             />
             {items.length > 1 && (
-              <button onClick={() => removeItem(i)} className="text-rose-400 hover:text-rose-600">
+              <button onClick={() => removeItem(i)} className="text-rose-400/60 transition hover:text-rose-400">
                 <X className="h-4 w-4" />
               </button>
             )}
@@ -131,30 +133,30 @@ function ConfigPanel({ initialItems, initialRate, hasExistingConfig, onSave, onC
         ))}
         <button
           onClick={addItem}
-          className="w-full rounded-xl border border-dashed border-sky-300 py-1.5 text-xs font-black text-sky-500 hover:bg-sky-100"
+          className="w-full rounded-xl border border-dashed border-[#00FFA3]/20 py-1.5 text-xs font-black text-[#00FFA3]/60 transition hover:border-[#00FFA3]/40 hover:bg-[#00FFA3]/[0.05] hover:text-[#00FFA3]"
         >
           + 항목 추가
         </button>
       </div>
 
       {/* 배율 설정 */}
-      <div className="mb-4 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2">
-        <span className="text-xs font-black text-slate-500">배율</span>
+      <div className="mb-4 flex items-center gap-3 rounded-xl border border-white/[0.08] bg-[#111111] px-3 py-2">
+        <span className="text-xs font-black text-white/40">배율</span>
         <input
           type="number"
           min={1}
           value={rate}
           onChange={(e) => setRate(Number(e.target.value))}
-          className="w-28 rounded-lg border border-slate-200 px-2 py-1 text-right text-sm font-bold text-slate-800 outline-none focus:border-sky-400"
+          className="w-28 rounded-lg border border-white/[0.08] bg-[#1A1A1A] px-2 py-1 text-right text-sm font-bold text-white outline-none focus:border-[#00FFA3]/40"
         />
-        <span className="text-xs text-slate-500">원당 확률 상승</span>
+        <span className="text-xs text-white/40">원당 확률 상승</span>
       </div>
 
       {/* 저장 버튼 */}
       <button
         onClick={() => void handleSave()}
         disabled={saving}
-        className="w-full rounded-2xl bg-sky-500 py-2.5 text-sm font-black text-white transition hover:bg-sky-400 disabled:opacity-50"
+        className="w-full rounded-2xl bg-[#00FFA3] py-2.5 text-sm font-black text-[#000000] transition hover:bg-[#00FFA3]/90 disabled:opacity-50"
       >
         {saving ? "저장 중..." : "저장"}
       </button>
@@ -166,8 +168,8 @@ function ConfigPanel({ initialItems, initialRate, hasExistingConfig, onSave, onC
           disabled={clearing}
           className={`mt-2 w-full rounded-2xl border py-2.5 text-xs font-black transition ${
             confirmClear
-              ? "border-rose-300 bg-rose-500 text-white hover:bg-rose-400"
-              : "border-rose-200 bg-white text-rose-500 hover:bg-rose-50"
+              ? "border-rose-500/40 bg-rose-500 text-white hover:bg-rose-400"
+              : "border-rose-500/20 bg-transparent text-rose-400/80 hover:bg-rose-500/10 hover:text-rose-400"
           } disabled:opacity-50`}
         >
           <Trash2 className="mr-1.5 inline h-3.5 w-3.5" />
@@ -175,7 +177,7 @@ function ConfigPanel({ initialItems, initialRate, hasExistingConfig, onSave, onC
         </button>
       )}
       {confirmClear && (
-        <p className="mt-1 text-center text-[10px] text-rose-400">
+        <p className="mt-1 text-center text-[10px] text-rose-400/60">
           한 번 더 누르면 항목·배율·도네이션 확률이 모두 삭제됩니다.
         </p>
       )}
@@ -209,18 +211,18 @@ export default function RouletteCard({
   const hasItems = (state?.items.length ?? 0) > 0;
 
   return (
-    <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_8px_32px_rgba(15,23,42,0.06)]">
+    <div className="rounded-[28px] border border-white/[0.08] bg-[#111111] p-6">
       {/* 헤더 */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-violet-50">
-            <Gift className="h-5 w-5 text-violet-500" />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#00FFA3]/10">
+            <Gift className="h-5 w-5 text-[#00FFA3]" />
           </div>
           <div>
-            <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">
+            <div className="text-[11px] font-black uppercase tracking-[0.22em] text-white/40">
               도네이션 룰렛
             </div>
-            <div className="text-sm font-bold text-slate-700">
+            <div className="text-sm font-bold text-white/70">
               {hasItems
                 ? `${state!.items.length}개 항목 · ${state!.rate.toLocaleString()}원당 확률 상승`
                 : "항목 미설정"}
@@ -230,13 +232,13 @@ export default function RouletteCard({
 
         {isOwner && (
           <div className="flex items-center gap-2">
-            {/* 가중치만 초기화 (항목 유지) */}
+            {/* 확률 초기화 */}
             {hasItems && (
               <button
                 onClick={onResetWeights}
                 disabled={isResetting}
                 title="도네이션으로 올라간 확률만 초기화 (항목은 유지됩니다)"
-                className="inline-flex items-center gap-1.5 rounded-2xl border border-slate-200 px-3 py-2.5 text-xs font-black text-slate-500 transition hover:bg-slate-50 disabled:opacity-40"
+                className="inline-flex items-center gap-1.5 rounded-2xl border border-white/[0.08] bg-transparent px-3 py-2.5 text-xs font-black text-white/50 transition hover:bg-white/[0.06] hover:text-white disabled:opacity-40"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
                 {isResetting ? "초기화 중..." : "확률 초기화"}
@@ -247,8 +249,8 @@ export default function RouletteCard({
               onClick={() => setConfigOpen((v) => !v)}
               className={`inline-flex items-center gap-1.5 rounded-2xl border px-3 py-2.5 text-xs font-black transition ${
                 configOpen
-                  ? "border-sky-200 bg-sky-50 text-sky-600"
-                  : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                  ? "border-[#00FFA3]/25 bg-[#00FFA3]/10 text-[#00FFA3]"
+                  : "border-white/[0.08] bg-transparent text-white/50 hover:bg-white/[0.06] hover:text-white"
               }`}
             >
               <Settings className="h-3.5 w-3.5" />
@@ -260,8 +262,8 @@ export default function RouletteCard({
               disabled={!hasItems || isSpinning}
               className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black transition ${
                 !hasItems || isSpinning
-                  ? "cursor-not-allowed bg-slate-100 text-slate-400"
-                  : "bg-violet-500 text-white hover:bg-violet-400"
+                  ? "cursor-not-allowed bg-white/[0.06] text-white/25"
+                  : "bg-[#00FFA3] text-[#000000] hover:bg-[#00FFA3]/90 shadow-[0_0_16px_rgba(0,255,163,0.25)]"
               }`}
             >
               <Sparkles className="h-4 w-4" />
@@ -285,13 +287,13 @@ export default function RouletteCard({
 
       {/* 당첨 결과 */}
       {result && (
-        <div className="mt-5 rounded-2xl border border-violet-200 bg-violet-50 px-5 py-4">
+        <div className="mt-5 rounded-[18px] border border-[#00FFA3]/25 bg-[#00FFA3]/10 px-5 py-4">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-violet-500" />
-            <span className="text-[11px] font-black tracking-[0.2em] text-violet-500">당첨</span>
+            <Sparkles className="h-4 w-4 text-[#00FFA3]" />
+            <span className="text-[11px] font-black tracking-[0.2em] text-[#00FFA3]/70">당첨</span>
           </div>
-          <div className="mt-1.5 text-2xl font-black text-violet-950">{result.winner}</div>
-          <div className="mt-0.5 text-sm font-semibold text-violet-600">
+          <div className="mt-1.5 text-2xl font-black text-white">{result.winner}</div>
+          <div className="mt-0.5 text-sm font-semibold text-[#00FFA3]/70">
             추첨 확률 {(result.probability * 100).toFixed(1)}%
           </div>
         </div>
@@ -314,14 +316,14 @@ export default function RouletteCard({
         </div>
       ) : (
         !configOpen && (
-          <div className="mt-4 rounded-xl bg-slate-50 py-8 text-center">
-            <Gift className="mx-auto h-6 w-6 text-slate-300" />
-            <p className="mt-2 text-sm font-semibold text-slate-400">
+          <div className="mt-4 rounded-[18px] border border-dashed border-white/[0.08] bg-[#1A1A1A] py-8 text-center">
+            <Gift className="mx-auto h-6 w-6 text-white/20" />
+            <p className="mt-2 text-sm font-semibold text-white/40">
               {isOwner
                 ? "설정 버튼을 눌러 항목과 배율을 지정하세요."
                 : "스트리머가 항목을 설정하면 확률이 표시됩니다."}
             </p>
-            <p className="mt-1 text-xs text-slate-300">
+            <p className="mt-1 text-xs text-white/25">
               도네이션 메시지에 항목 이름을 입력하면 확률이 올라갑니다.
             </p>
           </div>

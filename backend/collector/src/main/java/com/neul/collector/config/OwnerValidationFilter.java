@@ -1,6 +1,7 @@
 package com.neul.collector.config;
 
 import com.neul.common.auth.OwnerTokenCodec;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.buffer.DataBuffer;
@@ -17,14 +18,23 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * WebFlux 기반의 채널 소유권 검증 필터.
- * 요청 헤더의 X-Chzzk-Owner-Id와 요청 경로의 channelId를 비교하여 본인 채널 여부를 확인합니다.
+ * 서명된 NEUL_OWNER_ASSERTION 쿠키로 소유권을 확인합니다.
  */
 @Slf4j
 @Component
 public class OwnerValidationFilter implements WebFilter {
 
+    private static final String INSECURE_DEFAULT = "dev-owner-token-secret";
+
     @Value("${neul.owner-token-secret:dev-owner-token-secret}")
     private String ownerTokenSecret;
+
+    @PostConstruct
+    void warnIfInsecureSecret() {
+        if (INSECURE_DEFAULT.equals(ownerTokenSecret)) {
+            log.warn("[Security] neul.owner-token-secret is using the insecure default value. Set a strong secret via environment variable before deploying.");
+        }
+    }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
@@ -43,11 +53,7 @@ public class OwnerValidationFilter implements WebFilter {
                         ownerTokenSecret);
             }
             if (ownerId == null || ownerId.isBlank()) {
-                ownerId = exchange.getRequest().getHeaders().getFirst("X-Chzzk-Owner-Id");
-            }
-
-            if (ownerId == null || ownerId.isBlank()) {
-                log.warn("[Auth] Missing X-Chzzk-Owner-Id header for path: {}", path);
+                log.warn("[Auth] Missing owner assertion cookie for path: {}", path);
                 return respondWithError(exchange, HttpStatus.UNAUTHORIZED, "login_required", "CHZZK login is required.");
             }
 
