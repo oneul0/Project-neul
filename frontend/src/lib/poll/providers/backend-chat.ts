@@ -7,7 +7,7 @@ const capability: PollCapability = {
   requiresBackend: true,
   browserDirect: false,
   official: false,
-  reason: "현재 프로젝트의 실동작 투표는 core-api /api/v1/poll/* 엔드포인트를 사용합니다.",
+  reason: "채팅 분석을 통해 투표를 집계합니다.",
 };
 
 export const backendChatProvider: PollProvider = {

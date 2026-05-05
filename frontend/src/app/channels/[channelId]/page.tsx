@@ -154,8 +154,8 @@ export default function ChannelDashboard({
             </div>
             <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">
               {activeTab === "poll"
-                ? "시청자 반응을 정의하는 투표"
-                : "편집 후보를 고르는 워크스페이스"}
+                ? "투표"
+                : "VOD 하이라이트 워크스페이스"}
             </h1>
             <p className="text-sm leading-6 text-white/60">
               {activeTab === "poll"

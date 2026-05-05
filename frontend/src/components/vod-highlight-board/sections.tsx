@@ -322,7 +322,7 @@ export function VodSelectedVideoSection({
                   </div>
                   <div className="mt-1 text-sm leading-6 text-white/65">
                     {board.status.status === "CRAWLING"
-                      ? `현재 ${board.status.pagesProcessed ?? 0}페이지, ${board.status.chatsCollected ?? 0}개 채팅을 확인했습니다.`
+                      ? `채팅 ${board.status.chatsCollected ?? 0}개를 분석했습니다.`
                       : board.status.status === "COMPLETED"
                         ? `완료 시각 ${formatDateTime(board.status.completedAt)}`
                         : board.isAnalysisActive

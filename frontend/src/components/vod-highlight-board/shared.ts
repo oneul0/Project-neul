@@ -583,7 +583,7 @@ export function buildSelectedVodState(params: {
   if (status.status === "CRAWLING") {
     return {
       label: "채팅 수집 중",
-      summary: `현재 ${status.pagesProcessed ?? 0}페이지, ${status.chatsCollected ?? 0}개 채팅을 확인하고 있습니다.`,
+      summary: `채팅 ${status.chatsCollected ?? 0}개를 분석 중입니다.`,
       toneClass: "border-[#00FFA3]/25 bg-[#00FFA3]/10 text-[#00FFA3]",
     };
   }

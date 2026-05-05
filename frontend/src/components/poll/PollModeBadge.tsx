@@ -1,12 +1,12 @@
 import type { PollMode, ResolvedPollMode } from "@/lib/poll/types";
 
 const modeLabels: Record<PollMode | ResolvedPollMode, string> = {
-  AUTO: "AUTO",
-  BACKEND_CHAT: "BACKEND CHAT",
-  CHAT_DIRECT: "CHAT DIRECT",
-  OFFICIAL_API_DIRECT: "OFFICIAL API DIRECT",
-  OFFICIAL_API_BACKEND: "OFFICIAL API BACKEND",
-  WEB_FALLBACK: "WEB FALLBACK",
+  AUTO: "자동",
+  BACKEND_CHAT: "서버 연동",
+  CHAT_DIRECT: "직접 연결",
+  OFFICIAL_API_DIRECT: "공식 API",
+  OFFICIAL_API_BACKEND: "공식 API",
+  WEB_FALLBACK: "대기",
 };
 
 interface Props {

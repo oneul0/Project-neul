@@ -53,7 +53,7 @@ export default function DevSeedPanel({ channelId }: Props) {
         setResult({ tone: "good", message: msg });
       }
     } catch {
-      setResult({ tone: "warn", message: "네트워크 오류 또는 core-api 미실행" });
+      setResult({ tone: "warn", message: "서버 연결 오류" });
     } finally {
       setLoading(null);
     }

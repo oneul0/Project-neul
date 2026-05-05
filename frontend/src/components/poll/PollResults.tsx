@@ -25,7 +25,7 @@ export default function PollResults({
     <div className={compact ? "space-y-2.5" : "space-y-3"}>
       {items.length === 0 ? (
         <div className="rounded-[20px] border border-dashed border-white/10 bg-[#1A1A1A] p-5 text-sm text-white/50">
-          방송 중 시청자 반응을 확인하려면 먼저 투표 항목을 만들어 주세요.
+          투표 항목을 먼저 만들어 주세요.
         </div>
       ) : totalVotes === 0 && !compact ? (
         <div className="rounded-[20px] border border-[#00FFA3]/20 bg-[#00FFA3]/10 px-4 py-3 text-sm text-[#00FFA3]">
