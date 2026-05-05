@@ -18,11 +18,11 @@ export default function PollCard({ session, variant = "main" }: Props) {
   const statusTone = session.isSessionActive
     ? "border-[#00FFA3]/25 bg-[#00FFA3]/10 text-[#00FFA3]"
     : hasPoll
-      ? "border-sky-500/25 bg-sky-500/10 text-sky-400"
-      : "border-white/[0.08] bg-[#242426] text-white/50";
+      ? "border-[#00FFA3]/25 bg-[#00FFA3]/10 text-[#00FFA3]"
+      : "border-white/[0.08] bg-[#1A1A1A] text-white/50";
 
   return (
-    <div className={`rounded-[28px] border border-white/[0.08] bg-[#1A1A1C] transition-all duration-200 ${isCompact ? "p-5" : "p-6"}`}>
+    <div className={`rounded-[28px] border border-white/[0.08] bg-[#111111] transition-all duration-200 ${isCompact ? "p-5" : "p-6"}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="text-[11px] font-black uppercase tracking-[0.22em] text-white/40">투표</div>
@@ -44,18 +44,18 @@ export default function PollCard({ session, variant = "main" }: Props) {
             {statusLabel}
           </div>
         </div>
-        <div className="rounded-[20px] border border-white/[0.08] bg-[#242426] px-4 py-3">
+        <div className="rounded-[20px] border border-white/[0.08] bg-[#1A1A1A] px-4 py-3">
           <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">항목</div>
           <div className="mt-2 text-sm font-black text-white">{session.items.length}개</div>
         </div>
-        <div className="rounded-[20px] border border-white/[0.08] bg-[#242426] px-4 py-3">
+        <div className="rounded-[20px] border border-white/[0.08] bg-[#1A1A1A] px-4 py-3">
           <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">총 투표</div>
           <div className="mt-2 flex items-center gap-2 text-sm font-black text-white">
             <BarChart3 className="h-4 w-4 text-[#00FFA3]" />
             {session.totalVotes}표
           </div>
         </div>
-        <div className="rounded-[20px] border border-white/[0.08] bg-[#242426] px-4 py-3">
+        <div className="rounded-[20px] border border-white/[0.08] bg-[#1A1A1A] px-4 py-3">
           <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">참여 시청자</div>
           <div className="mt-2 text-sm font-black text-white">{participantCount}명</div>
         </div>

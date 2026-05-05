@@ -32,13 +32,13 @@ export default function PollComposer({
   const showFeedback = Boolean(error) || duplicateIndexes.length > 0 || filledCount > 0;
 
   return (
-    <div className="mb-5 space-y-4 rounded-[20px] border border-white/[0.08] bg-[#242426] p-4 transition-all duration-200">
+    <div className="mb-5 space-y-4 rounded-[20px] border border-white/[0.08] bg-[#1A1A1A] p-4 transition-all duration-200">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-[11px] font-black uppercase tracking-[0.22em] text-white/40">투표 항목 편집</div>
           <div className="mt-2 text-sm font-bold text-white/70">입력된 항목 {filledCount}개 · 저장 시 최소 2개</div>
         </div>
-        <div className="rounded-full border border-white/[0.08] bg-[#1A1A1C] px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white/40">
+        <div className="rounded-full border border-white/[0.08] bg-[#111111] px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white/40">
           중복 없이 저장
         </div>
       </div>
@@ -58,7 +58,7 @@ export default function PollComposer({
               <input
                 value={item}
                 onChange={(event) => onChangeItem(index, event.target.value)}
-                className={`w-full rounded-2xl border bg-[#1A1A1C] px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#00FFA3]/40 ${
+                className={`w-full rounded-2xl border bg-[#111111] px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#00FFA3]/40 ${
                   hasDuplicate ? "border-rose-500/40 bg-rose-500/10" : "border-white/[0.08]"
                 }`}
                 placeholder={`항목 ${index + 1}`}
@@ -106,7 +106,7 @@ export default function PollComposer({
         <button
           onClick={onSave}
           disabled={!canSave || isSaving}
-          className="rounded-2xl bg-[#00FFA3] px-4 py-2 text-sm font-black text-[#0D0D0E] transition hover:bg-[#00FFA3]/90 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/30"
+          className="rounded-2xl bg-[#00FFA3] px-4 py-2 text-sm font-black text-[#000000] transition hover:bg-[#00FFA3]/90 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/30"
         >
           {isSaving ? "저장 중..." : "저장"}
         </button>

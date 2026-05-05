@@ -62,7 +62,7 @@ export default function DevSeedPanel({ channelId }: Props) {
   return (
     <div className="fixed bottom-5 right-5 z-50">
       {open ? (
-        <div className="w-72 rounded-[22px] border border-white/[0.1] bg-[#1A1A1C] shadow-[0_24px_60px_rgba(0,0,0,0.5)]">
+        <div className="w-72 rounded-[22px] border border-white/[0.1] bg-[#111111] shadow-[0_24px_60px_rgba(0,0,0,0.5)]">
           <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-3">
             <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-[#00FFA3]">
               <FlaskConical className="h-3.5 w-3.5" />
@@ -85,14 +85,14 @@ export default function DevSeedPanel({ channelId }: Props) {
               <button
                 onClick={() => void call("donations", "POST")}
                 disabled={!!loading}
-                className="rounded-2xl bg-[#00FFA3]/90 py-2.5 text-xs font-black text-[#0D0D0E] transition hover:bg-[#00FFA3] disabled:opacity-50"
+                className="rounded-2xl bg-[#00FFA3]/90 py-2.5 text-xs font-black text-[#000000] transition hover:bg-[#00FFA3] disabled:opacity-50"
               >
                 {loading === "donations" ? "주입 중..." : "도네이션 10개"}
               </button>
               <button
                 onClick={() => void call("votes", "POST")}
                 disabled={!!loading}
-                className="rounded-2xl bg-sky-500/80 py-2.5 text-xs font-black text-white transition hover:bg-sky-500 disabled:opacity-50"
+                className="rounded-2xl bg-[#00FFA3]/80 py-2.5 text-xs font-black text-white transition hover:bg-[#00FFA3] disabled:opacity-50"
               >
                 {loading === "votes" ? "주입 중..." : "투표 30명"}
               </button>
@@ -101,7 +101,7 @@ export default function DevSeedPanel({ channelId }: Props) {
             <button
               onClick={() => void call("roulette-donations", "POST")}
               disabled={!!loading}
-              className="w-full rounded-2xl bg-orange-500/80 py-2.5 text-xs font-black text-white transition hover:bg-orange-500 disabled:opacity-50"
+              className="w-full rounded-2xl bg-[#00FFA3]/80 py-2.5 text-xs font-black text-[#000000] transition hover:bg-[#00FFA3] disabled:opacity-50"
             >
               {loading === "roulette-donations" ? "주입 중..." : "룰렛 도네이션 20개"}
             </button>
@@ -110,7 +110,7 @@ export default function DevSeedPanel({ channelId }: Props) {
               <button
                 onClick={() => void call("status", "GET")}
                 disabled={!!loading}
-                className="rounded-2xl border border-white/[0.08] bg-[#242426] py-2.5 text-xs font-black text-white/70 transition hover:bg-white/[0.08] disabled:opacity-50"
+                className="rounded-2xl border border-white/[0.08] bg-[#1A1A1A] py-2.5 text-xs font-black text-white/70 transition hover:bg-white/[0.08] disabled:opacity-50"
               >
                 {loading === "status" ? "확인 중..." : "현재 상태"}
               </button>
@@ -143,7 +143,7 @@ export default function DevSeedPanel({ channelId }: Props) {
       ) : (
         <button
           onClick={() => setOpen(true)}
-          className="flex items-center gap-2 rounded-full border border-[#00FFA3]/25 bg-[#1A1A1C] px-4 py-2.5 text-xs font-black text-[#00FFA3] shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition hover:bg-[#00FFA3]/10"
+          className="flex items-center gap-2 rounded-full border border-[#00FFA3]/25 bg-[#111111] px-4 py-2.5 text-xs font-black text-[#00FFA3] shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition hover:bg-[#00FFA3]/10"
         >
           <FlaskConical className="h-3.5 w-3.5" />
           Dev Seed

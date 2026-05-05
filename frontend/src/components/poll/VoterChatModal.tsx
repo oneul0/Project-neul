@@ -35,7 +35,7 @@ export default function VoterChatModal({ voterName, messages, isLoading, error, 
     <div className="fixed inset-0 z-50 flex items-end justify-end p-6 sm:p-8">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
 
-      <div className="relative flex h-[560px] w-full max-w-[360px] flex-col rounded-[24px] border border-white/[0.1] bg-[#1A1A1C] shadow-[0_32px_80px_rgba(0,0,0,0.6)]">
+      <div className="relative flex h-[560px] w-full max-w-[360px] flex-col rounded-[24px] border border-white/[0.1] bg-[#111111] shadow-[0_32px_80px_rgba(0,0,0,0.6)]">
         {/* 헤더 */}
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-5 py-4">
           <div className="min-w-0">
@@ -74,7 +74,7 @@ export default function VoterChatModal({ voterName, messages, isLoading, error, 
                   <div key={msg.messageId} className="flex flex-col items-start gap-0.5">
                     <div className="flex items-start gap-2">
                       <span className={`mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} />
-                      <div className="rounded-2xl rounded-tl-sm bg-[#242426] px-3.5 py-2.5 text-sm leading-5 text-white/90">
+                      <div className="rounded-2xl rounded-tl-sm bg-[#1A1A1A] px-3.5 py-2.5 text-sm leading-5 text-white/90">
                         {msg.content || <span className="italic text-white/30">(빈 메시지)</span>}
                       </div>
                     </div>

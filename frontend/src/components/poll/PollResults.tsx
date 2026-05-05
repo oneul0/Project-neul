@@ -24,11 +24,11 @@ export default function PollResults({
   return (
     <div className={compact ? "space-y-2.5" : "space-y-3"}>
       {items.length === 0 ? (
-        <div className="rounded-[20px] border border-dashed border-white/10 bg-[#242426] p-5 text-sm text-white/50">
+        <div className="rounded-[20px] border border-dashed border-white/10 bg-[#1A1A1A] p-5 text-sm text-white/50">
           방송 중 시청자 반응을 확인하려면 먼저 투표 항목을 만들어 주세요.
         </div>
       ) : totalVotes === 0 && !compact ? (
-        <div className="rounded-[20px] border border-sky-500/20 bg-sky-500/10 px-4 py-3 text-sm text-sky-400">
+        <div className="rounded-[20px] border border-[#00FFA3]/20 bg-[#00FFA3]/10 px-4 py-3 text-sm text-[#00FFA3]">
           <span className="font-black">투표 대기 중</span>
           {" — "}시청자가 채팅에{" "}
           {items.slice(0, 3).map((item, i) => (
@@ -50,7 +50,7 @@ export default function PollResults({
           return (
             <div
               key={item.id}
-              className={`rounded-[20px] border border-white/[0.08] bg-[#242426] transition-all duration-200 ${compact ? "p-3.5" : "p-4"}`}
+              className={`rounded-[20px] border border-white/[0.08] bg-[#1A1A1A] transition-all duration-200 ${compact ? "p-3.5" : "p-4"}`}
             >
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -70,7 +70,7 @@ export default function PollResults({
                 />
               </div>
               {votersForItem.length > 0 ? (
-                <div className="mt-3 rounded-[16px] border border-white/[0.06] bg-[#1A1A1C] p-3">
+                <div className="mt-3 rounded-[16px] border border-white/[0.06] bg-[#111111] p-3">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">참여 시청자</div>
                     <div className="text-[11px] text-white/30">이름을 누르면 채팅 기록을 확인합니다.</div>

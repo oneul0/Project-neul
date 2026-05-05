@@ -142,11 +142,11 @@ export default function ChannelDashboard({
     ? "cursor-not-allowed bg-white/10 text-white/40"
     : pollSession.isSessionActive
       ? "bg-rose-500/90 text-white hover:bg-rose-500"
-      : "bg-[#00FFA3] text-[#0D0D0E] hover:bg-[#00FFA3]/90";
+      : "bg-[#00FFA3] text-[#000000] hover:bg-[#00FFA3]/90";
 
   return (
     <div className="space-y-8">
-      <section className="rounded-[28px] border border-white/[0.08] bg-[#1A1A1C] p-6 sm:p-8">
+      <section className="rounded-[28px] border border-white/[0.08] bg-[#111111] p-6 sm:p-8">
         <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
           <div className="space-y-2">
             <div className="text-[11px] font-black uppercase tracking-[0.28em] text-white/40">
@@ -165,12 +165,12 @@ export default function ChannelDashboard({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <div className="grid grid-cols-2 rounded-[20px] border border-white/[0.08] bg-[#242426] p-1">
+            <div className="grid grid-cols-2 rounded-[20px] border border-white/[0.08] bg-[#1A1A1A] p-1">
               <button
                 onClick={() => setActiveTab("poll")}
                 className={`inline-flex items-center justify-center gap-2 rounded-[16px] px-5 py-2.5 text-sm font-black transition ${
                   activeTab === "poll"
-                    ? "bg-[#00FFA3] text-[#0D0D0E] shadow-[0_0_12px_rgba(0,255,163,0.25)]"
+                    ? "bg-[#00FFA3] text-[#000000] shadow-[0_0_12px_rgba(0,255,163,0.25)]"
                     : "text-white/50 hover:text-white"
                 }`}
               >
@@ -181,7 +181,7 @@ export default function ChannelDashboard({
                 onClick={() => setActiveTab("vod")}
                 className={`inline-flex items-center justify-center gap-2 rounded-[16px] px-5 py-2.5 text-sm font-black transition ${
                   activeTab === "vod"
-                    ? "bg-[#00FFA3] text-[#0D0D0E] shadow-[0_0_12px_rgba(0,255,163,0.25)]"
+                    ? "bg-[#00FFA3] text-[#000000] shadow-[0_0_12px_rgba(0,255,163,0.25)]"
                     : "text-white/50 hover:text-white"
                 }`}
               >
@@ -193,7 +193,7 @@ export default function ChannelDashboard({
             {!hasOwnerIdentity ? (
               <button
                 onClick={handleLogin}
-                className="inline-flex items-center gap-2 rounded-2xl bg-[#00FFA3] px-5 py-3 text-sm font-black text-[#0D0D0E] transition hover:bg-[#00FFA3]/90 active:scale-95"
+                className="inline-flex items-center gap-2 rounded-2xl bg-[#00FFA3] px-5 py-3 text-sm font-black text-[#000000] transition hover:bg-[#00FFA3]/90 active:scale-95"
               >
                 <LogIn className="h-4 w-4" />
                 치지직 로그인
@@ -239,7 +239,7 @@ export default function ChannelDashboard({
             로그인한 계정의 채널과 현재 채널이 달라 투표 관리 기능을 사용할 수 없습니다.
           </div>
         ) : !hasOwnerIdentity && !authLoading ? (
-          <div className="mt-5 rounded-2xl border border-white/[0.08] bg-[#242426] px-4 py-3 text-sm text-white/50">
+          <div className="mt-5 rounded-2xl border border-white/[0.08] bg-[#1A1A1A] px-4 py-3 text-sm text-white/50">
             {ownerProfile.message || "치지직 로그인 후 본인 채널의 투표와 VOD 분석을 사용할 수 있습니다."}
           </div>
         ) : null}

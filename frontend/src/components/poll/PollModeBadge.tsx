@@ -18,7 +18,7 @@ interface Props {
 export default function PollModeBadge({ preferredMode, resolvedMode, note }: Props) {
   return (
     <div className="space-y-2">
-      <div className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-[#242426] px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white/40">
+      <div className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-[#1A1A1A] px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white/40">
         <span>{modeLabels[preferredMode]}</span>
         <span className="text-white/20">→</span>
         <span className="text-white/60">{modeLabels[resolvedMode]}</span>

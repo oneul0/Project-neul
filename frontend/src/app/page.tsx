@@ -67,7 +67,7 @@ export default function Home() {
 
   return (
     <div className="flex min-h-[calc(100vh-220px)] items-center justify-center">
-      <section className="w-full max-w-3xl rounded-[32px] border border-white/[0.08] bg-[#1A1A1C] p-8 shadow-[0_24px_80px_rgba(0,0,0,0.5)] sm:p-12">
+      <section className="w-full max-w-3xl rounded-[32px] border border-white/[0.08] bg-[#111111] p-8 shadow-[0_24px_80px_rgba(0,0,0,0.5)] sm:p-12">
         <div className="mx-auto max-w-2xl text-center">
           <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-[#00FFA3]/25 bg-[#00FFA3]/10 px-4 py-2 text-[11px] font-black tracking-[0.2em] text-[#00FFA3]">
             <ShieldCheck className="h-3.5 w-3.5" />
@@ -85,7 +85,7 @@ export default function Home() {
             악성 반응에 과몰입하지 않도록 돕는 실시간 심리 가드레일 대시보드입니다.
           </p>
 
-          <div className="mt-10 rounded-[24px] border border-white/[0.08] bg-[#242426] p-6 text-left">
+          <div className="mt-10 rounded-[24px] border border-white/[0.08] bg-[#1A1A1A] p-6 text-left">
             <div className="text-[11px] font-black tracking-[0.22em] text-white/40">현재 상태</div>
 
             {authLoading ? (
@@ -112,7 +112,7 @@ export default function Home() {
               <div className="mt-6 flex flex-wrap gap-3">
                 <button
                   onClick={handleLogin}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-[#00FFA3] px-5 py-3 text-sm font-black text-[#0D0D0E] transition hover:bg-[#00FFA3]/90 active:scale-95"
+                  className="inline-flex items-center gap-2 rounded-2xl bg-[#00FFA3] px-5 py-3 text-sm font-black text-[#000000] transition hover:bg-[#00FFA3]/90 active:scale-95"
                 >
                   <LogIn className="h-4 w-4" />
                   치지직으로 로그인

@@ -29,7 +29,7 @@ function ProbabilityBar({ item, isWinner, baseProbability }: { item: RouletteIte
       className={`rounded-[18px] border px-4 py-3 transition ${
         isWinner
           ? "border-[#00FFA3]/30 bg-[#00FFA3]/10"
-          : "border-white/[0.06] bg-[#242426]"
+          : "border-white/[0.06] bg-[#1A1A1A]"
       }`}
     >
       <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -122,7 +122,7 @@ function ConfigPanel({ initialItems, initialRate, hasExistingConfig, onSave, onC
               value={item}
               onChange={(e) => updateItem(i, e.target.value)}
               placeholder={`항목 ${i + 1}`}
-              className="flex-1 rounded-xl border border-white/[0.08] bg-[#1A1A1C] px-3 py-2 text-sm font-semibold text-white outline-none placeholder:text-white/25 focus:border-[#00FFA3]/40"
+              className="flex-1 rounded-xl border border-white/[0.08] bg-[#111111] px-3 py-2 text-sm font-semibold text-white outline-none placeholder:text-white/25 focus:border-[#00FFA3]/40"
             />
             {items.length > 1 && (
               <button onClick={() => removeItem(i)} className="text-rose-400/60 transition hover:text-rose-400">
@@ -140,14 +140,14 @@ function ConfigPanel({ initialItems, initialRate, hasExistingConfig, onSave, onC
       </div>
 
       {/* 배율 설정 */}
-      <div className="mb-4 flex items-center gap-3 rounded-xl border border-white/[0.08] bg-[#1A1A1C] px-3 py-2">
+      <div className="mb-4 flex items-center gap-3 rounded-xl border border-white/[0.08] bg-[#111111] px-3 py-2">
         <span className="text-xs font-black text-white/40">배율</span>
         <input
           type="number"
           min={1}
           value={rate}
           onChange={(e) => setRate(Number(e.target.value))}
-          className="w-28 rounded-lg border border-white/[0.08] bg-[#242426] px-2 py-1 text-right text-sm font-bold text-white outline-none focus:border-[#00FFA3]/40"
+          className="w-28 rounded-lg border border-white/[0.08] bg-[#1A1A1A] px-2 py-1 text-right text-sm font-bold text-white outline-none focus:border-[#00FFA3]/40"
         />
         <span className="text-xs text-white/40">원당 확률 상승</span>
       </div>
@@ -156,7 +156,7 @@ function ConfigPanel({ initialItems, initialRate, hasExistingConfig, onSave, onC
       <button
         onClick={() => void handleSave()}
         disabled={saving}
-        className="w-full rounded-2xl bg-[#00FFA3] py-2.5 text-sm font-black text-[#0D0D0E] transition hover:bg-[#00FFA3]/90 disabled:opacity-50"
+        className="w-full rounded-2xl bg-[#00FFA3] py-2.5 text-sm font-black text-[#000000] transition hover:bg-[#00FFA3]/90 disabled:opacity-50"
       >
         {saving ? "저장 중..." : "저장"}
       </button>
@@ -211,7 +211,7 @@ export default function RouletteCard({
   const hasItems = (state?.items.length ?? 0) > 0;
 
   return (
-    <div className="rounded-[28px] border border-white/[0.08] bg-[#1A1A1C] p-6">
+    <div className="rounded-[28px] border border-white/[0.08] bg-[#111111] p-6">
       {/* 헤더 */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -263,7 +263,7 @@ export default function RouletteCard({
               className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black transition ${
                 !hasItems || isSpinning
                   ? "cursor-not-allowed bg-white/[0.06] text-white/25"
-                  : "bg-[#00FFA3] text-[#0D0D0E] hover:bg-[#00FFA3]/90 shadow-[0_0_16px_rgba(0,255,163,0.25)]"
+                  : "bg-[#00FFA3] text-[#000000] hover:bg-[#00FFA3]/90 shadow-[0_0_16px_rgba(0,255,163,0.25)]"
               }`}
             >
               <Sparkles className="h-4 w-4" />
@@ -316,7 +316,7 @@ export default function RouletteCard({
         </div>
       ) : (
         !configOpen && (
-          <div className="mt-4 rounded-[18px] border border-dashed border-white/[0.08] bg-[#242426] py-8 text-center">
+          <div className="mt-4 rounded-[18px] border border-dashed border-white/[0.08] bg-[#1A1A1A] py-8 text-center">
             <Gift className="mx-auto h-6 w-6 text-white/20" />
             <p className="mt-2 text-sm font-semibold text-white/40">
               {isOwner

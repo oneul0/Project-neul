@@ -48,13 +48,13 @@ function CompactInfoDisclosure({
     <details className="group relative">
       <summary
         aria-label={label}
-        className={`flex cursor-pointer list-none items-center justify-center border border-white/[0.08] bg-[#1A1A1C] text-[11px] font-black text-white/50 transition hover:border-white/[0.12] hover:text-white/80 [&::-webkit-details-marker]:hidden ${cueLabel ? "gap-1.5 rounded-full px-2.5 py-1.5" : "rounded-full p-0"}`}
+        className={`flex cursor-pointer list-none items-center justify-center border border-white/[0.08] bg-[#111111] text-[11px] font-black text-white/50 transition hover:border-white/[0.12] hover:text-white/80 [&::-webkit-details-marker]:hidden ${cueLabel ? "gap-1.5 rounded-full px-2.5 py-1.5" : "rounded-full p-0"}`}
       >
         <span className={`inline-flex items-center justify-center ${cueLabel ? "h-5 w-5 rounded-full border border-white/[0.08] text-[10px]" : "h-6 w-6"}`}>?</span>
         {cueLabel ? <span className="pr-0.5 tracking-[0.08em]">{cueLabel}</span> : null}
       </summary>
       <div
-        className={`absolute top-full z-10 mt-3 w-72 max-w-[calc(100vw-4rem)] rounded-2xl border border-white/[0.08] bg-[#1A1A1C] px-3 py-3 text-xs leading-5 text-white/65 shadow-[0_18px_50px_rgba(0,0,0,0.4)] ${
+        className={`absolute top-full z-10 mt-3 w-72 max-w-[calc(100vw-4rem)] rounded-2xl border border-white/[0.08] bg-[#111111] px-3 py-3 text-xs leading-5 text-white/65 shadow-[0_18px_50px_rgba(0,0,0,0.4)] ${
           align === "left" ? "left-0" : "right-0"
         }`}
       >
@@ -100,21 +100,21 @@ function HighlightActionButtons({
       <button
         type="button"
         onClick={() => onAction("GOOD")}
-        className={`inline-flex items-center gap-1 rounded-full border px-3 py-2 text-xs font-black transition ${currentAction === "GOOD" ? "border-emerald-300 bg-[#00FFA3]/10 text-[#00FFA3]" : "border-white/[0.08] bg-[#1A1A1C] text-white/65"}`}
+        className={`inline-flex items-center gap-1 rounded-full border px-3 py-2 text-xs font-black transition ${currentAction === "GOOD" ? "border-[#00FFA3]/40 bg-[#00FFA3]/10 text-[#00FFA3]" : "border-white/[0.08] bg-[#111111] text-white/65"}`}
       >
         <CheckCircle2 className="h-3.5 w-3.5" />좋아요
       </button>
       <button
         type="button"
         onClick={() => onAction("PIN")}
-        className={`inline-flex items-center gap-1 rounded-full border px-3 py-2 text-xs font-black transition ${currentAction === "PIN" ? "border-indigo-300 bg-indigo-50 text-indigo-700" : "border-white/[0.08] bg-[#1A1A1C] text-white/65"}`}
+        className={`inline-flex items-center gap-1 rounded-full border px-3 py-2 text-xs font-black transition ${currentAction === "PIN" ? "border-[#00FFA3]/40 bg-[#00FFA3]/10 text-[#00FFA3]" : "border-white/[0.08] bg-[#111111] text-white/65"}`}
       >
         <Pin className="h-3.5 w-3.5" />편집점
       </button>
       <button
         type="button"
         onClick={() => onAction("BAD")}
-        className={`inline-flex items-center gap-1 rounded-full border px-3 py-2 text-xs font-black transition ${currentAction === "BAD" ? "border-white/[0.12] bg-[#242426] text-white/80" : "border-white/[0.08] bg-[#1A1A1C] text-white/65"}`}
+        className={`inline-flex items-center gap-1 rounded-full border px-3 py-2 text-xs font-black transition ${currentAction === "BAD" ? "border-white/[0.12] bg-[#1A1A1A] text-white/80" : "border-white/[0.08] bg-[#111111] text-white/65"}`}
       >
         <XCircle className="h-3.5 w-3.5" />별로예요
       </button>
@@ -133,17 +133,17 @@ function HighlightScoreBadges({
         <Zap className="h-3.5 w-3.5" />추천 강도 {highlight.highlightScore.toFixed(1)}
       </span>
       {typeof highlight.intensityScore === "number" ? (
-        <span className="rounded-full border border-white/[0.08] bg-[#141517] px-3 py-1">
+        <span className="rounded-full border border-white/[0.08] bg-[#000000] px-3 py-1">
           반응 밀집도 {highlight.intensityScore.toFixed(1)}
         </span>
       ) : null}
       {typeof highlight.transitionScore === "number" && highlight.transitionScore > 0 ? (
-        <span className="rounded-full border border-white/[0.08] bg-[#141517] px-3 py-1">
+        <span className="rounded-full border border-white/[0.08] bg-[#000000] px-3 py-1">
           흐름 전환 {highlight.transitionScore.toFixed(1)}
         </span>
       ) : null}
       {typeof highlight.editabilityScore === "number" ? (
-        <span className="rounded-full border border-white/[0.08] bg-[#141517] px-3 py-1">
+        <span className="rounded-full border border-white/[0.08] bg-[#000000] px-3 py-1">
           편집 용이도 {highlight.editabilityScore.toFixed(1)}
         </span>
       ) : null}
@@ -157,11 +157,11 @@ export function VodLookupSection({
   board: VodHighlightBoardViewModel;
 }) {
   return (
-    <section className="rounded-[30px] border border-white/[0.08] bg-[#1A1A1C] p-6 shadow-sm">
+    <section className="rounded-[30px] border border-white/[0.08] bg-[#111111] p-6 shadow-sm">
       <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex items-start gap-3">
           <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-black tracking-[0.18em] text-indigo-700">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#00FFA3]/25 bg-[#00FFA3]/10 px-3 py-1 text-[11px] font-black tracking-[0.18em] text-[#00FFA3]">
               <Film className="h-3.5 w-3.5" />
               1. VOD 조회
             </div>
@@ -183,13 +183,13 @@ export function VodLookupSection({
               value={board.videoInput}
               onChange={(event) => board.setVideoInput(event.target.value)}
               placeholder="VOD 번호 또는 전체 URL 붙여넣기"
-              className="w-full min-w-[280px] rounded-2xl border border-white/[0.08] bg-[#1A1A1C] py-3 pl-10 pr-4 text-sm text-white outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+              className="w-full min-w-[280px] rounded-2xl border border-white/[0.08] bg-[#111111] py-3 pl-10 pr-4 text-sm text-white outline-none transition focus:border-[#00FFA3]/50 focus:ring-4 focus:ring-[#00FFA3]/10"
             />
           </div>
           <button
             onClick={() => void board.handleLookup()}
             disabled={board.lookupLoading}
-            className="rounded-2xl bg-[#0D0D0E] px-5 py-3 text-sm font-black text-white disabled:bg-slate-300"
+            className="rounded-2xl bg-[#000000] px-5 py-3 text-sm font-black text-white disabled:bg-white/10"
           >
             {board.lookupLoading ? "조회 중..." : "조회"}
           </button>
@@ -222,7 +222,7 @@ export function VodLookupSection({
             <CompactInfoDisclosure
               label="VOD 조회 상태 안내"
               summary={board.lookupState.helpSummary}
-              cueLabel={/amber|slate-50/.test(board.lookupState.toneClass) ? "도움" : undefined}
+              cueLabel={/amber|white\/50/.test(board.lookupState.toneClass) ? "도움" : undefined}
             />
           ) : null}
         </div>
@@ -239,7 +239,7 @@ export function VodSelectedVideoSection({
   const metadata = board.metadata;
 
   return (
-    <section className="rounded-[30px] border border-white/[0.08] bg-[#1A1A1C] p-6 shadow-sm">
+    <section className="rounded-[30px] border border-white/[0.08] bg-[#111111] p-6 shadow-sm">
       <div className="flex items-center justify-between gap-4">
         <div>
           <div className="text-[11px] font-black uppercase tracking-[0.2em] text-white/50">
@@ -250,19 +250,19 @@ export function VodSelectedVideoSection({
           </div>
         </div>
         {metadata?.exists ? (
-          <div className="rounded-full border border-white/[0.08] bg-[#141517] px-3 py-1 text-xs font-black text-white/65">
+          <div className="rounded-full border border-white/[0.08] bg-[#000000] px-3 py-1 text-xs font-black text-white/65">
             VOD {metadata.videoNo}
           </div>
         ) : null}
       </div>
 
       {!metadata ? (
-        <div className="mt-5 rounded-[26px] border border-dashed border-white/[0.12] bg-[#141517] px-5 py-10 text-sm font-semibold text-white/50">
+        <div className="mt-5 rounded-[26px] border border-dashed border-white/[0.12] bg-[#000000] px-5 py-10 text-sm font-semibold text-white/50">
           조회한 VOD가 아직 없습니다.
         </div>
       ) : metadata.exists ? (
         <div className="mt-5 grid gap-5 lg:grid-cols-[280px_1fr]">
-          <div className="overflow-hidden rounded-[26px] border border-white/[0.08] bg-[#242426]">
+          <div className="overflow-hidden rounded-[26px] border border-white/[0.08] bg-[#1A1A1A]">
             {metadata.thumbnailImageUrl ? (
               <img
                 src={metadata.thumbnailImageUrl}
@@ -276,7 +276,7 @@ export function VodSelectedVideoSection({
             )}
           </div>
 
-          <div className="space-y-4 rounded-[26px] border border-white/[0.08] bg-[#141517] p-5">
+          <div className="space-y-4 rounded-[26px] border border-white/[0.08] bg-[#000000] p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <h4 className="text-2xl font-black text-white">
@@ -289,7 +289,7 @@ export function VodSelectedVideoSection({
               </div>
 
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-                <div className="rounded-2xl border border-white/[0.08] bg-[#1A1A1C] px-4 py-3">
+                <div className="rounded-2xl border border-white/[0.08] bg-[#111111] px-4 py-3">
                   <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/50">
                     길이
                   </div>
@@ -297,7 +297,7 @@ export function VodSelectedVideoSection({
                     {formatSeconds(metadata.duration ?? 0)}
                   </div>
                 </div>
-                <div className="rounded-2xl border border-white/[0.08] bg-[#1A1A1C] px-4 py-3">
+                <div className="rounded-2xl border border-white/[0.08] bg-[#111111] px-4 py-3">
                   <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/50">
                     현재 상태
                   </div>
@@ -347,7 +347,7 @@ export function VodSelectedVideoSection({
                   <CompactInfoDisclosure
                     label="선택한 VOD 상태 안내"
                     summary={board.selectedVodState.helpSummary}
-                    cueLabel={/amber|slate-50/.test(board.selectedVodState.toneClass) ? "도움" : undefined}
+                    cueLabel={/amber|white\/50/.test(board.selectedVodState.toneClass) ? "도움" : undefined}
                   />
                 ) : null}
               </div>
@@ -363,7 +363,7 @@ export function VodSelectedVideoSection({
                     : board.handleAnalyze())
                 }
                 disabled={board.analysisSubmitting}
-                className="rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white transition hover:bg-indigo-500 disabled:bg-indigo-300"
+                className="rounded-2xl bg-[#00FFA3] px-5 py-3 text-sm font-black text-white transition hover:bg-[#00FFA3] disabled:bg-[#00FFA3]/50"
               >
                 {board.analysisSubmitting ? "요청 중..." : board.workspacePrimaryLabel}
               </button>
@@ -371,7 +371,7 @@ export function VodSelectedVideoSection({
                 href={buildOriginalVodUrl(metadata.videoNo)}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-2xl border border-white/[0.08] bg-[#1A1A1C] px-4 py-3 text-sm font-black text-white/80 transition hover:bg-[#242426]"
+                className="rounded-2xl border border-white/[0.08] bg-[#111111] px-4 py-3 text-sm font-black text-white/80 transition hover:bg-[#1A1A1A]"
               >
                 영상 열기
               </a>
@@ -398,10 +398,10 @@ export function VodWorkspaceSection({
     }
 
     return (
-      <section className="rounded-[30px] border border-indigo-200 bg-indigo-50 p-5">
+      <section className="rounded-[30px] border border-[#00FFA3]/25 bg-[#00FFA3]/10 p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="inline-flex items-center rounded-full border border-white/70 bg-white/85 px-3 py-1 text-[11px] font-black tracking-[0.18em] text-indigo-700">
+            <div className="inline-flex items-center rounded-full border border-white/70 bg-white/85 px-3 py-1 text-[11px] font-black tracking-[0.18em] text-[#00FFA3]">
               {board.hasExistingResults ? "결과 대기" : "워크스페이스 대기"}
             </div>
             <p className="mt-3 text-sm font-semibold text-white">
@@ -425,7 +425,7 @@ export function VodWorkspaceSection({
   }
 
   return (
-    <section className="rounded-[30px] border border-white/[0.08] bg-[#1A1A1C] p-6 shadow-sm">
+    <section className="rounded-[30px] border border-white/[0.08] bg-[#111111] p-6 shadow-sm">
       <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
         <div className="flex items-start gap-3">
           <div>
@@ -448,23 +448,23 @@ export function VodWorkspaceSection({
             <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#00FFA3]">
               좋아요
             </div>
-            <div className="mt-1 text-lg font-black text-emerald-950">
+            <div className="mt-1 text-lg font-black text-[#00FFA3]">
               {board.goodHighlights.length}개
             </div>
             <div className="mt-1 text-xs text-[#00FFA3]">
               다시 볼 장면으로 표시한 후보
             </div>
           </div>
-          <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3">
-            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-indigo-700">
+          <div className="rounded-2xl border border-[#00FFA3]/25 bg-[#00FFA3]/10 px-4 py-3">
+            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#00FFA3]">
               편집점
             </div>
-            <div className="mt-1 text-lg font-black text-indigo-950">
+            <div className="mt-1 text-lg font-black text-[#00FFA3]">
               {board.pinnedHighlights.length}개
             </div>
-            <div className="mt-1 text-xs text-indigo-700">보관해 둔 편집 후보</div>
+            <div className="mt-1 text-xs text-[#00FFA3]">보관해 둔 편집 후보</div>
           </div>
-          <div className="rounded-2xl border border-white/[0.08] bg-[#141517] px-4 py-3">
+          <div className="rounded-2xl border border-white/[0.08] bg-[#000000] px-4 py-3">
             <div className="text-[11px] font-black uppercase tracking-[0.18em] text-white/50">
               낮은 우선순위
             </div>
@@ -478,7 +478,7 @@ export function VodWorkspaceSection({
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
         <div className="space-y-4">
-          <div className="min-w-0 overflow-hidden rounded-[24px] border border-white/[0.08] bg-[#141517] p-5">
+          <div className="min-w-0 overflow-hidden rounded-[24px] border border-white/[0.08] bg-[#000000] p-5">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
               <div>
                 <div className="text-[11px] font-black uppercase tracking-[0.18em] text-white/50">
@@ -494,18 +494,18 @@ export function VodWorkspaceSection({
               </div>
 
               <div className="flex flex-wrap items-center gap-2 text-[11px] font-black tracking-[0.08em] text-white/50">
-                <div className="inline-flex rounded-full border border-white/[0.08] bg-[#1A1A1C] p-1">
+                <div className="inline-flex rounded-full border border-white/[0.08] bg-[#111111] p-1">
                   <button
                     type="button"
                     onClick={() => board.setChartMode("RESPONSIVE")}
-                    className={`rounded-full px-3 py-1.5 transition ${board.chartMode === "RESPONSIVE" ? "bg-[#0D0D0E] text-white" : "text-white/50"}`}
+                    className={`rounded-full px-3 py-1.5 transition ${board.chartMode === "RESPONSIVE" ? "bg-[#000000] text-white" : "text-white/50"}`}
                   >
                     자동 요약
                   </button>
                   <button
                     type="button"
                     onClick={() => board.setChartMode("DETAIL")}
-                    className={`rounded-full px-3 py-1.5 transition ${board.chartMode === "DETAIL" ? "bg-[#0D0D0E] text-white" : "text-white/50"}`}
+                    className={`rounded-full px-3 py-1.5 transition ${board.chartMode === "DETAIL" ? "bg-[#000000] text-white" : "text-white/50"}`}
                   >
                     상세 보기
                   </button>
@@ -518,7 +518,7 @@ export function VodWorkspaceSection({
                   <Zap className="h-3.5 w-3.5" />
                   채팅량
                 </span>
-                <span className="hidden items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-indigo-700 sm:inline-flex">
+                <span className="hidden items-center gap-2 rounded-full border border-[#00FFA3]/25 bg-[#00FFA3]/10 px-3 py-1 text-[#00FFA3] sm:inline-flex">
                   <Users className="h-3.5 w-3.5" />
                   참여자 수
                 </span>
@@ -526,17 +526,17 @@ export function VodWorkspaceSection({
             </div>
 
             <div className="mb-4 flex flex-wrap items-center gap-3 text-xs font-bold tracking-[0.14em] text-white/50">
-              <span className="rounded-full border border-white/[0.08] bg-[#1A1A1C] px-3 py-1">
+              <span className="rounded-full border border-white/[0.08] bg-[#111111] px-3 py-1">
                 00:00
               </span>
-              <span className="rounded-full border border-white/[0.08] bg-[#1A1A1C] px-3 py-1">
+              <span className="rounded-full border border-white/[0.08] bg-[#111111] px-3 py-1">
                 {formatSeconds(board.duration)}
               </span>
             </div>
 
             <div
               ref={board.chartViewportRef}
-              className={`rounded-2xl border border-white/[0.08] bg-[#1A1A1C] p-4 ${board.chartMode === "DETAIL" ? "overflow-x-auto overflow-y-hidden" : "overflow-hidden"}`}
+              className={`rounded-2xl border border-white/[0.08] bg-[#111111] p-4 ${board.chartMode === "DETAIL" ? "overflow-x-auto overflow-y-hidden" : "overflow-hidden"}`}
             >
               {board.chartBars.length === 0 ? (
                 <div className="flex h-[280px] items-center justify-center text-sm font-semibold text-white/50">
@@ -557,7 +557,7 @@ export function VodWorkspaceSection({
                         <span className="inline-flex items-center gap-2 text-[#00FFA3]">
                           <Zap className="h-3.5 w-3.5" />채팅 {board.hoveredChartBar.messageCount}개
                         </span>
-                        <span className="inline-flex items-center gap-2 text-indigo-700">
+                        <span className="inline-flex items-center gap-2 text-[#00FFA3]">
                           <Users className="h-3.5 w-3.5" />참여자 {board.hoveredChartBar.participantCount}명
                         </span>
                       </div>
@@ -587,11 +587,11 @@ export function VodWorkspaceSection({
                         }
                       >
                         <div
-                          className="w-1/2 rounded-t bg-emerald-300/70"
+                          className="w-1/2 rounded-t bg-[#00FFA3]/70"
                           style={{ height: `${item.messageHeight}%` }}
                         />
                         <div
-                          className="w-1/2 rounded-t bg-indigo-400/80"
+                          className="w-1/2 rounded-t bg-white/25"
                           style={{ height: `${item.participantHeight}%` }}
                         />
                       </div>
@@ -603,7 +603,7 @@ export function VodWorkspaceSection({
 
             {board.selectedTimelinePoint ? (
               <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-white/[0.08] bg-[#1A1A1C] px-4 py-3">
+                <div className="rounded-2xl border border-white/[0.08] bg-[#111111] px-4 py-3">
                   <div className="text-[11px] font-black uppercase tracking-[0.18em] text-white/50">
                     선택 구간
                   </div>
@@ -615,15 +615,15 @@ export function VodWorkspaceSection({
                   <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#00FFA3]">
                     채팅량
                   </div>
-                  <div className="mt-1 text-lg font-black text-emerald-900">
+                  <div className="mt-1 text-lg font-black text-[#00FFA3]">
                     {board.selectedTimelinePoint.messageCount}개
                   </div>
                 </div>
-                <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3">
-                  <div className="text-[11px] font-black uppercase tracking-[0.18em] text-indigo-700">
+                <div className="rounded-2xl border border-[#00FFA3]/25 bg-[#00FFA3]/10 px-4 py-3">
+                  <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#00FFA3]">
                     참여자 수
                   </div>
-                  <div className="mt-1 text-lg font-black text-indigo-900">
+                  <div className="mt-1 text-lg font-black text-[#00FFA3]">
                     {board.selectedTimelinePoint.participantCount}명
                   </div>
                 </div>
@@ -631,7 +631,7 @@ export function VodWorkspaceSection({
             ) : null}
           </div>
 
-          <div className="rounded-[24px] border border-white/[0.08] bg-[#141517] p-5">
+          <div className="rounded-[24px] border border-white/[0.08] bg-[#000000] p-5">
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <div className="text-[11px] font-black uppercase tracking-[0.18em] text-white/50">
@@ -648,7 +648,7 @@ export function VodWorkspaceSection({
 
             {board.markerClusters.length > 0 ? (
               <>
-                <div className="relative h-[84px] overflow-hidden rounded-2xl border border-white/[0.08] bg-[#1A1A1C] px-4 py-5">
+                <div className="relative h-[84px] overflow-hidden rounded-2xl border border-white/[0.08] bg-[#111111] px-4 py-5">
                   <div className="absolute left-4 right-4 top-[36px] h-[8px] rounded-full bg-white/[0.08]" />
                   {board.markerClusters.map((cluster, idx) => {
                     const lead = cluster.items[0];
@@ -681,7 +681,7 @@ export function VodWorkspaceSection({
                               ? "h-5 w-5 border-rose-500 bg-rose-500 shadow-[0_0_0_8px_rgba(244,63,94,0.16)]"
                               : cluster.items.length > 1
                                 ? "h-4 w-4 border-rose-400 bg-rose-100"
-                                : "h-3.5 w-3.5 border-rose-300 bg-[#1A1A1C]"
+                                : "h-3.5 w-3.5 border-rose-300 bg-[#111111]"
                           }`}
                         />
                         {showLabel && (
@@ -690,7 +690,7 @@ export function VodWorkspaceSection({
                           </div>
                         )}
                         {cluster.items.length > 1 ? (
-                          <div className="absolute left-1/2 top-[2px] -translate-x-1/2 rounded-full border border-rose-200 bg-[#1A1A1C] px-2 py-0.5 text-[10px] font-black text-rose-600 shadow-sm">
+                          <div className="absolute left-1/2 top-[2px] -translate-x-1/2 rounded-full border border-rose-200 bg-[#111111] px-2 py-0.5 text-[10px] font-black text-rose-600 shadow-sm">
                             +{cluster.items.length}
                           </div>
                         ) : null}
@@ -719,7 +719,7 @@ export function VodWorkspaceSection({
                           {board.selectedClusterPoints.map((point) => (
                             <span
                               key={point}
-                              className="rounded-full border border-rose-200 bg-[#1A1A1C] px-3 py-2 text-xs font-bold leading-5 text-white/80"
+                              className="rounded-full border border-rose-200 bg-[#111111] px-3 py-2 text-xs font-bold leading-5 text-white/80"
                             >
                               {point}
                             </span>
@@ -746,7 +746,7 @@ export function VodWorkspaceSection({
                             key={item.id}
                             type="button"
                             onClick={() => board.moveToCard(item.id)}
-                            className={`rounded-full border px-3 py-2 text-xs font-black transition ${active ? "border-rose-400 bg-rose-500 text-white" : "border-rose-200 bg-[#1A1A1C] text-rose-700"}`}
+                            className={`rounded-full border px-3 py-2 text-xs font-black transition ${active ? "border-rose-400 bg-rose-500 text-white" : "border-rose-200 bg-[#111111] text-rose-700"}`}
                           >
                             {formatSeconds(item.startSeconds)}
                           </button>
@@ -757,7 +757,7 @@ export function VodWorkspaceSection({
                 ) : null}
               </>
             ) : (
-              <div className="rounded-2xl border border-dashed border-white/[0.12] bg-[#1A1A1C] px-5 py-10 text-sm font-semibold text-white/50">
+              <div className="rounded-2xl border border-dashed border-white/[0.12] bg-[#111111] px-5 py-10 text-sm font-semibold text-white/50">
                 편집 후보가 생기면 시간축 위에 마커로 정리됩니다.
               </div>
             )}
@@ -765,7 +765,7 @@ export function VodWorkspaceSection({
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-[24px] border border-white/[0.08] bg-[#1A1A1C] p-5">
+          <div className="rounded-[24px] border border-white/[0.08] bg-[#111111] p-5">
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <div className="text-[11px] font-black uppercase tracking-[0.18em] text-white/50">
@@ -792,13 +792,13 @@ export function VodWorkspaceSection({
                 return (
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-[11px] font-black tracking-[0.18em] text-indigo-700">
+                      <span className="rounded-full border border-[#00FFA3]/25 bg-[#00FFA3]/10 px-3 py-1.5 text-[11px] font-black tracking-[0.18em] text-[#00FFA3]">
                         {getDisplaySceneLabel(board.selectedHighlight)}
                       </span>
                     </div>
 
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-2xl border border-white/[0.08] bg-[#141517] px-4 py-3">
+                      <div className="rounded-2xl border border-white/[0.08] bg-[#000000] px-4 py-3">
                         <div className="text-[11px] font-black uppercase tracking-[0.18em] text-white/50">
                           구간
                         </div>
@@ -807,7 +807,7 @@ export function VodWorkspaceSection({
                           {formatSeconds(board.selectedHighlight.endSeconds)}
                         </div>
                       </div>
-                      <div className="rounded-2xl border border-white/[0.08] bg-[#141517] px-4 py-3">
+                      <div className="rounded-2xl border border-white/[0.08] bg-[#000000] px-4 py-3">
                         <div className="text-[11px] font-black uppercase tracking-[0.18em] text-white/50">
                           우선순위
                         </div>
@@ -817,21 +817,21 @@ export function VodWorkspaceSection({
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-4">
+                    <div className="rounded-2xl border border-[#00FFA3]/25 bg-[#00FFA3]/10 px-4 py-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex flex-wrap gap-2">
                           <a
                             href={buildOriginalVodUrl(selectedHighlight.videoNo)}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-[#1A1A1C] px-3.5 py-2 text-xs font-black text-indigo-700 transition hover:bg-indigo-100"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-[#00FFA3]/25 bg-[#111111] px-3.5 py-2 text-xs font-black text-[#00FFA3] transition hover:bg-[#00FFA3]/10"
                           >
                             <ExternalLink className="h-3.5 w-3.5" />원본 VOD 열기
                           </a>
                           <button
                             type="button"
                             onClick={() => void board.handleCopyHighlightTimecode(selectedHighlight)}
-                            className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-black transition ${selectedTimecodeCopied ? "border-emerald-300 bg-[#00FFA3]/10 text-[#00FFA3]" : "border-white/[0.08] bg-[#1A1A1C] text-white/80 hover:bg-[#242426]"}`}
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-black transition ${selectedTimecodeCopied ? "border-[#00FFA3]/40 bg-[#00FFA3]/10 text-[#00FFA3]" : "border-white/[0.08] bg-[#111111] text-white/80 hover:bg-[#1A1A1A]"}`}
                           >
                             <Copy className="h-3.5 w-3.5" />
                             {selectedTimecodeCopied ? "타임코드 복사됨" : "타임코드 복사"}
@@ -855,7 +855,7 @@ export function VodWorkspaceSection({
                         ).map((point) => (
                           <span
                             key={point}
-                            className="rounded-full border border-white/[0.08] bg-[#141517] px-3 py-2 text-xs font-bold leading-5 text-white/80"
+                            className="rounded-full border border-white/[0.08] bg-[#000000] px-3 py-2 text-xs font-bold leading-5 text-white/80"
                           >
                             {point}
                           </span>
@@ -863,7 +863,7 @@ export function VodWorkspaceSection({
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border border-white/[0.08] bg-[#141517] px-4 py-3">
+                    <div className="rounded-2xl border border-white/[0.08] bg-[#000000] px-4 py-3">
                       <div className="text-[11px] font-black uppercase tracking-[0.18em] text-white/50">
                         대표 채팅
                       </div>
@@ -912,7 +912,7 @@ export function VodWorkspaceSection({
             )}
           </div>
 
-          <div className="min-w-0 rounded-[24px] border border-white/[0.08] bg-[#141517] p-5">
+          <div className="min-w-0 rounded-[24px] border border-white/[0.08] bg-[#000000] p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <div className="text-[11px] font-black uppercase tracking-[0.18em] text-white/50">
@@ -928,7 +928,7 @@ export function VodWorkspaceSection({
                   type="button"
                   title={board.compactHighlightList ? "상세 보기로 전환" : "간략 보기로 전환"}
                   onClick={() => board.setCompactHighlightList((v) => !v)}
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full border transition ${board.compactHighlightList ? "border-slate-900 bg-[#0D0D0E] text-white" : "border-white/[0.08] bg-[#1A1A1C] text-white/50 hover:border-white/[0.12] hover:text-white/80"}`}
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full border transition ${board.compactHighlightList ? "border-[#00FFA3]/40 bg-[#00FFA3]/10 text-[#00FFA3]" : "border-white/[0.08] bg-[#111111] text-white/50 hover:border-white/[0.12] hover:text-white/80"}`}
                 >
                   {board.compactHighlightList ? (
                     <LayoutList className="h-3.5 w-3.5" />
@@ -948,24 +948,24 @@ export function VodWorkspaceSection({
                     key={filter.key}
                     type="button"
                     onClick={() => board.setHighlightFilter(filter.key)}
-                    className={`rounded-full border px-3 py-2 text-xs font-black transition ${active ? "border-slate-900 bg-[#0D0D0E] text-white" : "border-white/[0.08] bg-[#1A1A1C] text-white/65"}`}
+                    className={`rounded-full border px-3 py-2 text-xs font-black transition ${active ? "border-[#00FFA3]/40 bg-[#00FFA3]/10 text-[#00FFA3]" : "border-white/[0.08] bg-[#111111] text-white/65"}`}
                   >
                     {filter.label}
                   </button>
                 );
               })}
-              <div className="ml-auto inline-flex rounded-full border border-white/[0.08] bg-[#1A1A1C] p-0.5">
+              <div className="ml-auto inline-flex rounded-full border border-white/[0.08] bg-[#111111] p-0.5">
                 <button
                   type="button"
                   onClick={() => board.setHighlightSort("TIME")}
-                  className={`rounded-full px-3 py-1.5 text-[11px] font-black transition ${board.highlightSort === "TIME" ? "bg-[#0D0D0E] text-white" : "text-white/50"}`}
+                  className={`rounded-full px-3 py-1.5 text-[11px] font-black transition ${board.highlightSort === "TIME" ? "bg-[#000000] text-white" : "text-white/50"}`}
                 >
                   시간순
                 </button>
                 <button
                   type="button"
                   onClick={() => board.setHighlightSort("SCORE")}
-                  className={`rounded-full px-3 py-1.5 text-[11px] font-black transition ${board.highlightSort === "SCORE" ? "bg-[#0D0D0E] text-white" : "text-white/50"}`}
+                  className={`rounded-full px-3 py-1.5 text-[11px] font-black transition ${board.highlightSort === "SCORE" ? "bg-[#000000] text-white" : "text-white/50"}`}
                 >
                   점수순
                 </button>
@@ -1013,7 +1013,7 @@ export function VodWorkspaceSection({
                       }}
                       onMouseEnter={() => board.setSelectedHighlightId(item.id)}
                       onClick={() => board.moveToCard(item.id)}
-                      className={`flex cursor-pointer items-center gap-3 rounded-[16px] border px-4 py-2.5 transition ${active ? "border-rose-300 bg-rose-50/70 shadow-sm" : "border-white/[0.08] bg-[#1A1A1C] hover:border-white/[0.12]"}`}
+                      className={`flex cursor-pointer items-center gap-3 rounded-[16px] border px-4 py-2.5 transition ${active ? "border-rose-300 bg-rose-50/70 shadow-sm" : "border-white/[0.08] bg-[#111111] hover:border-white/[0.12]"}`}
                     >
                       <div className="min-w-0 flex-1 text-sm font-black text-white">
                         {formatSeconds(item.startSeconds)}
@@ -1021,15 +1021,15 @@ export function VodWorkspaceSection({
                           ~ {formatSeconds(item.endSeconds)}
                         </span>
                       </div>
-                      <span className="shrink-0 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-black text-indigo-700">
+                      <span className="shrink-0 rounded-full border border-[#00FFA3]/25 bg-[#00FFA3]/10 px-2.5 py-1 text-[10px] font-black text-[#00FFA3]">
                         {getDisplaySceneLabel(item)}
                       </span>
                       {currentAction === "PIN" ? (
-                        <span className="shrink-0 rounded-full border border-indigo-200 bg-[#1A1A1C] px-2.5 py-1 text-[10px] font-black text-indigo-700">
+                        <span className="shrink-0 rounded-full border border-[#00FFA3]/25 bg-[#111111] px-2.5 py-1 text-[10px] font-black text-[#00FFA3]">
                           편집점
                         </span>
                       ) : currentAction === "GOOD" ? (
-                        <span className="shrink-0 rounded-full border border-[#00FFA3]/25 bg-[#1A1A1C] px-2.5 py-1 text-[10px] font-black text-[#00FFA3]">
+                        <span className="shrink-0 rounded-full border border-[#00FFA3]/25 bg-[#111111] px-2.5 py-1 text-[10px] font-black text-[#00FFA3]">
                           좋아요
                         </span>
                       ) : null}
@@ -1056,7 +1056,7 @@ export function VodWorkspaceSection({
                         board.cardRefs.current[item.id] = element;
                       }}
                       onMouseEnter={() => board.setSelectedHighlightId(item.id)}
-                      className={`rounded-[22px] border p-4 transition ${active ? "border-rose-300 bg-rose-50/70 shadow-sm" : "border-white/[0.08] bg-[#1A1A1C]"}`}
+                      className={`rounded-[22px] border p-4 transition ${active ? "border-rose-300 bg-rose-50/70 shadow-sm" : "border-white/[0.08] bg-[#111111]"}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="space-y-2">
@@ -1064,19 +1064,19 @@ export function VodWorkspaceSection({
                             {formatSeconds(item.startSeconds)} ~ {formatSeconds(item.endSeconds)}
                           </div>
                           <div className="mt-1 flex flex-wrap gap-2">
-                            <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-indigo-700">
+                            <span className="rounded-full border border-[#00FFA3]/25 bg-[#00FFA3]/10 px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-[#00FFA3]">
                               {getDisplaySceneLabel(item)}
                             </span>
                             {currentAction === "PIN" ? (
-                              <span className="rounded-full border border-indigo-200 bg-[#1A1A1C] px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-indigo-700">
+                              <span className="rounded-full border border-[#00FFA3]/25 bg-[#111111] px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-[#00FFA3]">
                                 편집점으로 보관됨
                               </span>
                             ) : currentAction === "GOOD" ? (
-                              <span className="rounded-full border border-[#00FFA3]/25 bg-[#1A1A1C] px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-[#00FFA3]">
+                              <span className="rounded-full border border-[#00FFA3]/25 bg-[#111111] px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-[#00FFA3]">
                                 좋아요 표시됨
                               </span>
                             ) : currentAction === "BAD" ? (
-                              <span className="rounded-full border border-white/[0.12] bg-[#1A1A1C] px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-white/65">
+                              <span className="rounded-full border border-white/[0.12] bg-[#111111] px-2.5 py-1 text-[11px] font-black tracking-[0.18em] text-white/65">
                                 낮은 우선순위
                               </span>
                             ) : null}
@@ -1088,14 +1088,14 @@ export function VodWorkspaceSection({
                             href={buildOriginalVodUrl(item.videoNo)}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex items-center gap-1 rounded-full border border-white/[0.08] bg-[#141517] px-2.5 py-1 text-[10px] font-black text-white/65 transition hover:bg-[#242426]"
+                            className="inline-flex items-center gap-1 rounded-full border border-white/[0.08] bg-[#000000] px-2.5 py-1 text-[10px] font-black text-white/65 transition hover:bg-[#1A1A1A]"
                           >
                             <ExternalLink className="h-3 w-3" />원본 VOD
                           </a>
                           <button
                             type="button"
                             onClick={() => void board.handleCopyHighlightTimecode(item)}
-                            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black transition ${timecodeCopied ? "border-emerald-300 bg-[#00FFA3]/10 text-[#00FFA3]" : "border-white/[0.08] bg-[#1A1A1C] text-white/65 hover:bg-[#242426]"}`}
+                            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black transition ${timecodeCopied ? "border-[#00FFA3]/40 bg-[#00FFA3]/10 text-[#00FFA3]" : "border-white/[0.08] bg-[#111111] text-white/65 hover:bg-[#1A1A1A]"}`}
                           >
                             <Copy className="h-3 w-3" />
                             {timecodeCopied ? "복사됨" : "타임코드"}
@@ -1114,7 +1114,7 @@ export function VodWorkspaceSection({
                           ).map((point) => (
                             <span
                               key={point}
-                              className="rounded-full border border-white/[0.08] bg-[#141517] px-3 py-1"
+                              className="rounded-full border border-white/[0.08] bg-[#000000] px-3 py-1"
                             >
                               {point}
                             </span>
@@ -1122,7 +1122,7 @@ export function VodWorkspaceSection({
                         </div>
                       </div>
 
-                      <div className="mt-4 rounded-2xl border border-white/[0.08] bg-[#141517] px-4 py-3">
+                      <div className="mt-4 rounded-2xl border border-white/[0.08] bg-[#000000] px-4 py-3">
                         <div className="text-[11px] font-black uppercase tracking-[0.18em] text-white/50">
                           대표 채팅
                         </div>
@@ -1135,28 +1135,28 @@ export function VodWorkspaceSection({
                         <button
                           type="button"
                           onClick={() => board.moveToCard(item.id)}
-                          className="rounded-full border border-white/[0.08] bg-[#141517] px-3 py-1.5 text-[11px] font-black text-white/65 transition hover:bg-[#242426]"
+                          className="rounded-full border border-white/[0.08] bg-[#000000] px-3 py-1.5 text-[11px] font-black text-white/65 transition hover:bg-[#1A1A1A]"
                         >
                           상세 보기
                         </button>
                         <button
                           type="button"
                           onClick={() => void board.handleHighlightAction(item.id, "GOOD")}
-                          className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-[11px] font-black transition ${currentAction === "GOOD" ? "border-emerald-300 bg-[#00FFA3]/10 text-[#00FFA3]" : "border-white/[0.08] bg-[#1A1A1C] text-white/65"}`}
+                          className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-[11px] font-black transition ${currentAction === "GOOD" ? "border-[#00FFA3]/40 bg-[#00FFA3]/10 text-[#00FFA3]" : "border-white/[0.08] bg-[#111111] text-white/65"}`}
                         >
                           <CheckCircle2 className="h-3.5 w-3.5" />좋아요
                         </button>
                         <button
                           type="button"
                           onClick={() => void board.handleHighlightAction(item.id, "PIN")}
-                          className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-[11px] font-black transition ${currentAction === "PIN" ? "border-indigo-300 bg-indigo-50 text-indigo-700" : "border-white/[0.08] bg-[#1A1A1C] text-white/65"}`}
+                          className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-[11px] font-black transition ${currentAction === "PIN" ? "border-[#00FFA3]/40 bg-[#00FFA3]/10 text-[#00FFA3]" : "border-white/[0.08] bg-[#111111] text-white/65"}`}
                         >
                           <Pin className="h-3.5 w-3.5" />편집점
                         </button>
                         <button
                           type="button"
                           onClick={() => void board.handleHighlightAction(item.id, "BAD")}
-                          className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-[11px] font-black transition ${currentAction === "BAD" ? "border-white/[0.12] bg-[#242426] text-white/80" : "border-white/[0.08] bg-[#1A1A1C] text-white/65"}`}
+                          className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-[11px] font-black transition ${currentAction === "BAD" ? "border-white/[0.12] bg-[#1A1A1A] text-white/80" : "border-white/[0.08] bg-[#111111] text-white/65"}`}
                         >
                           <XCircle className="h-3.5 w-3.5" />별로예요
                         </button>
@@ -1167,17 +1167,17 @@ export function VodWorkspaceSection({
                           추천 강도 {item.highlightScore.toFixed(1)}
                         </span>
                         {typeof item.intensityScore === "number" ? (
-                          <span className="rounded-full border border-white/[0.08] bg-[#141517] px-3 py-1">
+                          <span className="rounded-full border border-white/[0.08] bg-[#000000] px-3 py-1">
                             반응 밀집도 {item.intensityScore.toFixed(1)}
                           </span>
                         ) : null}
                         {typeof item.transitionScore === "number" && item.transitionScore > 0 ? (
-                          <span className="rounded-full border border-white/[0.08] bg-[#141517] px-3 py-1">
+                          <span className="rounded-full border border-white/[0.08] bg-[#000000] px-3 py-1">
                             흐름 전환 {item.transitionScore.toFixed(1)}
                           </span>
                         ) : null}
                         {typeof item.editabilityScore === "number" ? (
-                          <span className="rounded-full border border-white/[0.08] bg-[#141517] px-3 py-1">
+                          <span className="rounded-full border border-white/[0.08] bg-[#000000] px-3 py-1">
                             편집 용이도 {item.editabilityScore.toFixed(1)}
                           </span>
                         ) : null}
@@ -1203,7 +1203,7 @@ export function VodPersonalizationSection({
 }) {
   return (
     <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-      <div className="rounded-[30px] border border-white/[0.08] bg-[#1A1A1C] p-6 shadow-sm">
+      <div className="rounded-[30px] border border-white/[0.08] bg-[#111111] p-6 shadow-sm">
         <div className="mb-5 flex items-center justify-between">
           <div>
             <div className="text-[11px] font-black uppercase tracking-[0.2em] text-white/50">
@@ -1215,7 +1215,7 @@ export function VodPersonalizationSection({
             <button
               type="button"
               onClick={() => void board.fetchLibrary()}
-              className="rounded-2xl border border-white/[0.08] bg-[#1A1A1C] px-4 py-2 text-sm font-black text-white/80"
+              className="rounded-2xl border border-white/[0.08] bg-[#111111] px-4 py-2 text-sm font-black text-white/80"
             >
               새로고침
             </button>
@@ -1223,15 +1223,15 @@ export function VodPersonalizationSection({
         </div>
 
         {!personalizationEnabled ? (
-          <div className="rounded-[24px] border border-dashed border-white/[0.12] bg-[#141517] px-5 py-8 text-sm font-semibold text-white/50">
+          <div className="rounded-[24px] border border-dashed border-white/[0.12] bg-[#000000] px-5 py-8 text-sm font-semibold text-white/50">
             로그인 후 최근에 본 다시보기와 저장한 활동 이력을 함께 볼 수 있습니다.
           </div>
         ) : board.libraryLoading ? (
-          <div className="rounded-[24px] border border-white/[0.08] bg-[#141517] px-5 py-8 text-sm font-semibold text-white/50">
+          <div className="rounded-[24px] border border-white/[0.08] bg-[#000000] px-5 py-8 text-sm font-semibold text-white/50">
             최근 VOD를 불러오는 중입니다.
           </div>
         ) : board.library.length === 0 ? (
-          <div className="rounded-[24px] border border-dashed border-white/[0.12] bg-[#141517] px-5 py-8 text-sm font-semibold text-white/50">
+          <div className="rounded-[24px] border border-dashed border-white/[0.12] bg-[#000000] px-5 py-8 text-sm font-semibold text-white/50">
             아직 확인한 VOD가 없습니다. 조회하거나 분석한 VOD가 여기에 쌓입니다.
           </div>
         ) : (
@@ -1249,11 +1249,11 @@ export function VodPersonalizationSection({
                   key={item.id}
                   type="button"
                   onClick={() => void board.lookupVideo(item.videoNo)}
-                  className="rounded-[24px] border border-white/[0.08] bg-[#141517] p-4 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40"
+                  className="rounded-[24px] border border-white/[0.08] bg-[#000000] p-4 text-left transition hover:border-[#00FFA3]/40 hover:bg-[#00FFA3]/10"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-sm font-black text-white">VOD {item.videoNo}</div>
-                    <span className="rounded-full border border-white/[0.08] bg-[#1A1A1C] px-2.5 py-1 text-[11px] font-black text-white/65">
+                    <span className="rounded-full border border-white/[0.08] bg-[#111111] px-2.5 py-1 text-[11px] font-black text-white/65">
                       {statusLabel}
                     </span>
                   </div>
@@ -1268,7 +1268,7 @@ export function VodPersonalizationSection({
         )}
       </div>
 
-      <div className="rounded-[30px] border border-white/[0.08] bg-[#1A1A1C] p-6 shadow-sm">
+      <div className="rounded-[30px] border border-white/[0.08] bg-[#111111] p-6 shadow-sm">
         <div className="mb-4">
           <div className="text-[11px] font-black uppercase tracking-[0.2em] text-white/50">
             Preference Profile
@@ -1278,11 +1278,11 @@ export function VodPersonalizationSection({
 
         <div className="space-y-4">
           {!personalizationEnabled ? (
-            <div className="rounded-[24px] border border-dashed border-white/[0.12] bg-[#141517] p-4 text-sm font-semibold text-white/50">
+            <div className="rounded-[24px] border border-dashed border-white/[0.12] bg-[#000000] p-4 text-sm font-semibold text-white/50">
               로그인 후 좋아요 / 편집점 / 별로예요 기록이 쌓이면 이 영역에서 선호 카테고리와 반응을 보여줍니다.
             </div>
           ) : null}
-          <div className="rounded-[24px] border border-white/[0.08] bg-[#141517] p-4">
+          <div className="rounded-[24px] border border-white/[0.08] bg-[#000000] p-4">
             <div className="text-xs font-black uppercase tracking-[0.18em] text-white/50">
               선호 카테고리
             </div>
@@ -1295,7 +1295,7 @@ export function VodPersonalizationSection({
                 board.preferenceProfile.topCategories.map((category) => (
                   <span
                     key={category}
-                    className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-black text-indigo-700"
+                    className="rounded-full border border-[#00FFA3]/25 bg-[#00FFA3]/10 px-3 py-2 text-xs font-black text-[#00FFA3]"
                   >
                     {category}
                   </span>
@@ -1304,7 +1304,7 @@ export function VodPersonalizationSection({
             </div>
           </div>
 
-          <div className="rounded-[24px] border border-white/[0.08] bg-[#141517] p-4">
+          <div className="rounded-[24px] border border-white/[0.08] bg-[#000000] p-4">
             <div className="text-xs font-black uppercase tracking-[0.18em] text-white/50">
               선호 반응
             </div>
