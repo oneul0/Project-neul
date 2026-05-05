@@ -7,16 +7,16 @@
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
 
-  --color-background: #f8fafc;
-  --color-foreground: #0f172a;
-  --color-border: #e2e8f0;
-  --color-primary: #0f172a;
-  --color-secondary: #10b981;
+  --color-background: #0D0D0E;
+  --color-foreground: #ffffff;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-primary: #00FFA3;
+  --color-chzzk: #00FFA3;
 }
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #0D0D0E;
+  --foreground: #ffffff;
 }
 
 html {
@@ -25,41 +25,38 @@ html {
 
 body {
   min-height: 100vh;
-  background:
-    radial-gradient(circle at top left, rgba(16, 185, 129, 0.08), transparent 20%),
-    radial-gradient(circle at 80% 12%, rgba(56, 189, 248, 0.08), transparent 18%),
-    linear-gradient(180deg, #ffffff 0%, #f8fafc 42%, #f1f5f9 100%);
-  color: var(--foreground);
+  background: #0D0D0E;
+  color: #ffffff;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 @utility glass {
-  background: rgba(255, 255, 255, 0.82);
+  background: rgba(26, 26, 28, 0.85);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 @utility glass-panel {
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(26, 26, 28, 0.9);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
 }
 
 @utility text-gradient {
-  background: linear-gradient(135deg, #0f172a 0%, #10b981 100%);
+  background: linear-gradient(135deg, #ffffff 0%, #00FFA3 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -68,12 +65,9 @@ body {
 
 ::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: rgba(148, 163, 184, 0.45);
-  border: 2px solid transparent;
-  background-clip: padding-box;
+  background: rgba(255, 255, 255, 0.15);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.55);
-  background-clip: padding-box;
+  background: rgba(255, 255, 255, 0.25);
 }

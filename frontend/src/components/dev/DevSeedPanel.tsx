@@ -62,65 +62,62 @@ export default function DevSeedPanel({ channelId }: Props) {
   return (
     <div className="fixed bottom-5 right-5 z-50">
       {open ? (
-        <div className="w-72 rounded-[24px] border border-indigo-200 bg-white shadow-[0_24px_60px_rgba(99,102,241,0.15)]">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
-            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-indigo-600">
+        <div className="w-72 rounded-[22px] border border-white/[0.1] bg-[#1A1A1C] shadow-[0_24px_60px_rgba(0,0,0,0.5)]">
+          <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-3">
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-[#00FFA3]">
               <FlaskConical className="h-3.5 w-3.5" />
               Dev Seed
             </div>
             <button
               onClick={() => setOpen(false)}
-              className="text-xs font-black text-slate-400 hover:text-slate-700"
+              className="text-xs font-black text-white/40 hover:text-white"
             >
               닫기
             </button>
           </div>
 
           <div className="space-y-2 p-3">
-            <p className="px-1 text-[11px] text-slate-500">
+            <p className="px-1 text-[11px] text-white/40">
               실방송 없이 테스트 데이터를 Redis에 직접 주입합니다.
             </p>
 
-            {/* 투표·도네이션 */}
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => void call("donations", "POST")}
                 disabled={!!loading}
-                className="rounded-2xl bg-violet-500 py-2.5 text-xs font-black text-white transition hover:bg-violet-400 disabled:opacity-50"
+                className="rounded-2xl bg-[#00FFA3]/90 py-2.5 text-xs font-black text-[#0D0D0E] transition hover:bg-[#00FFA3] disabled:opacity-50"
               >
                 {loading === "donations" ? "주입 중..." : "도네이션 10개"}
               </button>
               <button
                 onClick={() => void call("votes", "POST")}
                 disabled={!!loading}
-                className="rounded-2xl bg-emerald-500 py-2.5 text-xs font-black text-white transition hover:bg-emerald-400 disabled:opacity-50"
+                className="rounded-2xl bg-sky-500/80 py-2.5 text-xs font-black text-white transition hover:bg-sky-500 disabled:opacity-50"
               >
                 {loading === "votes" ? "주입 중..." : "투표 30명"}
               </button>
             </div>
 
-            {/* 룰렛 도네이션 */}
             <button
               onClick={() => void call("roulette-donations", "POST")}
               disabled={!!loading}
-              className="w-full rounded-2xl bg-orange-500 py-2.5 text-xs font-black text-white transition hover:bg-orange-400 disabled:opacity-50"
+              className="w-full rounded-2xl bg-orange-500/80 py-2.5 text-xs font-black text-white transition hover:bg-orange-500 disabled:opacity-50"
             >
               {loading === "roulette-donations" ? "주입 중..." : "룰렛 도네이션 20개"}
             </button>
 
-            {/* 상태·초기화 */}
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => void call("status", "GET")}
                 disabled={!!loading}
-                className="rounded-2xl border border-slate-200 bg-slate-50 py-2.5 text-xs font-black text-slate-700 transition hover:bg-slate-100 disabled:opacity-50"
+                className="rounded-2xl border border-white/[0.08] bg-[#242426] py-2.5 text-xs font-black text-white/70 transition hover:bg-white/[0.08] disabled:opacity-50"
               >
                 {loading === "status" ? "확인 중..." : "현재 상태"}
               </button>
               <button
                 onClick={() => void call("clear", "DELETE")}
                 disabled={!!loading}
-                className="rounded-2xl border border-rose-200 bg-rose-50 py-2.5 text-xs font-black text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+                className="rounded-2xl border border-rose-500/25 bg-rose-500/10 py-2.5 text-xs font-black text-rose-400 transition hover:bg-rose-500/20 disabled:opacity-50"
               >
                 {loading === "clear" ? "초기화 중..." : "전체 초기화"}
               </button>
@@ -130,8 +127,8 @@ export default function DevSeedPanel({ channelId }: Props) {
               <div
                 className={`rounded-2xl border px-3 py-2 text-xs font-semibold ${
                   result.tone === "good"
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : "border-amber-200 bg-amber-50 text-amber-700"
+                    ? "border-[#00FFA3]/20 bg-[#00FFA3]/10 text-[#00FFA3]"
+                    : "border-amber-500/25 bg-amber-500/10 text-amber-400"
                 }`}
               >
                 {result.message.split("\n").map((line, i) => (
@@ -146,7 +143,7 @@ export default function DevSeedPanel({ channelId }: Props) {
       ) : (
         <button
           onClick={() => setOpen(true)}
-          className="flex items-center gap-2 rounded-full border border-indigo-200 bg-white px-4 py-2.5 text-xs font-black text-indigo-600 shadow-lg transition hover:bg-indigo-50"
+          className="flex items-center gap-2 rounded-full border border-[#00FFA3]/25 bg-[#1A1A1C] px-4 py-2.5 text-xs font-black text-[#00FFA3] shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition hover:bg-[#00FFA3]/10"
         >
           <FlaskConical className="h-3.5 w-3.5" />
           Dev Seed
