@@ -1,6 +1,7 @@
 package com.neul.core_api.config;
 
 import com.neul.common.auth.OwnerTokenCodec;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.buffer.DataBuffer;
@@ -19,8 +20,17 @@ import java.nio.charset.StandardCharsets;
 @Component
 public class OwnerAccessFilter implements WebFilter {
 
+    private static final String INSECURE_DEFAULT = "dev-owner-token-secret";
+
     @Value("${neul.owner-token-secret:dev-owner-token-secret}")
     private String ownerTokenSecret;
+
+    @PostConstruct
+    void warnIfInsecureSecret() {
+        if (INSECURE_DEFAULT.equals(ownerTokenSecret)) {
+            log.warn("[Security] neul.owner-token-secret is using the insecure default value. Set a strong secret via environment variable before deploying.");
+        }
+    }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
@@ -39,12 +49,6 @@ public class OwnerAccessFilter implements WebFilter {
             ownerId = OwnerTokenCodec.verifyAndExtractOwner(
                     exchange.getRequest().getCookies().getFirst("NEUL_OWNER_ASSERTION").getValue(),
                     ownerTokenSecret);
-        }
-        if (ownerId == null || ownerId.isBlank()) {
-            ownerId = exchange.getRequest().getHeaders().getFirst("X-Chzzk-Owner-Id");
-        }
-        if (ownerId == null || ownerId.isBlank()) {
-            ownerId = exchange.getRequest().getQueryParams().getFirst("ownerId");
         }
 
         if (ownerId == null || ownerId.isBlank()) {

@@ -23,15 +23,3 @@ export function persistOwnerChannelId(ownerChannelId: string) {
 
   window.localStorage.setItem(OWNER_CHANNEL_STORAGE_KEY, normalized);
 }
-
-export function buildOwnerHeaders(ownerChannelId: string): HeadersInit {
-  return {
-    "X-Chzzk-Owner-Id": ownerChannelId,
-  };
-}
-
-export function appendOwnerId(url: string, ownerChannelId: string): string {
-  const nextUrl = new URL(url);
-  nextUrl.searchParams.set("ownerId", ownerChannelId);
-  return nextUrl.toString();
-}
