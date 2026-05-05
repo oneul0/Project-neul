@@ -2,7 +2,7 @@
 
 import { use, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Film, Gift, Lock, LogIn, Users, Vote } from "lucide-react";
+import { Film, Gift, Lock, LogIn, Vote } from "lucide-react";
 import VodHighlightBoard from "@/components/VodHighlightBoard";
 import PollCard from "@/components/poll/PollCard";
 import RouletteCard from "@/components/RouletteCard";
@@ -24,7 +24,7 @@ export default function ChannelDashboard({
   const { channelId } = use(params);
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState<"poll" | "vod">("poll");
+  const [activeTab, setActiveTab] = useState<"poll" | "roulette" | "vod">("poll");
   const [isTogglingPoll, setIsTogglingPoll] = useState(false);
   const [isRouletteActive, setIsRouletteActive] = useState(false);
   const [isTogglingRoulette, setIsTogglingRoulette] = useState(false);
@@ -170,36 +170,47 @@ export default function ChannelDashboard({
         <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
           <div className="space-y-2">
             <div className="text-[11px] font-black uppercase tracking-[0.28em] text-white/40">
-              {activeTab === "poll" ? "투표 관리" : "VOD 하이라이트"}
+              {activeTab === "poll" ? "투표 관리" : activeTab === "roulette" ? "룰렛 관리" : "VOD 하이라이트"}
             </div>
             <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">
-              {activeTab === "poll"
-                ? "투표"
-                : "VOD 하이라이트 워크스페이스"}
+              {activeTab === "poll" ? "투표" : activeTab === "roulette" ? "도네이션 룰렛" : "VOD 하이라이트 워크스페이스"}
             </h1>
             <p className="text-sm leading-6 text-white/60">
               {activeTab === "poll"
                 ? "항목을 만들고 실시간 집계 결과와 참여 시청자 기록을 관리합니다."
-                : "VOD를 조회한 뒤 하이라이트 후보를 검토하고 편집점을 저장합니다."}
+                : activeTab === "roulette"
+                  ? "도네이션 금액에 따라 확률이 올라가는 룰렛을 구성하고 돌립니다."
+                  : "VOD를 조회한 뒤 하이라이트 후보를 검토하고 편집점을 저장합니다."}
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <div className="grid grid-cols-2 rounded-[20px] border border-white/[0.08] bg-[#1A1A1A] p-1">
+            <div className="grid grid-cols-3 rounded-[20px] border border-white/[0.08] bg-[#1A1A1A] p-1">
               <button
                 onClick={() => setActiveTab("poll")}
-                className={`inline-flex items-center justify-center gap-2 rounded-[16px] px-5 py-2.5 text-sm font-black transition ${
+                className={`inline-flex items-center justify-center gap-2 rounded-[16px] px-4 py-2.5 text-sm font-black transition ${
                   activeTab === "poll"
                     ? "bg-[#00FFA3] text-[#000000] shadow-[0_0_12px_rgba(0,255,163,0.25)]"
                     : "text-white/50 hover:text-white"
                 }`}
               >
-                <Users className="h-4 w-4" />
+                <Vote className="h-4 w-4" />
                 투표
               </button>
               <button
+                onClick={() => setActiveTab("roulette")}
+                className={`inline-flex items-center justify-center gap-2 rounded-[16px] px-4 py-2.5 text-sm font-black transition ${
+                  activeTab === "roulette"
+                    ? "bg-[#00FFA3] text-[#000000] shadow-[0_0_12px_rgba(0,255,163,0.25)]"
+                    : "text-white/50 hover:text-white"
+                }`}
+              >
+                <Gift className="h-4 w-4" />
+                룰렛
+              </button>
+              <button
                 onClick={() => setActiveTab("vod")}
-                className={`inline-flex items-center justify-center gap-2 rounded-[16px] px-5 py-2.5 text-sm font-black transition ${
+                className={`inline-flex items-center justify-center gap-2 rounded-[16px] px-4 py-2.5 text-sm font-black transition ${
                   activeTab === "vod"
                     ? "bg-[#00FFA3] text-[#000000] shadow-[0_0_12px_rgba(0,255,163,0.25)]"
                     : "text-white/50 hover:text-white"
@@ -221,36 +232,36 @@ export default function ChannelDashboard({
             ) : (
               <>
                 {activeTab === "poll" && isAuthorizedChannel && (
-                  <>
-                    <button
-                      onClick={() => void handleTogglePoll()}
-                      disabled={isTogglingPoll}
-                      className={`inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-black transition ${
-                        isTogglingPoll
-                          ? "cursor-not-allowed bg-white/10 text-white/40"
-                          : pollSession.isSessionActive
-                            ? "bg-rose-500/90 text-white hover:bg-rose-500"
-                            : "bg-[#00FFA3] text-[#000000] hover:bg-[#00FFA3]/90"
-                      }`}
-                    >
-                      <Vote className="h-4 w-4" />
-                      {isTogglingPoll ? "처리 중..." : pollSession.isSessionActive ? "투표 중지" : "투표 시작"}
-                    </button>
-                    <button
-                      onClick={() => void handleToggleRoulette()}
-                      disabled={isTogglingRoulette}
-                      className={`inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-black transition ${
-                        isTogglingRoulette
-                          ? "cursor-not-allowed bg-white/10 text-white/40"
-                          : isRouletteActive
-                            ? "bg-rose-500/90 text-white hover:bg-rose-500"
-                            : "bg-[#00FFA3] text-[#000000] hover:bg-[#00FFA3]/90"
-                      }`}
-                    >
-                      <Gift className="h-4 w-4" />
-                      {isTogglingRoulette ? "처리 중..." : isRouletteActive ? "룰렛 중지" : "룰렛 시작"}
-                    </button>
-                  </>
+                  <button
+                    onClick={() => void handleTogglePoll()}
+                    disabled={isTogglingPoll}
+                    className={`inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-black transition ${
+                      isTogglingPoll
+                        ? "cursor-not-allowed bg-white/10 text-white/40"
+                        : pollSession.isSessionActive
+                          ? "bg-rose-500/90 text-white hover:bg-rose-500"
+                          : "bg-[#00FFA3] text-[#000000] hover:bg-[#00FFA3]/90"
+                    }`}
+                  >
+                    <Vote className="h-4 w-4" />
+                    {isTogglingPoll ? "처리 중..." : pollSession.isSessionActive ? "투표 중지" : "투표 시작"}
+                  </button>
+                )}
+                {activeTab === "roulette" && isAuthorizedChannel && (
+                  <button
+                    onClick={() => void handleToggleRoulette()}
+                    disabled={isTogglingRoulette}
+                    className={`inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-black transition ${
+                      isTogglingRoulette
+                        ? "cursor-not-allowed bg-white/10 text-white/40"
+                        : isRouletteActive
+                          ? "bg-rose-500/90 text-white hover:bg-rose-500"
+                          : "bg-[#00FFA3] text-[#000000] hover:bg-[#00FFA3]/90"
+                    }`}
+                  >
+                    <Gift className="h-4 w-4" />
+                    {isTogglingRoulette ? "처리 중..." : isRouletteActive ? "룰렛 중지" : "룰렛 시작"}
+                  </button>
                 )}
                 <button
                   onClick={handleLogout}
@@ -278,7 +289,7 @@ export default function ChannelDashboard({
 
         {authLoading ? null : hasOwnerIdentity && !isAuthorizedChannel ? (
           <div className="mt-5 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-400">
-            로그인한 계정의 채널과 현재 채널이 달라 투표 관리 기능을 사용할 수 없습니다.
+            로그인한 계정의 채널과 현재 채널이 달라 관리 기능을 사용할 수 없습니다.
           </div>
         ) : !hasOwnerIdentity && !authLoading ? (
           <div className="mt-5 rounded-2xl border border-white/[0.08] bg-[#1A1A1A] px-4 py-3 text-sm text-white/50">
@@ -291,21 +302,20 @@ export default function ChannelDashboard({
         <div className="min-h-[780px]">
           <VodHighlightBoard personalizationEnabled={hasOwnerIdentity} />
         </div>
+      ) : activeTab === "roulette" ? (
+        <RouletteCard
+          state={roulette.state}
+          result={roulette.result}
+          isSpinning={roulette.isSpinning}
+          isResetting={roulette.isResetting}
+          onSpin={roulette.spin}
+          onSetConfig={roulette.setConfig}
+          onResetWeights={roulette.resetWeights}
+          onClearAll={roulette.clearAll}
+          isOwner={isAuthorizedChannel}
+        />
       ) : (
-        <div className="space-y-6">
-          <PollCard session={pollSession} />
-          <RouletteCard
-            state={roulette.state}
-            result={roulette.result}
-            isSpinning={roulette.isSpinning}
-            isResetting={roulette.isResetting}
-            onSpin={roulette.spin}
-            onSetConfig={roulette.setConfig}
-            onResetWeights={roulette.resetWeights}
-            onClearAll={roulette.clearAll}
-            isOwner={isAuthorizedChannel}
-          />
-        </div>
+        <PollCard session={pollSession} />
       )}
 
       {DevSeedPanel ? <DevSeedPanel channelId={channelId} /> : null}
