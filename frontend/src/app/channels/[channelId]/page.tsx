@@ -253,12 +253,14 @@ export default function ChannelDashboard({
         <div className="space-y-6">
           <PollCard session={pollSession} />
           <RouletteCard
-            donations={roulette.donations}
-            winner={roulette.winner}
+            state={roulette.state}
+            result={roulette.result}
             isSpinning={roulette.isSpinning}
-            isClearing={roulette.isClearing}
+            isResetting={roulette.isResetting}
             onSpin={roulette.spin}
-            onClear={roulette.clearPool}
+            onSetConfig={roulette.setConfig}
+            onResetWeights={roulette.resetWeights}
+            onClearAll={roulette.clearAll}
             isOwner={isAuthorizedChannel}
           />
           <PollCard session={pollSession} variant="history" />

@@ -85,7 +85,7 @@ export default function PollComposer({
           저장 후 시청자는 채팅에{" "}
           {items.slice(0, 3).map((item, i) => (
             <span key={i}>
-              <span className="rounded bg-sky-100 px-1.5 py-0.5 font-black">!{i + 1}</span>
+              <span className="rounded bg-sky-100 px-1.5 py-0.5 font-black">!투표 {i + 1}</span>
               {item.trim() ? <span className="mx-1 text-sky-700">({item.trim()})</span> : null}
               {i < Math.min(items.length, 3) - 1 ? ", " : ""}
             </span>

@@ -82,7 +82,8 @@ public class ChatAnalysisProcessor {
 
         for (RawChatMessage msg : chatMessages) {
             String content = msg.getContent() != null ? msg.getContent().trim() : "";
-            if (content.startsWith("!") && content.length() > 1 && content.substring(1).split(" ")[0].matches("\\d+")) {
+            if (content.startsWith("!투표 ") && content.length() > "!투표 ".length()
+                    && content.substring("!투표 ".length()).trim().split("\\s+")[0].matches("\\d+")) {
                 voteCommands.add(msg);
             } else {
                 regularChats.add(msg);

@@ -3,6 +3,7 @@ package com.neul.core_api.dev;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.neul.core_api.domain.chat.service.DonationService;
 import com.neul.core_api.domain.chat.service.StreamRedisService;
+import com.neul.core_api.domain.roulette.service.RouletteService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -40,6 +41,7 @@ public class DevSeedController {
 
     private final DonationService donationService;
     private final StreamRedisService streamRedisService;
+    private final RouletteService rouletteService;
     private final ReactiveRedisTemplate<String, Object> redisTemplate;
     private final ObjectMapper objectMapper;
 
@@ -214,15 +216,64 @@ public class DevSeedController {
         });
     }
 
+    // ─── 룰렛 도네이션 시드 ──────────────────────────────────────────────────────
+
+    /**
+     * 현재 설정된 룰렛 항목을 기준으로 도네이션을 시뮬레이션합니다.
+     * 항목이 없으면 400을 반환합니다.
+     *
+     * @param channelId 채널 ID
+     * @param count     시드할 도네이션 수 (기본 20, 최대 100)
+     */
+    @PostMapping("/{channelId}/roulette-donations")
+    public Mono<ResponseEntity<Map<String, Object>>> seedRouletteDonations(
+            @PathVariable String channelId,
+            @RequestParam(defaultValue = "20") int count) {
+
+        int safeCount = Math.min(Math.max(count, 1), 100);
+
+        return rouletteService.getState(channelId)
+                .flatMap(state -> {
+                    if (state.getItems().isEmpty()) {
+                        return Mono.just(ResponseEntity.badRequest().<Map<String, Object>>body(Map.of(
+                                "error", "no_items",
+                                "message", "룰렛 항목을 먼저 설정해 주세요. (설정 → 저장)"
+                        )));
+                    }
+
+                    java.util.List<String> items = state.getItems();
+                    long rate = state.getRate();
+                    ThreadLocalRandom rng = ThreadLocalRandom.current();
+                    Map<String, Long> tally = new java.util.LinkedHashMap<>();
+                    items.forEach(item -> tally.put(item, 0L));
+
+                    return Flux.range(0, safeCount)
+                            .flatMap(i -> {
+                                String targetItem = items.get(rng.nextInt(items.size()));
+                                long amount = (long) AMOUNTS[rng.nextInt(AMOUNTS.length)];
+                                tally.merge(targetItem, amount, Long::sum);
+                                String msg = targetItem + " " + MESSAGES[rng.nextInt(MESSAGES.length)];
+                                return rouletteService.onDonation(channelId, msg, amount);
+                            })
+                            .then(Mono.just(ResponseEntity.ok(Map.<String, Object>of(
+                                    "seeded", safeCount,
+                                    "channelId", channelId,
+                                    "rate", rate,
+                                    "distribution", tally
+                            ))));
+                });
+    }
+
     // ─── 전체 초기화 ──────────────────────────────────────────────────────────
 
     /**
-     * 해당 채널의 모든 시드 데이터(도네이션 + 투표 + 투표자 이름)를 초기화합니다.
+     * 해당 채널의 모든 시드 데이터(도네이션 + 투표 + 투표자 이름 + 룰렛 가중치)를 초기화합니다.
      */
     @DeleteMapping("/{channelId}")
     public Mono<ResponseEntity<Map<String, Object>>> clearAll(@PathVariable String channelId) {
         return donationService.clearDonations(channelId)
                 .then(streamRedisService.clearPoll(channelId))
+                .then(rouletteService.resetWeights(channelId))
                 .then(Mono.just(ResponseEntity.ok(Map.<String, Object>of(
                         "cleared", true,
                         "channelId", channelId

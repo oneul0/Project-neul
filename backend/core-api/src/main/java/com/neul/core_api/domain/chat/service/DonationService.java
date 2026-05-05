@@ -4,9 +4,11 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.neul.common.dto.RawChatMessage;
+import com.neul.core_api.domain.roulette.service.RouletteService;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.jackson.Jacksonized;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.ReactiveRedisTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -15,7 +17,6 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
-import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
@@ -25,6 +26,7 @@ public class DonationService {
 
     private final ReactiveRedisTemplate<String, Object> redisTemplate;
     private final ObjectMapper objectMapper;
+    private final RouletteService rouletteService;
 
     private static final String KEY_PREFIX = "neul:donations:";
     private static final int MAX_POOL_SIZE = 200;
@@ -38,6 +40,10 @@ public class DonationService {
                     v -> log.debug("[Donation] Saved: roomId={}, sender={}", donation.getRoomId(), donation.getSender()),
                     err -> log.error("[Donation] Save failed: {}", err.getMessage())
                 );
+            long amountKrw = 0;
+            try { amountKrw = Long.parseLong(donation.getPayAmount()); } catch (NumberFormatException ignored) {}
+            rouletteService.onDonation(donation.getRoomId(), donation.getDonationText(), amountKrw)
+                .subscribe();
         } catch (JsonProcessingException e) {
             log.error("[Donation] Parse failed: {}", json, e);
         }
@@ -60,8 +66,7 @@ public class DonationService {
     public Flux<DonationEntry> getDonations(String channelId) {
         String key = KEY_PREFIX + channelId;
         return redisTemplate.opsForList().range(key, 0, -1)
-            .map(obj -> parseDonationEntry(obj.toString()))
-            .filter(Objects::nonNull);
+            .flatMap(obj -> Mono.justOrEmpty(parseDonationEntry(obj.toString())));
     }
 
     public Mono<DonationEntry> spin(String channelId) {
@@ -89,6 +94,7 @@ public class DonationService {
 
     @Getter
     @Builder
+    @Jacksonized
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class DonationEntry {
         private String messageId;

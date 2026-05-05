@@ -216,7 +216,10 @@ public class ChatStreamService {
 
                 // 1. Record Vote in Redis (option number) + display name mapping
                 String content = message.getContent() != null ? message.getContent().trim() : "";
-                String voteOption = content.substring(1).split(" ")[0];
+                // "!투표 N" 형식: "!투표 " 이후 첫 번째 토큰이 옵션 번호
+                String voteOption = content.startsWith("!투표 ")
+                        ? content.substring("!투표 ".length()).trim().split("\\s+")[0]
+                        : content.substring(1).split(" ")[0]; // fallback (구형 !N 형식)
                 String senderId = message.getSenderId() != null ? message.getSenderId() : message.getSender();
                 String displayName = message.getSender() != null ? message.getSender() : senderId;
 

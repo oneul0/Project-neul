@@ -33,7 +33,7 @@ export default function PollResults({
           {" — "}시청자가 채팅에{" "}
           {items.slice(0, 3).map((item, i) => (
             <span key={item.id}>
-              <span className="font-black">!{i + 1}</span>
+              <span className="font-black">!투표 {i + 1}</span>
               {i < Math.min(items.length, 3) - 1 ? ", " : ""}
             </span>
           ))}
