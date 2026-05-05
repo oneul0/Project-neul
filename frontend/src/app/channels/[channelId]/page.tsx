@@ -2,7 +2,7 @@
 
 import { use, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Film, Lock, LogIn, Radio, Users } from "lucide-react";
+import { Film, Gift, Lock, LogIn, Users, Vote } from "lucide-react";
 import VodHighlightBoard from "@/components/VodHighlightBoard";
 import PollCard from "@/components/poll/PollCard";
 import RouletteCard from "@/components/RouletteCard";
@@ -25,7 +25,9 @@ export default function ChannelDashboard({
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<"poll" | "vod">("poll");
-  const [isTogglingCollection, setIsTogglingCollection] = useState(false);
+  const [isTogglingPoll, setIsTogglingPoll] = useState(false);
+  const [isRouletteActive, setIsRouletteActive] = useState(false);
+  const [isTogglingRoulette, setIsTogglingRoulette] = useState(false);
 
   const { ownerChannelId, ownerProfile, authLoading, sessionNotice, setSessionNotice, handleUnauthorizedSession, resetOwnerSession } =
     useOwnerDashboardSession(useCallback(() => {}, []));
@@ -73,76 +75,94 @@ export default function ChannelDashboard({
     router.replace("/");
   };
 
-  const handleToggleCollection = async () => {
+  const callSubscribe = async (active: boolean) => {
+    return fetch(`/api/channels/${channelId}/subscribe`, {
+      method: active ? "POST" : "DELETE",
+      credentials: "include",
+    });
+  };
+
+  const handleTogglePoll = async () => {
     if (!isAuthorizedChannel) {
-      setSessionNotice({ tone: "warn", message: "본인 채널에서만 수집을 시작할 수 있습니다." });
+      setSessionNotice({ tone: "warn", message: "본인 채널에서만 사용할 수 있습니다." });
       return;
     }
 
-    setIsTogglingCollection(true);
+    setIsTogglingPoll(true);
     try {
       const nextActive = !pollSession.isSessionActive;
 
       if (nextActive) {
-        const res = await fetch(`/api/channels/${channelId}/subscribe`, {
-          method: "POST",
-          credentials: "include",
-        });
-        if (res.status === 401) {
-          handleUnauthorizedSession();
-          return;
-        }
+        const res = await callSubscribe(true);
+        if (res.status === 401) { handleUnauthorizedSession(); return; }
         if (res.status === 403) {
-          setSessionNotice({ tone: "warn", message: "본인 채널만 수집할 수 있습니다." });
+          setSessionNotice({ tone: "warn", message: "본인 채널만 사용할 수 있습니다." });
           return;
         }
         if (res.status === 422) {
           const body = await res.json().catch(() => ({})) as { error?: string; message?: string };
-          const isLoginRequired = body.error === "adult_stream_login_required";
           setSessionNotice({
             tone: "warn",
-            message: isLoginRequired
+            message: body.error === "adult_stream_login_required"
               ? "성인 방송입니다. 치지직 공식 로그인 후 다시 시도해 주세요."
-              : body.message ?? "성인 방송 수집이 지원되지 않습니다.",
+              : body.message ?? "성인 방송은 지원되지 않습니다.",
           });
           return;
         }
-        if (!res.ok) {
-          throw new Error("채팅 수집을 시작하지 못했습니다.");
-        }
-      } else {
-        await fetch(`/api/channels/${channelId}/subscribe`, {
-          method: "DELETE",
-          credentials: "include",
-        });
+        if (!res.ok) throw new Error("투표를 시작하지 못했습니다.");
+      } else if (!isRouletteActive) {
+        await callSubscribe(false);
       }
 
       await pollSession.setSessionActive(nextActive);
-      setSessionNotice({
-        tone: "good",
-        message: nextActive ? "채팅 수집을 시작했습니다." : "채팅 수집을 중지했습니다.",
-      });
+      setSessionNotice({ tone: "good", message: nextActive ? "투표를 시작했습니다." : "투표를 중지했습니다." });
     } catch (e) {
-      setSessionNotice({
-        tone: "warn",
-        message: e instanceof Error ? e.message : "오류가 발생했습니다.",
-      });
+      setSessionNotice({ tone: "warn", message: e instanceof Error ? e.message : "오류가 발생했습니다." });
     } finally {
-      setIsTogglingCollection(false);
+      setIsTogglingPoll(false);
     }
   };
 
-  const collectionButtonLabel = isTogglingCollection
-    ? "처리 중..."
-    : pollSession.isSessionActive
-      ? "수집 중지"
-      : "수집 시작";
+  const handleToggleRoulette = async () => {
+    if (!isAuthorizedChannel) {
+      setSessionNotice({ tone: "warn", message: "본인 채널에서만 사용할 수 있습니다." });
+      return;
+    }
 
-  const collectionButtonClass = isTogglingCollection
-    ? "cursor-not-allowed bg-white/10 text-white/40"
-    : pollSession.isSessionActive
-      ? "bg-rose-500/90 text-white hover:bg-rose-500"
-      : "bg-[#00FFA3] text-[#000000] hover:bg-[#00FFA3]/90";
+    setIsTogglingRoulette(true);
+    try {
+      const nextActive = !isRouletteActive;
+
+      if (nextActive && !pollSession.isSessionActive) {
+        const res = await callSubscribe(true);
+        if (res.status === 401) { handleUnauthorizedSession(); return; }
+        if (res.status === 403) {
+          setSessionNotice({ tone: "warn", message: "본인 채널만 사용할 수 있습니다." });
+          return;
+        }
+        if (res.status === 422) {
+          const body = await res.json().catch(() => ({})) as { error?: string; message?: string };
+          setSessionNotice({
+            tone: "warn",
+            message: body.error === "adult_stream_login_required"
+              ? "성인 방송입니다. 치지직 공식 로그인 후 다시 시도해 주세요."
+              : body.message ?? "성인 방송은 지원되지 않습니다.",
+          });
+          return;
+        }
+        if (!res.ok) throw new Error("룰렛을 시작하지 못했습니다.");
+      } else if (!nextActive && !pollSession.isSessionActive) {
+        await callSubscribe(false);
+      }
+
+      setIsRouletteActive(nextActive);
+      setSessionNotice({ tone: "good", message: nextActive ? "룰렛을 시작했습니다." : "룰렛을 중지했습니다." });
+    } catch (e) {
+      setSessionNotice({ tone: "warn", message: e instanceof Error ? e.message : "오류가 발생했습니다." });
+    } finally {
+      setIsTogglingRoulette(false);
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -201,14 +221,36 @@ export default function ChannelDashboard({
             ) : (
               <>
                 {activeTab === "poll" && isAuthorizedChannel && (
-                  <button
-                    onClick={handleToggleCollection}
-                    disabled={isTogglingCollection}
-                    className={`inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-black transition ${collectionButtonClass}`}
-                  >
-                    <Radio className="h-4 w-4" />
-                    {collectionButtonLabel}
-                  </button>
+                  <>
+                    <button
+                      onClick={() => void handleTogglePoll()}
+                      disabled={isTogglingPoll}
+                      className={`inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-black transition ${
+                        isTogglingPoll
+                          ? "cursor-not-allowed bg-white/10 text-white/40"
+                          : pollSession.isSessionActive
+                            ? "bg-rose-500/90 text-white hover:bg-rose-500"
+                            : "bg-[#00FFA3] text-[#000000] hover:bg-[#00FFA3]/90"
+                      }`}
+                    >
+                      <Vote className="h-4 w-4" />
+                      {isTogglingPoll ? "처리 중..." : pollSession.isSessionActive ? "투표 중지" : "투표 시작"}
+                    </button>
+                    <button
+                      onClick={() => void handleToggleRoulette()}
+                      disabled={isTogglingRoulette}
+                      className={`inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-black transition ${
+                        isTogglingRoulette
+                          ? "cursor-not-allowed bg-white/10 text-white/40"
+                          : isRouletteActive
+                            ? "bg-rose-500/90 text-white hover:bg-rose-500"
+                            : "bg-[#00FFA3] text-[#000000] hover:bg-[#00FFA3]/90"
+                      }`}
+                    >
+                      <Gift className="h-4 w-4" />
+                      {isTogglingRoulette ? "처리 중..." : isRouletteActive ? "룰렛 중지" : "룰렛 시작"}
+                    </button>
+                  </>
                 )}
                 <button
                   onClick={handleLogout}
