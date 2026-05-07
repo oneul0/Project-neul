@@ -15,7 +15,7 @@ def java17Launcher = providers.provider {
 }
 
 allprojects {
-    group = 'com.neul'
+    group = 'com.gak'
     version = '0.0.1-SNAPSHOT'
 
     repositories {

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { Activity } from "lucide-react";
+import GlobalErrorHandler from "@/components/GlobalErrorHandler";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NEUL Control",
+  title: "각 Control",
   description: "Owner-only live operations dashboard for CHZZK stream analytics.",
 };
 
@@ -29,6 +30,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-[#000000] text-white antialiased selection:bg-[#00FFA3]/30 selection:text-white`}
       >
+        <GlobalErrorHandler />
         <div className="min-h-screen">
           <header className="sticky top-0 z-50 border-b border-white/[0.08] bg-[#000000]/95 backdrop-blur-xl">
             <div className="mx-auto flex h-[64px] w-full max-w-[1560px] items-center justify-between px-5 sm:px-8">
@@ -41,7 +43,7 @@ export default function RootLayout({
                     Stream Ops
                   </div>
                   <div className="text-base font-black tracking-tight text-white">
-                    NEUL <span className="text-white/40">Control</span>
+                    각 <span className="text-white/40">Control</span>
                   </div>
                 </div>
               </Link>
@@ -59,7 +61,7 @@ export default function RootLayout({
 
           <footer className="border-t border-white/[0.06] bg-[#000000]">
             <div className="mx-auto flex w-full max-w-[1560px] flex-col gap-2 px-5 py-6 text-xs text-white/30 sm:px-8 md:flex-row md:items-center md:justify-between">
-              <div>NEUL Control — CHZZK 스트리머 전용 실시간 운영 대시보드</div>
+              <div>각 Control — CHZZK 스트리머 전용 실시간 운영 대시보드</div>
               <div>Naver · CHZZK와 공식 제휴 관계가 아닙니다.</div>
             </div>
           </footer>

@@ -1,0 +1,179 @@
+- generic [ref=e2]:
+  - generic "스킵 네비게이션":
+    - link "콘텐츠로 이동" [ref=e3] [cursor=pointer]:
+      - /url: "#layout-body"
+    - link "사이드바로 이동" [ref=e4] [cursor=pointer]:
+      - /url: "#sidebar"
+    - link "헤더로 이동" [ref=e5] [cursor=pointer]:
+      - /url: "#header"
+    - link "검색창으로 이동" [ref=e6] [cursor=pointer]:
+      - /url: "#search-input"
+  - generic [ref=e7]:
+    - banner "헤더" [ref=e8]:
+      - generic [ref=e9]:
+        - button "메뉴 접기" [expanded] [ref=e10] [cursor=pointer]:
+          - img [ref=e11]
+        - heading "치지직" [level=1] [ref=e13]:
+          - link "치지직" [ref=e14] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e15]: 치지직
+      - generic [ref=e16]:
+        - generic:
+          - tablist
+        - search [ref=e18]:
+          - generic [ref=e19]:
+            - textbox "검색창" [ref=e20]:
+              - /placeholder: 채널, 라이브, 동영상 검색
+            - button "검색" [ref=e21] [cursor=pointer]:
+              - img [ref=e22]
+              - generic [ref=e24]: 검색
+        - generic [ref=e26]:
+          - button [ref=e28] [cursor=pointer]:
+            - img [ref=e29]
+          - button "로그인" [ref=e32] [cursor=pointer]
+    - complementary "사이드바" [ref=e33]:
+      - generic [ref=e35]:
+        - navigation [ref=e36]:
+          - list [ref=e37]:
+            - listitem [ref=e38]:
+              - link "전체 방송" [ref=e39] [cursor=pointer]:
+                - /url: /lives
+                - img [ref=e40]
+                - generic [ref=e43]: 전체 방송
+            - listitem [ref=e44]:
+              - link "인기 클립" [ref=e45] [cursor=pointer]:
+                - /url: /clips
+                - img [ref=e46]
+                - generic [ref=e48]: 인기 클립
+            - listitem [ref=e49]:
+              - link "카테고리" [ref=e50] [cursor=pointer]:
+                - /url: /category
+                - img [ref=e51]
+                - generic [ref=e56]: 카테고리
+            - listitem [ref=e57]:
+              - link "편성표" [ref=e58] [cursor=pointer]:
+                - /url: /schedule
+                - img [ref=e59]
+                - generic [ref=e61]: 편성표
+            - listitem [ref=e62]:
+              - link "팔로잉" [ref=e63] [cursor=pointer]:
+                - /url: /following
+                - img [ref=e64]
+                - generic [ref=e66]: 팔로잉
+        - navigation [ref=e67]:
+          - generic [ref=e68]:
+            - strong [ref=e69]: 인기 카테고리
+            - button "새로고침" [ref=e70] [cursor=pointer]:
+              - img [ref=e71]
+            - button "펼쳐짐, 접기" [expanded] [ref=e73] [cursor=pointer]:
+              - img [ref=e74]
+          - list
+          - button "접기" [expanded] [ref=e77] [cursor=pointer]: 전체보기
+        - navigation [ref=e78]:
+          - generic [ref=e79]:
+            - strong [ref=e80]: 다가오는 방송 일정
+            - button "새로고침" [ref=e81] [cursor=pointer]:
+              - img [ref=e82]
+            - button "펼쳐짐, 접기" [expanded] [ref=e84] [cursor=pointer]:
+              - img [ref=e85]
+          - list
+          - button "접기" [expanded] [ref=e88] [cursor=pointer]: 전체보기
+        - navigation [ref=e89]:
+          - strong [ref=e91]:
+            - link "파트너 스트리머 새 창으로 열림" [ref=e92] [cursor=pointer]:
+              - /url: /partner
+              - text: 파트너 스트리머
+              - img [ref=e94]
+              - generic [ref=e97]: 새 창으로 열림
+          - list
+        - navigation [ref=e98]:
+          - strong [ref=e100]:
+            - text: 서비스 바로가기
+            - img [ref=e101]
+            - generic [ref=e104]: 새 창으로 열림
+          - list [ref=e105]:
+            - listitem [ref=e106]:
+              - link "네이버 게임" [ref=e107] [cursor=pointer]:
+                - /url: https://game.naver.com
+                - img [ref=e108]
+                - generic [ref=e113]: 네이버 게임
+            - listitem [ref=e114]:
+              - link "e스포츠" [ref=e115] [cursor=pointer]:
+                - /url: https://game.naver.com/esports
+                - img [ref=e116]
+                - generic [ref=e119]: e스포츠
+            - listitem [ref=e120]:
+              - link "오리지널 시리즈" [ref=e121] [cursor=pointer]:
+                - /url: https://game.naver.com/original_series
+                - img [ref=e122]
+                - generic [ref=e125]: 오리지널 시리즈
+            - listitem [ref=e126]:
+              - link "PC 게임" [ref=e127] [cursor=pointer]:
+                - /url: https://game.naver.com/pcgame
+                - img [ref=e128]
+                - generic [ref=e131]: PC 게임
+            - listitem [ref=e132]:
+              - link "치지직 라운지" [ref=e133] [cursor=pointer]:
+                - /url: https://game.naver.com/lounge/chzzk/home
+                - img [ref=e134]
+                - generic [ref=e137]: 치지직 라운지
+    - generic "콘텐츠" [ref=e138]:
+      - generic [ref=e147]:
+        - generic [ref=e151]:
+          - generic [ref=e152]:
+            - strong [ref=e153]: 댓글 0
+            - button "새로고침" [ref=e154] [cursor=pointer]:
+              - img [ref=e155]
+              - generic [ref=e158]: 새로고침
+            - tablist [ref=e159]:
+              - tab "인기순" [selected] [ref=e160] [cursor=pointer]
+              - tab "최신순" [ref=e161] [cursor=pointer]
+              - tab "등록순" [ref=e162] [cursor=pointer]
+          - button "로그인 후 작성하실 수 있습니다." [ref=e170] [cursor=pointer]
+          - button "클린봇 이 악성댓글을 감지합니다. 설정" [ref=e172] [cursor=pointer]:
+            - img [ref=e173]
+            - strong [ref=e177]: 클린봇
+            - text: 이 악성댓글을 감지합니다.
+            - img [ref=e178]
+            - generic [ref=e180]: 설정
+          - generic [ref=e181]:
+            - paragraph [ref=e183]: 댓글이 없습니다.
+            - paragraph [ref=e184]: 첫번째 댓글을 남겨주세요.
+        - generic [ref=e185]:
+          - generic [ref=e186]:
+            - generic [ref=e187]:
+              - link "네이버 이용약관" [ref=e188] [cursor=pointer]:
+                - /url: https://policy.naver.com/rules/service.html
+              - link "네이버 게임 커뮤니티 가이드" [ref=e189] [cursor=pointer]:
+                - /url: https://game.naver.com/policy
+              - link "개인정보 처리방침" [ref=e190] [cursor=pointer]:
+                - /url: https://policy.naver.com/rules/privacy.html
+                - strong [ref=e191]: 개인정보 처리방침
+              - link "광고 문의" [ref=e192] [cursor=pointer]:
+                - /url: https://chzzk.gitbook.io/chzzk/resources/chzzk-ad
+              - link "제휴 문의" [ref=e193] [cursor=pointer]:
+                - /url: https://chzzk.gitbook.io/chzzk/resources/chzzk-partnership
+            - generic [ref=e194]:
+              - link "치지직 고객센터" [ref=e195] [cursor=pointer]:
+                - /url: https://help.naver.com/service/30044/contents/22578?lang=ko&osType=COMMONOS
+              - link "치지직 개발자 센터" [ref=e196] [cursor=pointer]:
+                - /url: https://developers.chzzk.naver.com
+              - link "ⓒ NAVER Corp." [ref=e197] [cursor=pointer]:
+                - /url: https://www.navercorp.com
+                - strong [ref=e198]: ⓒ NAVER Corp.
+          - generic [ref=e199]:
+            - generic [ref=e200]:
+              - generic [ref=e201]:
+                - generic [ref=e202]: "네이버(주) 대표이사 : 최수연"
+                - generic [ref=e203]: "사업자등록번호 : 220-81-62517"
+              - generic [ref=e204]:
+                - generic [ref=e205]: "통신판매업 신고번호 : 제2006-경기성남-0692호"
+                - link "사업자정보 확인" [ref=e206] [cursor=pointer]:
+                  - /url: http://www.ftc.go.kr/bizCommPop.do?wrkr_no=2208162517
+            - generic [ref=e207]:
+              - generic [ref=e208]:
+                - generic [ref=e209]: "주소 : 경기도 성남시 분당구 정자일로 95, NAVER 1784, 13561"
+                - generic [ref=e210]: "대표전화 : 1588-3820"
+              - generic [ref=e211]:
+                - generic [ref=e212]: "이메일 : ccnaver@naver.com"
+                - generic [ref=e213]: "호스팅 서비스 제공 : NAVER Cloud"

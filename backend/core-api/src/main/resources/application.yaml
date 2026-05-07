@@ -10,10 +10,10 @@ spring:
       - optional:file:../../.env[.properties]
 
   r2dbc:
-    url: r2dbc:postgresql://${NEUL_POSTGRES_HOST:127.0.0.1}:${NEUL_POSTGRES_HOST_PORT:5432}/${NEUL_POSTGRES_DB:neul_db}
+    url: r2dbc:postgresql://${GAK_POSTGRES_HOST:127.0.0.1}:${GAK_POSTGRES_HOST_PORT:5432}/${GAK_POSTGRES_DB:gak_db}
   flyway:
     enabled: true
-    url: jdbc:postgresql://${NEUL_POSTGRES_HOST:127.0.0.1}:${NEUL_POSTGRES_HOST_PORT:5432}/${NEUL_POSTGRES_DB:neul_db}
+    url: jdbc:postgresql://${GAK_POSTGRES_HOST:127.0.0.1}:${GAK_POSTGRES_HOST_PORT:5432}/${GAK_POSTGRES_DB:gak_db}
     baseline-on-migrate: true
     baseline-version: 1
     locations: classpath:db/migration
@@ -46,14 +46,14 @@ app:
     embed-url: ${OLLAMA_EMBED_URL:http://127.0.0.1:11434/api/embeddings}
     embed-model: ${OLLAMA_EMBED_MODEL:nomic-embed-text}
 
-# 개발 전용 시드 엔드포인트 (.env 에 NEUL_DEV_SEED_ENABLED=true 추가 시 활성화)
-neul:
+# 개발 전용 시드 엔드포인트 (.env 에 GAK_DEV_SEED_ENABLED=true 추가 시 활성화)
+gak:
   dev-seed:
-    enabled: ${NEUL_DEV_SEED_ENABLED:false}
-  owner-token-secret: ${NEUL_OWNER_TOKEN_SECRET:dev-owner-token-secret}
-  internal-api-secret: ${NEUL_INTERNAL_API_SECRET:dev-internal-secret}
+    enabled: ${GAK_DEV_SEED_ENABLED:false}
+  owner-token-secret: ${GAK_OWNER_TOKEN_SECRET:dev-gak-token-secret}
+  internal-api-secret: ${GAK_INTERNAL_API_SECRET:dev-gak-internal-secret}
   cors:
-    allowed-origins: ${NEUL_CORS_ALLOWED_ORIGINS:http://localhost:3000}
+    allowed-origins: ${GAK_CORS_ALLOWED_ORIGINS:http://localhost:3000}
 
 # Chzzk Open API 설정 (환경변수로 주입)
 chzzk:

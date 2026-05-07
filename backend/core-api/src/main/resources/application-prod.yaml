@@ -1,7 +1,7 @@
 spring:
   r2dbc:
-    username: ${NEUL_POSTGRES_APP_USER}
-    password: ${NEUL_POSTGRES_APP_PASSWORD}
+    username: ${GAK_POSTGRES_APP_USER}
+    password: ${GAK_POSTGRES_APP_PASSWORD}
   flyway:
-    user: ${NEUL_POSTGRES_ADMIN_USER}
-    password: ${NEUL_POSTGRES_ADMIN_PASSWORD}
+    user: ${GAK_POSTGRES_ADMIN_USER}
+    password: ${GAK_POSTGRES_ADMIN_PASSWORD}

@@ -2,36 +2,39 @@ services:
   # 1. PostgreSQL (관계형 데이터베이스 - 방송 이력 및 통계 저장)
   postgres:
     image: postgres:15-alpine
-    container_name: neul-postgres
+    container_name: gak-postgres
     ports:
-      - "${NEUL_POSTGRES_HOST_PORT:-5432}:5432"
+      - "${GAK_POSTGRES_HOST_PORT:-5432}:5432"
     environment:
-      POSTGRES_USER: neul_user
-      POSTGRES_PASSWORD: neul_password
-      POSTGRES_DB: neul_db
+      POSTGRES_USER: ${GAK_POSTGRES_ADMIN_USER:-gak_admin}
+      POSTGRES_PASSWORD: ${GAK_POSTGRES_ADMIN_PASSWORD:-gak_admin_password}
+      POSTGRES_DB: ${GAK_POSTGRES_DB:-gak_db}
+      GAK_POSTGRES_APP_USER: ${GAK_POSTGRES_APP_USER:-gak_app}
+      GAK_POSTGRES_APP_PASSWORD: ${GAK_POSTGRES_APP_PASSWORD:-gak_app_password}
       TZ: Asia/Seoul
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./init-app-user.sh:/docker-entrypoint-initdb.d/01_init_app_user.sh
     networks:
-      - neul-network
+      - gak-network
     restart: unless-stopped
 
   # 2. Redis (인메모리 데이터 저장소 - 실시간 감정 지표 집계 및 분산 환경 Pub/Sub)
   redis:
     image: redis:7-alpine
-    container_name: neul-redis
+    container_name: gak-redis
     ports:
       - "6379:6379"
     volumes:
       - redis-data:/data
     networks:
-      - neul-network
+      - gak-network
     restart: unless-stopped
 
   # 3. Apache Kafka (공식 이미지 - KRaft 모드)
   kafka:
     image: apache/kafka:4.1.0 # 최신 안정 버전 사용
-    container_name: neul-kafka
+    container_name: gak-kafka
     ports:
       - "9094:9094"
     environment:
@@ -50,23 +53,23 @@ services:
     volumes:
       - kafka-data:/var/lib/kafka/data
     networks:
-      - neul-network
+      - gak-network
     restart: unless-stopped
 
   # 4. Kafka UI (Kafka 토픽 및 메시지를 웹에서 편리하게 모니터링하기 위한 도구)
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
-    container_name: neul-kafka-ui
+    container_name: gak-kafka-ui
     ports:
       - "8080:8080"
     environment:
-      KAFKA_CLUSTERS_0_NAME: neul-local-cluster
+      KAFKA_CLUSTERS_0_NAME: gak-local-cluster
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
       # 기본적으로 필요한 토픽을 UI에서 쉽게 생성/관리할 수 있습니다.
     depends_on:
       - kafka
     networks:
-      - neul-network
+      - gak-network
     restart: unless-stopped
 
 # 데이터 영속성을 위한 볼륨 선언 (컨테이너가 삭제되어도 데이터는 유지됨)
@@ -77,5 +80,5 @@ volumes:
 
 # 서비스 간 통신을 위한 격리된 네트워크
 networks:
-  neul-network:
+  gak-network:
     driver: bridge

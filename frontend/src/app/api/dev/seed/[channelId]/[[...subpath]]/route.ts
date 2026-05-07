@@ -31,7 +31,7 @@ async function proxy(req: NextRequest, ctx: RouteContext, method: string) {
       {
         error: "dev_seed_unreachable",
         message:
-          "core-api dev 시드 엔드포인트에 연결할 수 없습니다. NEUL_DEV_SEED_ENABLED=true 로 실행 중인지 확인하세요.",
+          "core-api dev 시드 엔드포인트에 연결할 수 없습니다. GAK_DEV_SEED_ENABLED=true 로 실행 중인지 확인하세요.",
       },
       { status: 502 },
     );

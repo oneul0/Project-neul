@@ -1,6 +1,6 @@
 "use client";
 
-const OWNER_CHANNEL_STORAGE_KEY = "neul.ownerChannelId";
+const OWNER_CHANNEL_STORAGE_KEY = "gak.ownerChannelId";
 
 export function readOwnerChannelId(): string {
   if (typeof window === "undefined") {
