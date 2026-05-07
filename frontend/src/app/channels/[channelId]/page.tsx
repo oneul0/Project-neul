@@ -169,13 +169,13 @@ export default function ChannelDashboard({
       <section className="rounded-[28px] border border-white/[0.08] bg-[#111111] p-6 sm:p-8">
         <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
           <div className="space-y-2">
-            <div className="text-[11px] font-black uppercase tracking-[0.28em] text-white/40">
+            <div className="text-[11px] font-black uppercase tracking-[0.28em] text-white/55">
               {activeTab === "poll" ? "투표 관리" : activeTab === "roulette" ? "룰렛 관리" : "VOD 하이라이트"}
             </div>
             <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">
               {activeTab === "poll" ? "투표" : activeTab === "roulette" ? "도네이션 룰렛" : "VOD 하이라이트 워크스페이스"}
             </h1>
-            <p className="text-sm leading-6 text-white/60">
+            <p className="text-sm leading-6 text-white/65">
               {activeTab === "poll"
                 ? "항목을 만들고 실시간 집계 결과와 참여 시청자 기록을 관리합니다."
                 : activeTab === "roulette"
@@ -292,7 +292,7 @@ export default function ChannelDashboard({
             로그인한 계정의 채널과 현재 채널이 달라 관리 기능을 사용할 수 없습니다.
           </div>
         ) : !hasOwnerIdentity && !authLoading ? (
-          <div className="mt-5 rounded-2xl border border-white/[0.08] bg-[#1A1A1A] px-4 py-3 text-sm text-white/50">
+          <div className="mt-5 rounded-2xl border border-white/[0.08] bg-[#1A1A1A] px-4 py-3 text-sm text-white/60">
             {ownerProfile.message || "치지직 로그인 후 본인 채널의 투표와 VOD 분석을 사용할 수 있습니다."}
           </div>
         ) : null}

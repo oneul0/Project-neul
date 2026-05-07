@@ -109,7 +109,7 @@ function ConfigPanel({ initialItems, initialRate, hasExistingConfig, onSave, onC
         <span className="text-[11px] font-black uppercase tracking-[0.2em] text-[#00FFA3]/70">
           항목 및 배율 설정
         </span>
-        <button onClick={onClose} className="text-white/30 transition hover:text-white">
+        <button onClick={onClose} className="text-white/45 transition hover:text-white">
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -141,7 +141,7 @@ function ConfigPanel({ initialItems, initialRate, hasExistingConfig, onSave, onC
 
       {/* 배율 설정 */}
       <div className="mb-4 flex items-center gap-3 rounded-xl border border-white/[0.08] bg-[#111111] px-3 py-2">
-        <span className="text-xs font-black text-white/40">배율</span>
+        <span className="text-xs font-black text-white/55">배율</span>
         <input
           type="number"
           min={1}
@@ -149,7 +149,7 @@ function ConfigPanel({ initialItems, initialRate, hasExistingConfig, onSave, onC
           onChange={(e) => setRate(Number(e.target.value))}
           className="w-28 rounded-lg border border-white/[0.08] bg-[#1A1A1A] px-2 py-1 text-right text-sm font-bold text-white outline-none focus:border-[#00FFA3]/40"
         />
-        <span className="text-xs text-white/40">원당 확률 상승</span>
+        <span className="text-xs text-white/55">원당 확률 상승</span>
       </div>
 
       {/* 저장 버튼 */}
@@ -219,7 +219,7 @@ export default function RouletteCard({
             <Gift className="h-5 w-5 text-[#00FFA3]" />
           </div>
           <div>
-            <div className="text-[11px] font-black uppercase tracking-[0.22em] text-white/40">
+            <div className="text-[11px] font-black uppercase tracking-[0.22em] text-white/55">
               도네이션 룰렛
             </div>
             <div className="text-sm font-bold text-white/70">
@@ -318,12 +318,12 @@ export default function RouletteCard({
         !configOpen && (
           <div className="mt-4 rounded-[18px] border border-dashed border-white/[0.08] bg-[#1A1A1A] py-8 text-center">
             <Gift className="mx-auto h-6 w-6 text-white/20" />
-            <p className="mt-2 text-sm font-semibold text-white/40">
+            <p className="mt-2 text-sm font-semibold text-white/60">
               {isOwner
                 ? "설정 버튼을 눌러 항목과 배율을 지정하세요."
                 : "스트리머가 항목을 설정하면 확률이 표시됩니다."}
             </p>
-            <p className="mt-1 text-xs text-white/25">
+            <p className="mt-1 text-xs text-white/45">
               도네이션 메시지에 항목 이름을 입력하면 확률이 올라갑니다.
             </p>
           </div>

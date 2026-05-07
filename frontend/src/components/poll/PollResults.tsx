@@ -55,11 +55,11 @@ export default function PollResults({
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="font-bold text-white">{item.label}</div>
-                  <div className="mt-1 text-[11px] font-black uppercase tracking-[0.16em] text-white/40">
+                  <div className="mt-1 text-[11px] font-black uppercase tracking-[0.16em] text-white/55">
                     참여 시청자 {votersForItem.length}명
                   </div>
                 </div>
-                <div className="text-sm font-mono text-white/50">
+                <div className="text-sm font-mono text-white/60">
                   {votes}표 · {ratio.toFixed(0)}%
                 </div>
               </div>
@@ -72,8 +72,8 @@ export default function PollResults({
               {votersForItem.length > 0 ? (
                 <div className="mt-3 rounded-[16px] border border-white/[0.06] bg-[#111111] p-3">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">참여 시청자</div>
-                    <div className="text-[11px] text-white/30">이름을 누르면 채팅 기록을 확인합니다.</div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/55">참여 시청자</div>
+                    <div className="text-[11px] text-white/50">이름을 누르면 채팅 기록을 확인합니다.</div>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {votersForItem.map((userId) => {

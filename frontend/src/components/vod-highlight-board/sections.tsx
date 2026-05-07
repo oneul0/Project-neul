@@ -211,7 +211,7 @@ export function VodLookupSection({
       <div className={`mt-4 rounded-[24px] border px-5 py-4 ${board.lookupState.toneClass}`}>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="inline-flex items-center rounded-full border border-white/70 bg-white/85 px-3 py-1 text-[11px] font-black tracking-[0.18em] text-white/80">
+            <div className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-black tracking-[0.18em] text-[#111111]">
               {board.lookupState.label}
             </div>
             <p className="mt-3 text-sm font-semibold text-white">
@@ -336,7 +336,7 @@ export function VodSelectedVideoSection({
             <div className={`rounded-[22px] border px-5 py-4 ${board.selectedVodState.toneClass}`}>
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <div className="inline-flex items-center rounded-full border border-white/70 bg-white/85 px-3 py-1 text-[11px] font-black tracking-[0.18em] text-white/80">
+                  <div className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-black tracking-[0.18em] text-[#111111]">
                     {board.selectedVodState.label}
                   </div>
                   <p className="mt-3 text-sm font-semibold text-white">
@@ -363,7 +363,7 @@ export function VodSelectedVideoSection({
                     : board.handleAnalyze())
                 }
                 disabled={board.analysisSubmitting}
-                className="rounded-2xl bg-[#00FFA3] px-5 py-3 text-sm font-black text-white transition hover:bg-[#00FFA3] disabled:bg-[#00FFA3]/50"
+                className="rounded-2xl bg-[#00FFA3] px-5 py-3 text-sm font-black text-[#000000] transition hover:bg-[#00FFA3]/90 disabled:bg-[#00FFA3]/50"
               >
                 {board.analysisSubmitting ? "요청 중..." : board.workspacePrimaryLabel}
               </button>
@@ -401,7 +401,7 @@ export function VodWorkspaceSection({
       <section className="rounded-[30px] border border-[#00FFA3]/25 bg-[#00FFA3]/10 p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="inline-flex items-center rounded-full border border-white/70 bg-white/85 px-3 py-1 text-[11px] font-black tracking-[0.18em] text-[#00FFA3]">
+            <div className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-black tracking-[0.18em] text-[#111111]">
               {board.hasExistingResults ? "결과 대기" : "워크스페이스 대기"}
             </div>
             <p className="mt-3 text-sm font-semibold text-white">
@@ -545,7 +545,7 @@ export function VodWorkspaceSection({
               ) : (
                 <div className="relative">
                   {board.hoveredChartBar ? (
-                    <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-2xl border border-white/[0.08] bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
+                    <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-2xl border border-white/[0.12] bg-[#0D0D0D] px-4 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.6)]">
                       <div className="text-[11px] font-black uppercase tracking-[0.18em] text-white/50">
                         Hover Insight
                       </div>
@@ -553,7 +553,7 @@ export function VodWorkspaceSection({
                         {formatSeconds(board.hoveredChartBar.startSeconds)} ~{" "}
                         {formatSeconds(board.hoveredChartBar.endSeconds)}
                       </div>
-                      <div className="mt-2 flex items-center gap-3 text-sm font-bold text-white/80">
+                      <div className="mt-2 flex items-center gap-3 text-sm font-bold">
                         <span className="inline-flex items-center gap-2 text-[#00FFA3]">
                           <Zap className="h-3.5 w-3.5" />채팅 {board.hoveredChartBar.messageCount}개
                         </span>
@@ -680,17 +680,17 @@ export function VodWorkspaceSection({
                             selected
                               ? "h-5 w-5 border-rose-500 bg-rose-500 shadow-[0_0_0_8px_rgba(244,63,94,0.16)]"
                               : cluster.items.length > 1
-                                ? "h-4 w-4 border-rose-400 bg-rose-100"
-                                : "h-3.5 w-3.5 border-rose-300 bg-[#111111]"
+                                ? "h-4 w-4 border-rose-400 bg-rose-500/30"
+                                : "h-3.5 w-3.5 border-rose-400/60 bg-[#111111]"
                           }`}
                         />
                         {showLabel && (
-                          <div className={`absolute left-1/2 top-[52px] -translate-x-1/2 whitespace-nowrap text-[10px] font-black tracking-[0.12em] ${selected ? "text-rose-600" : "text-white/50"}`}>
+                          <div className={`absolute left-1/2 top-[52px] -translate-x-1/2 whitespace-nowrap text-[10px] font-black tracking-[0.12em] ${selected ? "text-rose-400" : "text-white/50"}`}>
                             {formatSeconds(lead.startSeconds)}
                           </div>
                         )}
                         {cluster.items.length > 1 ? (
-                          <div className="absolute left-1/2 top-[2px] -translate-x-1/2 rounded-full border border-rose-200 bg-[#111111] px-2 py-0.5 text-[10px] font-black text-rose-600 shadow-sm">
+                          <div className="absolute left-1/2 top-[2px] -translate-x-1/2 rounded-full border border-rose-500/30 bg-[#111111] px-2 py-0.5 text-[10px] font-black text-rose-400 shadow-sm">
                             +{cluster.items.length}
                           </div>
                         ) : null}
@@ -700,10 +700,10 @@ export function VodWorkspaceSection({
                 </div>
 
                 {board.selectedCluster ? (
-                  <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                  <div className="mt-4 rounded-2xl border border-rose-500/30 bg-rose-500/[0.08] p-4">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                       <div>
-                        <div className="text-[11px] font-black tracking-[0.18em] text-rose-600">
+                        <div className="text-[11px] font-black tracking-[0.18em] text-rose-400">
                           {board.selectedCluster.items.length > 1
                             ? "가까운 후보 묶음"
                             : "선택한 편집 후보"}
@@ -719,7 +719,7 @@ export function VodWorkspaceSection({
                           {board.selectedClusterPoints.map((point) => (
                             <span
                               key={point}
-                              className="rounded-full border border-rose-200 bg-[#111111] px-3 py-2 text-xs font-bold leading-5 text-white/80"
+                              className="rounded-full border border-rose-500/30 bg-[#111111] px-3 py-2 text-xs font-bold leading-5 text-white/80"
                             >
                               {point}
                             </span>
@@ -746,7 +746,7 @@ export function VodWorkspaceSection({
                             key={item.id}
                             type="button"
                             onClick={() => board.moveToCard(item.id)}
-                            className={`rounded-full border px-3 py-2 text-xs font-black transition ${active ? "border-rose-400 bg-rose-500 text-white" : "border-rose-200 bg-[#111111] text-rose-700"}`}
+                            className={`rounded-full border px-3 py-2 text-xs font-black transition ${active ? "border-rose-500/60 bg-rose-500/20 text-rose-300" : "border-rose-500/25 bg-[#111111] text-rose-400"}`}
                           >
                             {formatSeconds(item.startSeconds)}
                           </button>
@@ -1013,7 +1013,7 @@ export function VodWorkspaceSection({
                       }}
                       onMouseEnter={() => board.setSelectedHighlightId(item.id)}
                       onClick={() => board.moveToCard(item.id)}
-                      className={`flex cursor-pointer items-center gap-3 rounded-[16px] border px-4 py-2.5 transition ${active ? "border-rose-300 bg-rose-50/70 shadow-sm" : "border-white/[0.08] bg-[#111111] hover:border-white/[0.12]"}`}
+                      className={`flex cursor-pointer items-center gap-3 rounded-[16px] border px-4 py-2.5 transition ${active ? "border-rose-500/40 bg-rose-500/10 shadow-sm" : "border-white/[0.08] bg-[#111111] hover:border-white/[0.12]"}`}
                     >
                       <div className="min-w-0 flex-1 text-sm font-black text-white">
                         {formatSeconds(item.startSeconds)}
@@ -1056,7 +1056,7 @@ export function VodWorkspaceSection({
                         board.cardRefs.current[item.id] = element;
                       }}
                       onMouseEnter={() => board.setSelectedHighlightId(item.id)}
-                      className={`rounded-[22px] border p-4 transition ${active ? "border-rose-300 bg-rose-50/70 shadow-sm" : "border-white/[0.08] bg-[#111111]"}`}
+                      className={`rounded-[22px] border p-4 transition ${active ? "border-rose-500/40 bg-rose-500/10 shadow-sm" : "border-white/[0.08] bg-[#111111]"}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="space-y-2">
@@ -1317,7 +1317,7 @@ export function VodPersonalizationSection({
                 board.preferenceProfile.topReactionLabels.map((label) => (
                   <span
                     key={label}
-                    className="rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-700"
+                    className="rounded-full border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-black text-rose-400"
                   >
                     {label}
                   </span>

@@ -14,12 +14,12 @@ export const backendChatProvider: PollProvider = {
   mode: "BACKEND_CHAT",
   label: "Backend Chat",
   getCapability: () => capability,
-  loadSnapshot: async ({ roomId, fetchOwned }) => {
+  loadSnapshot: async ({ roomId }) => {
     const [session, results, items, voters] = await Promise.all([
-      readJson<boolean>(await fetchOwned(`/api/channels/${roomId}/poll/session`)),
-      readJson<Record<string, number>>(await fetchOwned(`/api/channels/${roomId}/poll/results`)),
-      readJson<string[]>(await fetchOwned(`/api/channels/${roomId}/poll/items`)),
-      readJson<Record<string, string>>(await fetchOwned(`/api/channels/${roomId}/poll/voters`)),
+      readJson<boolean>(await fetch(`/api/channels/${roomId}/poll/session`)),
+      readJson<Record<string, number>>(await fetch(`/api/channels/${roomId}/poll/results`)),
+      readJson<string[]>(await fetch(`/api/channels/${roomId}/poll/items`)),
+      readJson<Record<string, string>>(await fetch(`/api/channels/${roomId}/poll/voters`)),
     ]);
 
     return {
@@ -29,10 +29,10 @@ export const backendChatProvider: PollProvider = {
       voters: voters ?? {},
     };
   },
-  refreshSnapshot: async ({ roomId, fetchOwned }) => {
+  refreshSnapshot: async ({ roomId }) => {
     const [results, voters] = await Promise.all([
-      readJson<Record<string, number>>(await fetchOwned(`/api/channels/${roomId}/poll/results`)),
-      readJson<Record<string, string>>(await fetchOwned(`/api/channels/${roomId}/poll/voters`)),
+      readJson<Record<string, number>>(await fetch(`/api/channels/${roomId}/poll/results`)),
+      readJson<Record<string, string>>(await fetch(`/api/channels/${roomId}/poll/voters`)),
     ]);
 
     return {

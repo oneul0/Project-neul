@@ -25,9 +25,9 @@ export default function PollCard({ session, variant = "main" }: Props) {
     <div className={`rounded-[28px] border border-white/[0.08] bg-[#111111] transition-all duration-200 ${isCompact ? "p-5" : "p-6"}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-[11px] font-black uppercase tracking-[0.22em] text-white/40">투표</div>
+          <div className="text-[11px] font-black uppercase tracking-[0.22em] text-white/55">투표</div>
           <div className="mt-2 text-xl font-black text-white">{isCompact ? "시청자 반응 요약" : "시청자 반응 확인"}</div>
-          <div className="mt-2 text-sm text-white/50">
+          <div className="mt-2 text-sm text-white/60">
             {isCompact ? "현재 집계 상태를 빠르게 훑어볼 수 있는 요약형 보기입니다." : "항목 구성, 실시간 집계, 참여 시청자 기록을 한 화면에서 관리합니다."}
           </div>
         </div>
@@ -45,18 +45,18 @@ export default function PollCard({ session, variant = "main" }: Props) {
           </div>
         </div>
         <div className="rounded-[20px] border border-white/[0.08] bg-[#1A1A1A] px-4 py-3">
-          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">항목</div>
+          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/55">항목</div>
           <div className="mt-2 text-sm font-black text-white">{session.items.length}개</div>
         </div>
         <div className="rounded-[20px] border border-white/[0.08] bg-[#1A1A1A] px-4 py-3">
-          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">총 투표</div>
+          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/55">총 투표</div>
           <div className="mt-2 flex items-center gap-2 text-sm font-black text-white">
             <BarChart3 className="h-4 w-4 text-[#00FFA3]" />
             {session.totalVotes}표
           </div>
         </div>
         <div className="rounded-[20px] border border-white/[0.08] bg-[#1A1A1A] px-4 py-3">
-          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">참여 시청자</div>
+          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/55">참여 시청자</div>
           <div className="mt-2 text-sm font-black text-white">{participantCount}명</div>
         </div>
       </div>
@@ -76,7 +76,7 @@ export default function PollCard({ session, variant = "main" }: Props) {
                 <button
                   onClick={session.requestClearPoll}
                   disabled={!session.canManage || session.isCreatingPoll || session.isClearingPoll}
-                  className="rounded-2xl border border-white/[0.08] bg-transparent px-4 py-2 text-sm font-black text-white/60 transition hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-2xl border border-white/[0.08] bg-transparent px-4 py-2 text-sm font-black text-white/70 transition hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {session.isClearingPoll ? "초기화 중..." : "투표 초기화"}
                 </button>

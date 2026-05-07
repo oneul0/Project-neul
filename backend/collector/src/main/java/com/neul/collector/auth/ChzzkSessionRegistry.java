@@ -22,9 +22,13 @@ public class ChzzkSessionRegistry {
     private static final String KEY_PREFIX = "neul:owner-session:";
     private final ReactiveStringRedisTemplate redisTemplate;
 
-    public Mono<Void> register(String channelId, String sessionId, long ttlSeconds) {
+    // 7일 — 토큰 만료(1h)와 무관한 revocation 전용 키이므로 충분히 긴 TTL을 사용.
+    // 실제 만료 판단은 토큰 페이로드의 expiresAt으로 하며, 이 키는 로그아웃 시 삭제된다.
+    private static final Duration SESSION_TTL = Duration.ofDays(7);
+
+    public Mono<Void> register(String channelId, String sessionId, long ignoredTokenTtl) {
         return redisTemplate.opsForValue()
-                .set(key(channelId), sessionId, Duration.ofSeconds(Math.max(ttlSeconds, 60)))
+                .set(key(channelId), sessionId, SESSION_TTL)
                 .doOnSuccess(v -> log.info("[SessionRegistry] Registered channelId={}", channelId))
                 .then();
     }

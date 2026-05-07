@@ -1,10 +1,13 @@
 package com.neul.core_api.config;
 
 import com.neul.common.auth.OwnerTokenCodec;
+import com.neul.common.auth.OwnerTokenCodec.OwnerClaims;
 import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -18,9 +21,16 @@ import java.nio.charset.StandardCharsets;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class OwnerAccessFilter implements WebFilter {
 
+    /** 검증된 ownerId를 후속 핸들러에 전달하기 위한 exchange attribute 키. */
+    public static final String ATTR_OWNER_ID = "neul.ownerId";
+
     private static final String INSECURE_DEFAULT = "dev-owner-token-secret";
+    private static final String SESSION_KEY_PREFIX = "neul:owner-session:";
+
+    private final ReactiveStringRedisTemplate redisTemplate;
 
     @Value("${neul.owner-token-secret:dev-owner-token-secret}")
     private String ownerTokenSecret;
@@ -44,38 +54,56 @@ public class OwnerAccessFilter implements WebFilter {
             return chain.filter(exchange);
         }
 
-        String ownerId = null;
+        OwnerClaims claims = null;
         if (exchange.getRequest().getCookies().containsKey("NEUL_OWNER_ASSERTION")) {
-            ownerId = OwnerTokenCodec.verifyAndExtractOwner(
+            claims = OwnerTokenCodec.verifyAndExtractClaims(
                     exchange.getRequest().getCookies().getFirst("NEUL_OWNER_ASSERTION").getValue(),
                     ownerTokenSecret);
         }
 
-        if (ownerId == null || ownerId.isBlank()) {
-            log.warn("[OwnerAccess] Missing owner id for path: {}", path);
+        if (claims == null) {
+            log.warn("[OwnerAccess] Missing or invalid owner assertion for path: {}", path);
             return respondWithError(exchange, HttpStatus.UNAUTHORIZED, "login_required", "CHZZK login is required.");
         }
 
-        String targetRoomId = extractRoomId(path);
-        if (targetRoomId == null || targetRoomId.isBlank()) {
-            return chain.filter(exchange);
-        }
+        final OwnerClaims finalClaims = claims;
 
-        if (!ownerId.equals(targetRoomId)) {
-            log.warn("[OwnerAccess] Ownership mismatch. ownerId={}, targetRoomId={}", ownerId, targetRoomId);
-            return respondWithError(exchange, HttpStatus.FORBIDDEN, "forbidden", "You can only access your own channel dashboard.");
-        }
+        // Redis에서 현재 유효한 sessionId 조회 — 로그아웃/탈취 시 즉시 차단
+        return redisTemplate.opsForValue()
+                .get(SESSION_KEY_PREFIX + finalClaims.ownerId())
+                .flatMap(storedSessionId -> {
+                    if (!finalClaims.sessionId().equals(storedSessionId)) {
+                        log.warn("[OwnerAccess] Session mismatch for ownerId={}. Possible theft or stale token.", finalClaims.ownerId());
+                        return respondWithError(exchange, HttpStatus.UNAUTHORIZED, "session_invalid", "Session is no longer valid. Please log in again.");
+                    }
 
-        return chain.filter(exchange);
+                    String targetRoomId = extractRoomId(path);
+                    if (targetRoomId != null && !targetRoomId.isBlank() && !finalClaims.ownerId().equals(targetRoomId)) {
+                        log.warn("[OwnerAccess] Ownership mismatch. ownerId={}, targetRoomId={}", finalClaims.ownerId(), targetRoomId);
+                        return respondWithError(exchange, HttpStatus.FORBIDDEN, "forbidden", "You can only access your own channel dashboard.");
+                    }
+
+                    // 검증 통과 — 이후 핸들러가 재검증 없이 ownerId를 읽을 수 있도록 주입
+                    exchange.getAttributes().put(ATTR_OWNER_ID, finalClaims.ownerId());
+                    return chain.filter(exchange);
+                })
+                .switchIfEmpty(Mono.defer(() -> {
+                    log.warn("[OwnerAccess] No active session found for ownerId={}.", finalClaims.ownerId());
+                    return respondWithError(exchange, HttpStatus.UNAUTHORIZED, "session_expired", "Session expired. Please log in again.");
+                }));
     }
 
     private boolean isProtectedPath(String path, HttpMethod method) {
-        // 룰렛 상태 조회(GET)는 공개 — 시청자도 현황을 볼 수 있어야 함
+        // GET 조회는 공개 — 비로그인도 볼 수 있고, 로그인 시 개인화 적용
         if (HttpMethod.GET == method && path.startsWith("/api/v1/roulette/")) return false;
+        if (HttpMethod.GET == method && path.startsWith("/api/v1/poll/")) return false;
+        if (HttpMethod.GET == method && path.startsWith("/api/v1/vod/")) return false;
         return path.startsWith("/api/v1/stream/")
                 || path.startsWith("/api/v1/poll/")
                 || path.startsWith("/api/v1/donations/")
                 || path.startsWith("/api/v1/roulette/")
+                || path.startsWith("/api/v1/vod/")
+                || path.startsWith("/api/v1/me/")
                 || path.startsWith("/api/v2/stream/")
                 || path.startsWith("/api/v2/state/");
     }
@@ -90,7 +118,6 @@ public class OwnerAccessFilter implements WebFilter {
                 return segments[i + 1];
             }
         }
-
         return null;
     }
 

@@ -1,6 +1,8 @@
 spring:
   application:
     name: core-api
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
   config:
     import:
       - optional:file:.env[.properties]
@@ -9,13 +11,9 @@ spring:
 
   r2dbc:
     url: r2dbc:postgresql://${NEUL_POSTGRES_HOST:127.0.0.1}:${NEUL_POSTGRES_HOST_PORT:5432}/${NEUL_POSTGRES_DB:neul_db}
-    username: ${NEUL_POSTGRES_USER:neul_user}
-    password: ${NEUL_POSTGRES_PASSWORD:neul_password}
   flyway:
     enabled: true
     url: jdbc:postgresql://${NEUL_POSTGRES_HOST:127.0.0.1}:${NEUL_POSTGRES_HOST_PORT:5432}/${NEUL_POSTGRES_DB:neul_db}
-    user: ${NEUL_POSTGRES_USER:neul_user}
-    password: ${NEUL_POSTGRES_PASSWORD:neul_password}
     baseline-on-migrate: true
     baseline-version: 1
     locations: classpath:db/migration
@@ -52,6 +50,10 @@ app:
 neul:
   dev-seed:
     enabled: ${NEUL_DEV_SEED_ENABLED:false}
+  owner-token-secret: ${NEUL_OWNER_TOKEN_SECRET:dev-owner-token-secret}
+  internal-api-secret: ${NEUL_INTERNAL_API_SECRET:dev-internal-secret}
+  cors:
+    allowed-origins: ${NEUL_CORS_ALLOWED_ORIGINS:http://localhost:3000}
 
 # Chzzk Open API 설정 (환경변수로 주입)
 chzzk:

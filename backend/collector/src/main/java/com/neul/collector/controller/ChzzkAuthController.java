@@ -45,6 +45,13 @@ public class ChzzkAuthController {
     @Value("${neul.owner-token-secret:dev-owner-token-secret}")
     private String ownerTokenSecret;
 
+    @Value("${neul.cookie.secure:false}")
+    private boolean cookieSecure;
+
+    /** NEUL_OWNER_ASSERTION 쿠키 최대 유효 기간 (초). Chzzk 토큰 만료와 무관하게 상한을 둔다. */
+    @Value("${neul.token.max-age-seconds:3600}")
+    private long tokenMaxAgeSeconds;
+
     @GetMapping("/login")
     public Mono<ResponseEntity<Void>> login() {
         return authStore.issueState()
@@ -163,6 +170,7 @@ public class ChzzkAuthController {
     private ResponseCookie sessionCookie(ChzzkAuthSession session) {
         return ResponseCookie.from(AUTH_SESSION_COOKIE, session.getSessionId())
                 .httpOnly(true)
+                .secure(cookieSecure)
                 .sameSite("Lax")
                 .path("/")
                 .maxAge(Duration.ofSeconds(Math.max(session.getExpiresIn(), 60)))
@@ -181,6 +189,9 @@ public class ChzzkAuthController {
         return authService.refreshToken(currentSession.getRefreshToken())
                 .flatMap(tokenResponse -> authService.fetchProfile(tokenResponse.getAccessToken())
                         .flatMap(profile -> authStore.refreshSession(sessionId, currentSession, tokenResponse, profile)))
+                .flatMap(session -> sessionRegistry
+                        .register(session.getChannelId(), session.getSessionId(), session.getExpiresIn())
+                        .thenReturn(session))
                 .map(session -> ResponseEntity.ok()
                         .header(HttpHeaders.SET_COOKIE, sessionCookie(session).toString())
                         .header(HttpHeaders.SET_COOKIE, ownerAssertionCookie(session).toString())
@@ -216,6 +227,7 @@ public class ChzzkAuthController {
     private ResponseCookie clearStateCookie() {
         return ResponseCookie.from(AUTH_STATE_COOKIE, "")
                 .httpOnly(true)
+                .secure(cookieSecure)
                 .sameSite("Lax")
                 .path("/")
                 .maxAge(Duration.ZERO)
@@ -225,6 +237,7 @@ public class ChzzkAuthController {
     private ResponseCookie clearSessionCookie() {
         return ResponseCookie.from(AUTH_SESSION_COOKIE, "")
                 .httpOnly(true)
+                .secure(cookieSecure)
                 .sameSite("Lax")
                 .path("/")
                 .maxAge(Duration.ZERO)
@@ -232,18 +245,22 @@ public class ChzzkAuthController {
     }
 
     private ResponseCookie ownerAssertionCookie(ChzzkAuthSession session) {
-        String token = OwnerTokenCodec.createToken(session.getChannelId(), session.getExpiresAt(), ownerTokenSecret);
+        long maxAge = Math.min(Math.max(session.getExpiresIn(), 60), tokenMaxAgeSeconds);
+        String token = OwnerTokenCodec.createToken(
+                session.getChannelId(), session.getSessionId(), session.getExpiresAt(), ownerTokenSecret);
         return ResponseCookie.from(OWNER_ASSERTION_COOKIE, token)
                 .httpOnly(true)
+                .secure(cookieSecure)
                 .sameSite("Lax")
                 .path("/")
-                .maxAge(Duration.ofSeconds(Math.max(session.getExpiresIn(), 60)))
+                .maxAge(Duration.ofSeconds(maxAge))
                 .build();
     }
 
     private ResponseCookie clearOwnerAssertionCookie() {
         return ResponseCookie.from(OWNER_ASSERTION_COOKIE, "")
                 .httpOnly(true)
+                .secure(cookieSecure)
                 .sameSite("Lax")
                 .path("/")
                 .maxAge(Duration.ZERO)
