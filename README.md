@@ -454,6 +454,20 @@ docker ps  # gak-postgres 컨테이너가 실행 중인지 확인
 | [04_technical_concepts](docs/04_technical_concepts.md) | Kafka, Redis, SSE, Resilience4j 등 기술 개념 |
 | [05_developer_handover](docs/05_developer_handover.md) | 구조 및 핵심 파일 핸드오버 |
 | [06_testing_strategy](docs/06_testing_strategy.md) | 테스트 전략 및 E2E |
+| [07_native_optimization_guide](docs/07_native_optimization_guide.md) | Java/Rust 최적화 방향 |
+| [08_performance_migration_log](docs/08_performance_migration_log.md) | 성능 이전 로그 |
+| [09_evolution_roadmap](docs/09_evolution_roadmap.md) | 로드맵 및 구현 체크리스트 |
+| [12_gak_v2_implementation_plan](docs/12_gak_v2_implementation_plan.md) | v2 장기 구현 계획 |
+| [13_owner_auth_revision](docs/13_owner_auth_revision.md) | owner 인증 구조 변경 메모 |
+| [14_vod_concurrency_plan](docs/14_vod_concurrency_plan.md) | VOD 동시성 및 안정성 계획 |
+| [15_emotion_analysis_experiment_plan](docs/15_emotion_analysis_experiment_plan.md) | 편집 후보 중심 감정 분석 실험 |
+| [16_personalized_vod_highlight_plan](docs/16_personalized_vod_highlight_plan.md) | 개인화 VOD 편집 후보 확장 계획 |
+| [17_auth_reliability_test_scenarios](docs/17_auth_reliability_test_scenarios.md) | 인증 신뢰성 테스트 시나리오 |
+| [18_llm_guardrail_plan](docs/18_llm_guardrail_plan.md) | LLM 입출력 가드레일 설계 |
+| [19_status_polling_plan](docs/19_status_polling_plan.md) | VOD 분석 상태 폴링 전략 |
+| [20_startup_recovery](docs/20_startup_recovery.md) | 서비스 재기동 복구 절차 |
+| [21_phase1_to_5_test_spec](docs/21_phase1_to_5_test_spec.md) | 단계별 통합 테스트 명세 |
 | [22_security_hardening](docs/22_security_hardening.md) | 보안 강화 작업 기록 |
 | [23_production_deploy_checklist](docs/23_production_deploy_checklist.md) | 프로덕션 배포 체크리스트 |
 | [24_session_theft_defense](docs/24_session_theft_defense.md) | 세션 탈취 방어 전략 |
+| [25_ui_naming_update](docs/25_ui_naming_update.md) | UI 네이밍 최신화 기록 |

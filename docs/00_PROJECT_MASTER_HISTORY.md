@@ -20,11 +20,22 @@
 | 07 | `07_native_optimization_guide.md` | Java/Rust 최적화 방향 |
 | 08 | `08_performance_migration_log.md` | 성능 이전 로그 템플릿 |
 | 09 | `09_evolution_roadmap.md` | 로드맵 + 구현 체크리스트 통합본 |
-| 12 | `12_neul_v2_implementation_plan.md` | v2 장기 구현 계획 |
+| 10 | _(병합됨 → 09)_ | `10_implementation_checklist.md` 내용 통합 |
+| 11 | _(병합됨 → 05)_ | `11_spec_handover_report.md` 내용 통합 |
+| 12 | `12_gak_v2_implementation_plan.md` | v2 장기 구현 계획 |
 | 13 | `13_owner_auth_revision.md` | owner 인증 구조 변경 메모 |
 | 14 | `14_vod_concurrency_plan.md` | VOD 동시성 및 안정성 계획 |
 | 15 | `15_emotion_analysis_experiment_plan.md` | 편집 후보 중심 감정 분석 실험 계획 |
 | 16 | `16_personalized_vod_highlight_plan.md` | 개인화 가능한 VOD 편집 후보 확장 계획 |
+| 17 | `17_auth_reliability_test_scenarios.md` | 인증 신뢰성 테스트 시나리오 |
+| 18 | `18_llm_guardrail_plan.md` | LLM 입출력 가드레일 설계 |
+| 19 | `19_status_polling_plan.md` | VOD 분석 상태 폴링 전략 |
+| 20 | `20_startup_recovery.md` | 서비스 재기동 복구 절차 |
+| 21 | `21_phase1_to_5_test_spec.md` | 단계별 통합 테스트 명세 |
+| 22 | `22_security_hardening.md` | 보안 강화 작업 기록 |
+| 23 | `23_production_deploy_checklist.md` | 프로덕션 배포 체크리스트 |
+| 24 | `24_session_theft_defense.md` | 세션 탈취 방어 전략 |
+| 25 | `25_ui_naming_update.md` | UI 네이밍 최신화 기록 |
 
 ## 이번 정리에서 병합/정리된 문서
 
