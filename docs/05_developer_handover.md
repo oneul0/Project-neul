@@ -1,12 +1,12 @@
-# Project Neul 개발자 핸드오버
+# Project Gak (각) 개발자 핸드오버
 
-최종 업데이트: 2026-04-01
+최종 업데이트: 2026-05-16
 
 이 문서는 기존 `05_developer_handover.md`와 `11_spec_handover_report.md`를 합친 최신 핸드오버 문서입니다.
 
 ## 1. 프로젝트 한 줄 설명
 
-Project Neul은 스트리머 본인이 자신의 방송과 다시보기를 빠르게 돌아보면서, 실시간 반응과 편집 후보 구간을 확인할 수 있게 돕는 분석 대시보드입니다.
+Project Gak(각)은 스트리머 본인이 자신의 방송과 다시보기를 빠르게 돌아보면서, 실시간 반응과 편집 후보 구간을 확인할 수 있게 돕는 분석 대시보드입니다.
 
 ## 2. 현재 제품 정의
 
@@ -109,23 +109,23 @@ Project Neul은 스트리머 본인이 자신의 방송과 다시보기를 빠�
 
 ### frontend
 
-- `C:\Users\Oneul\Desktop\Projects\Project-neul\frontend\src\app\channels\[channelId]\page.tsx`
-- `C:\Users\Oneul\Desktop\Projects\Project-neul\frontend\src\components\VodHighlightBoard.tsx`
+- `frontend/src/app/channels/[channelId]/page.tsx`
+- `frontend/src/components/VodHighlightBoard.tsx`
 
 ### collector
 
-- `C:\Users\Oneul\Desktop\Projects\Project-neul\backend\collector\src\main\java\com\neul\collector\controller\VodCollectorController.java`
-- `C:\Users\Oneul\Desktop\Projects\Project-neul\backend\collector\src\main\java\com\neul\collector\service\VodChatCrawlerService.java`
-- `C:\Users\Oneul\Desktop\Projects\Project-neul\backend\collector\src\main\java\com\neul\collector\service\VodAnalysisStatusService.java`
+- `backend/collector/src/main/java/com/gak/collector/controller/VodCollectorController.java`
+- `backend/collector/src/main/java/com/gak/collector/service/VodChatCrawlerService.java`
+- `backend/collector/src/main/java/com/gak/collector/service/VodAnalysisStatusService.java`
 
 ### analyzer
 
-- `C:\Users\Oneul\Desktop\Projects\Project-neul\backend\analyzer\src\main\java\com\neul\analyzer\service\VodHighlightAnalyzer.java`
+- `backend/analyzer/src/main/java/com/gak/analyzer/service/VodHighlightAnalyzer.java`
 
 ### core-api
 
-- `C:\Users\Oneul\Desktop\Projects\Project-neul\backend\core-api\src\main\java\com\neul\core_api\domain\chat\controller\VodController.java`
-- `C:\Users\Oneul\Desktop\Projects\Project-neul\backend\core-api\src\main\resources\db\migration`
+- `backend/core-api/src/main/java/com/gak/core_api/domain/chat/controller/VodController.java`
+- `backend/core-api/src/main/resources/db/migration`
 
 ## 7. 현재 남아 있는 주의점
 

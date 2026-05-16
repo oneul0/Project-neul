@@ -7,7 +7,7 @@
 
 ## 배경
 
-`NEUL_OWNER_ASSERTION`은 HMAC-SHA256 서명 기반의 stateless 토큰입니다.  
+`GAK_OWNER_ASSERTION`은 HMAC-SHA256 서명 기반의 stateless 토큰입니다.  
 기존 구조에서는 토큰이 탈취되면 로그아웃해도 만료 전까지 공격자가 계속 사용 가능했습니다.
 
 또한 쿠키에 `Secure` 플래그가 없어 HTTP 환경에서 네트워크 도청으로 탈취 가능했습니다.
@@ -20,14 +20,14 @@
 
 **파일:** `collector/.../ChzzkAuthController.java`
 
-모든 인증 관련 쿠키(`NEUL_CHZZK_AUTH_STATE`, `NEUL_CHZZK_AUTH_SESSION`, `NEUL_OWNER_ASSERTION`)에 `.secure(cookieSecure)` 추가.
+모든 인증 관련 쿠키(`NEUL_CHZZK_AUTH_STATE`, `NEUL_CHZZK_AUTH_SESSION`, `GAK_OWNER_ASSERTION`)에 `.secure(cookieSecure)` 추가.
 
-- `NEUL_COOKIE_SECURE=true` 설정 시 HTTPS에서만 쿠키 전송
-- 로컬 개발(`NEUL_COOKIE_SECURE=false`)은 HTTP 유지
+- `GAK_COOKIE_SECURE=true` 설정 시 HTTPS에서만 쿠키 전송
+- 로컬 개발(`GAK_COOKIE_SECURE=false`)은 HTTP 유지
 
 **프로덕션 `.env`에 반드시 설정:**
 ```env
-NEUL_COOKIE_SECURE=true
+GAK_COOKIE_SECURE=true
 ```
 
 ---
@@ -50,7 +50,7 @@ NEUL_COOKIE_SECURE=true
 ```
 요청 도착
   │
-  ├─ NEUL_OWNER_ASSERTION 쿠키 서명 검증 (HMAC-SHA256)
+  ├─ GAK_OWNER_ASSERTION 쿠키 서명 검증 (HMAC-SHA256)
   │     실패 → 401
   │
   ├─ Redis GET neul:owner-session:{ownerId}
@@ -71,14 +71,14 @@ NEUL_COOKIE_SECURE=true
 ```
 로그아웃 요청
   → ChzzkSessionRegistry.unregister(channelId)  ← Redis 키 삭제
-  → 이후 해당 NEUL_OWNER_ASSERTION 토큰은 즉시 401 응답
+  → 이후 해당 GAK_OWNER_ASSERTION 토큰은 즉시 401 응답
 ```
 
 탈취된 토큰이라도 원본 소유자가 로그아웃하면 **즉시** 무효화됩니다.
 
 #### ownerId 전달 방식 개선
 
-`OwnerAccessFilter`가 검증 후 `exchange.getAttributes().put("neul.ownerId", ownerId)`로 주입합니다.  
+`OwnerAccessFilter`가 검증 후 `exchange.getAttributes().put("gak.ownerId", ownerId)`로 주입합니다.  
 하위 컨트롤러(`VodController`, `UserVodLibraryController`)는 `OwnerIdentityResolver.resolveOwnerId(exchange)`를 통해 재검증 없이 읽습니다.
 
 ---
@@ -87,13 +87,13 @@ NEUL_COOKIE_SECURE=true
 
 **파일:** `ChzzkAuthController.java`
 
-`NEUL_OWNER_ASSERTION` 쿠키 max-age를 Chzzk 토큰 만료와 무관하게 상한으로 제한합니다.
+`GAK_OWNER_ASSERTION` 쿠키 max-age를 Chzzk 토큰 만료와 무관하게 상한으로 제한합니다.
 
 ```java
 long maxAge = Math.min(Math.max(session.getExpiresIn(), 60), tokenMaxAgeSeconds);
 ```
 
-기본값 1시간(`NEUL_TOKEN_MAX_AGE_SECONDS=3600`). 탈취 후 세션 바인딩을 우회하는 시나리오에서도 1시간 이내에 만료됩니다.
+기본값 1시간(`GAK_TOKEN_MAX_AGE_SECONDS=3600`). 탈취 후 세션 바인딩을 우회하는 시나리오에서도 1시간 이내에 만료됩니다.
 
 ---
 
@@ -101,8 +101,8 @@ long maxAge = Math.min(Math.max(session.getExpiresIn(), 60), tokenMaxAgeSeconds)
 
 | 변수 | 기본값 | 설명 |
 |---|---|---|
-| `NEUL_COOKIE_SECURE` | `false` | 프로덕션에서 `true`로 설정 |
-| `NEUL_TOKEN_MAX_AGE_SECONDS` | `3600` | 토큰 최대 유효 시간(초) |
+| `GAK_COOKIE_SECURE` | `false` | 프로덕션에서 `true`로 설정 |
+| `GAK_TOKEN_MAX_AGE_SECONDS` | `3600` | 토큰 최대 유효 시간(초) |
 
 ---
 

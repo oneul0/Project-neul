@@ -76,7 +76,7 @@ LLM이 반환한 JSON의 감정 점수를 파싱 성공만 하면 그대로 사�
 빈 채팅 제거 → 배치 크기 상한(MAX_BATCH_SIZE=30) → 총 문자 수 상한(MAX_INPUT_CHARS=3000)
 ```
 
-- 상한 초과 시 `neul.llm.batch.capped` 카운터 기록
+- 상한 초과 시 `gak.llm.batch.capped` 카운터 기록
 - 입력이 모두 걸러지면 LLM 호출 없이 빈 리스트 반환
 
 ### 3-2. 동적 타임아웃 (`computeTimeout()`)
@@ -93,7 +93,7 @@ timeout = min(90, 20 + batchSize × 1.5) 초
 
 - `VALID_EMOTIONS` Set으로 7개 감정 키 완결성 보장
 - 각 점수를 `Math.max(0.0, Math.min(1.0, score))`로 클램핑
-- 합계 < 0.001이면 NEUTRAL로 교정 + `neul.llm.output.zeroed` 카운터
+- 합계 < 0.001이면 NEUTRAL로 교정 + `gak.llm.output.zeroed` 카운터
 - 예상 외 키 포함 시 WARN 로그
 
 ### 3-4. Semaphore 교체 (`AtomicBoolean` → `Semaphore(1)`)
@@ -108,7 +108,7 @@ if (isProcessing.get()) return Mono.just(List.of()); // 조용한 손실
 // 변경 후
 private final Semaphore llmSlot = new Semaphore(1);
 if (!llmSlot.tryAcquire()) {
-    recordCount("neul.llm.batch.skipped"); // 관측 가능한 이벤트로 전환
+    recordCount("gak.llm.batch.skipped"); // 관측 가능한 이벤트로 전환
     return Mono.just(List.of());
 }
 return doAnalyzeBatch(capped).doFinally(ignored -> llmSlot.release());
@@ -165,9 +165,9 @@ Redis 없이 분석이 막히는 것보다 분석이 진행되는 편이 낫다�
 
 | 메트릭 이름 | 발생 조건 |
 |---|---|
-| `neul.llm.batch.skipped` | Semaphore 슬롯이 사용 중이어서 배치를 스킵 |
-| `neul.llm.batch.capped` | 입력 가드레일이 배치 크기 또는 문자 수를 줄임 |
-| `neul.llm.output.zeroed` | 감정 점수 합계가 0이어서 NEUTRAL로 교정 |
+| `gak.llm.batch.skipped` | Semaphore 슬롯이 사용 중이어서 배치를 스킵 |
+| `gak.llm.batch.capped` | 입력 가드레일이 배치 크기 또는 문자 수를 줄임 |
+| `gak.llm.output.zeroed` | 감정 점수 합계가 0이어서 NEUTRAL로 교정 |
 
 ---
 

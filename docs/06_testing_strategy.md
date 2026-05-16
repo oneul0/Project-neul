@@ -1,7 +1,7 @@
 이 프로젝트의 마이크로서비스 아키텍처(Kafka, Redis, PostgreSQL, SSE)를 검증하기 위한 엔드투엔드(E2E) 테스트 자동화 전략을 정의합니다.
 
 > [!NOTE]
-> 실제 테스트 실행 및 실습 방법은 [03_run_guide.md#5-엔드투엔드e2e-테스트-실행-가이드](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/03_run_guide.md)를 참고하세요.
+> 실제 테스트 실행 및 실습 방법은 [03_run_guide.md](03_run_guide.md)를 참고하세요.
 
 ## 1. 테스트 목적
 - 전체 데이터 흐름(Collector -> Kafka -> Analyzer -> Kafka -> Core API -> SSE/Frontend)의 정합성 검증.
@@ -25,12 +25,12 @@
 
 ### 3.1 백엔드 테스트 디렉토리 구조
 ```text
-backend/core-api/src/test/java/com/neul/core_api/e2e/
+backend/core-api/src/test/java/com/gak/core_api/e2e/
 ├── E2ETestBase.java            # Testcontainers (Kafka, Redis, PG) 추상 베이스
 ├── FullPipelineE2ETest.java    # 시나리오 A 검증
 └── HighlightE2ETest.java       # 시나리오 B 검증
 
-backend/collector/src/test/java/com/neul/collector/mock/
+backend/collector/src/test/java/com/gak/collector/mock/
 └── MockChzzkServer.java        # WebSocket 핸드쉐이크 및 데이터 송출 시뮬레이터
 ```
 

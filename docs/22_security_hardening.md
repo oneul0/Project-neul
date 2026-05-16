@@ -26,7 +26,7 @@
 **문제:** 쿠키 검증 실패 시 `X-Chzzk-Owner-Id` 헤더 → `?ownerId` 쿼리파라미터 순으로 폴백했음.  
 누구나 `X-Chzzk-Owner-Id: victim_id` 헤더 하나로 타인의 VOD 라이브러리, 선호도 프로필, 시청 활동 기록에 접근 가능했음.
 
-**수정:** 쿠키(`NEUL_OWNER_ASSERTION`) 검증만 남기고 헤더·쿼리 폴백 완전 제거.
+**수정:** 쿠키(`GAK_OWNER_ASSERTION`) 검증만 남기고 헤더·쿼리 폴백 완전 제거.
 
 ```java
 // Before
@@ -37,7 +37,7 @@ if (queryOwnerId != null ...) return queryOwnerId;
 
 // After — 쿠키만 허용
 public String resolveOwnerId(ServerHttpRequest request) {
-    if (request.getCookies().containsKey("NEUL_OWNER_ASSERTION")) { ... }
+    if (request.getCookies().containsKey("GAK_OWNER_ASSERTION")) { ... }
     return null;
 }
 ```
@@ -83,7 +83,7 @@ if (internalApiSecret.equals(secret)) {
 return respondNotFound(exchange);
 ```
 
-**환경변수:** `NEUL_INTERNAL_API_SECRET` (기본값 `dev-internal-secret` — 프로덕션에서 반드시 교체)
+**환경변수:** `GAK_INTERNAL_API_SECRET` (기본값 `dev-internal-secret` — 프로덕션에서 반드시 교체)
 
 ---
 
@@ -91,7 +91,7 @@ return respondNotFound(exchange);
 
 **파일:** `backend/analyzer/.../service/OllamaAnalyzerService.java`
 
-`/internal/rag/few-shot` 호출 시 `X-Internal-Secret` 헤더를 포함하도록 수정. `neul.internal-api-secret` 프로퍼티에서 읽음.
+`/internal/rag/few-shot` 호출 시 `X-Internal-Secret` 헤더를 포함하도록 수정. `gak.internal-api-secret` 프로퍼티에서 읽음.
 
 ```java
 return webClient.post()
@@ -107,10 +107,10 @@ return webClient.post()
 
 **파일:** `backend/core-api/.../config/WebConfig.java`
 
-하드코딩된 `http://localhost:3000`을 `@Value`로 대체. 프로덕션 도메인은 `NEUL_CORS_ALLOWED_ORIGINS` 환경변수에 콤마 구분으로 지정.
+하드코딩된 `http://localhost:3000`을 `@Value`로 대체. 프로덕션 도메인은 `GAK_CORS_ALLOWED_ORIGINS` 환경변수에 콤마 구분으로 지정.
 
 ```java
-@Value("${neul.cors.allowed-origins:http://localhost:3000}")
+@Value("${gak.cors.allowed-origins:http://localhost:3000}")
 private String[] allowedOrigins;
 ```
 
@@ -121,14 +121,14 @@ private String[] allowedOrigins;
 `.env` 또는 컨테이너 환경변수에 반드시 설정:
 
 ```env
-NEUL_OWNER_TOKEN_SECRET=<강한 랜덤 시크릿>
-NEUL_INTERNAL_API_SECRET=<강한 랜덤 시크릿>
-NEUL_CORS_ALLOWED_ORIGINS=https://your-domain.com
+GAK_OWNER_TOKEN_SECRET=<강한 랜덤 시크릿>
+GAK_INTERNAL_API_SECRET=<강한 랜덤 시크릿>
+GAK_CORS_ALLOWED_ORIGINS=https://your-domain.com
 ```
 
 미설정 시 서비스 기동 시 WARN 로그가 출력됨:
 ```
-[Security] neul.internal-api-secret is using the insecure default value.
+[Security] gak.internal-api-secret is using the insecure default value.
 ```
 
 ---
@@ -144,7 +144,7 @@ NEUL_CORS_ALLOWED_ORIGINS=https://your-domain.com
     ├─ /api/v1/stream/*, /api/v1/poll/*, /api/v1/donations/*,
     │  /api/v1/roulette/*, /api/v1/vod/*, /api/v1/me/*,
     │  /api/v2/stream/*, /api/v2/state/*
-    │       →  OwnerAccessFilter (NEUL_OWNER_ASSERTION 쿠키 검증)
+    │       →  OwnerAccessFilter (GAK_OWNER_ASSERTION 쿠키 검증)
     │               + 경로에 채널ID 포함 시 소유권 비교
     │
     └─ /api/v1/roulette/* (GET), /api/v1/lives/*

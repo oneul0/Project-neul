@@ -10,10 +10,10 @@
 아래 명령어를 **각각 한 번씩** 실행해 서로 다른 값 5개를 생성합니다.
 
 ```bash
-openssl rand -hex 32   # NEUL_OWNER_TOKEN_SECRET
-openssl rand -hex 32   # NEUL_INTERNAL_API_SECRET
-openssl rand -hex 32   # NEUL_POSTGRES_ADMIN_PASSWORD
-openssl rand -hex 32   # NEUL_POSTGRES_APP_PASSWORD
+openssl rand -hex 32   # GAK_OWNER_TOKEN_SECRET
+openssl rand -hex 32   # GAK_INTERNAL_API_SECRET
+openssl rand -hex 32   # GAK_POSTGRES_ADMIN_PASSWORD
+openssl rand -hex 32   # GAK_POSTGRES_APP_PASSWORD
 ```
 
 출력 예시:
@@ -39,28 +39,28 @@ CHZZK_CLIENT_URI=https://실제도메인.com/api/v1/chzzk/callback
 # ── 보안 시크릿 ──────────────────────────────────────────────────────────────
 # openssl rand -hex 32 로 생성한 값. 각 항목 서로 다른 값 사용.
 # 절대 기본값(dev-***-secret)을 그대로 쓰지 말 것.
-NEUL_OWNER_TOKEN_SECRET=Step1에서_생성한_값_1
-NEUL_INTERNAL_API_SECRET=Step1에서_생성한_값_2
+GAK_OWNER_TOKEN_SECRET=Step1에서_생성한_값_1
+GAK_INTERNAL_API_SECRET=Step1에서_생성한_값_2
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
 # 프론트엔드가 배포된 실제 도메인. 여러 개면 콤마로 구분.
-NEUL_CORS_ALLOWED_ORIGINS=https://실제도메인.com
+GAK_CORS_ALLOWED_ORIGINS=https://실제도메인.com
 
 # ── PostgreSQL 관리자 계정 (Flyway DDL 전용) ──────────────────────────────────
 # docker-compose의 POSTGRES_USER에 해당. 스키마 마이그레이션에만 사용됨.
-NEUL_POSTGRES_ADMIN_USER=neul_admin
-NEUL_POSTGRES_ADMIN_PASSWORD=Step1에서_생성한_값_3
-NEUL_POSTGRES_DB=neul_db
+GAK_POSTGRES_ADMIN_USER=gak_admin
+GAK_POSTGRES_ADMIN_PASSWORD=Step1에서_생성한_값_3
+GAK_POSTGRES_DB=gak_db
 
 # ── PostgreSQL 앱 런타임 계정 (SELECT/INSERT/UPDATE/DELETE만 허용) ─────────────
 # 애플리케이션이 실제로 DB에 접속할 때 사용하는 계정. DDL 권한 없음.
 # docker compose up 시 init-app-user.sh가 자동으로 이 계정을 생성함.
-NEUL_POSTGRES_APP_USER=neul_app
-NEUL_POSTGRES_APP_PASSWORD=Step1에서_생성한_값_4
+GAK_POSTGRES_APP_USER=gak_app
+GAK_POSTGRES_APP_PASSWORD=Step1에서_생성한_값_4
 
 # ── 개발 전용 시드 ────────────────────────────────────────────────────────────
 # 프로덕션에서는 반드시 false
-NEUL_DEV_SEED_ENABLED=false
+GAK_DEV_SEED_ENABLED=false
 ```
 
 > **주의:** `.env` 파일은 `.gitignore`에 등록되어 있습니다. git에 커밋하지 마세요.
@@ -75,22 +75,22 @@ docker compose up -d postgres
 ```
 컨테이너 로그에서 확인:
 ```
-[init-app-user] Runtime user 'neul_app' ready.
+[init-app-user] Runtime user 'gak_app' ready.
 ```
 
 **기존 볼륨이 있는 경우** (볼륨이 존재하면 init 스크립트가 재실행되지 않음):
 ```bash
 # postgres 컨테이너 접속 후 수동 실행
-docker exec -it neul-postgres psql -U $NEUL_POSTGRES_ADMIN_USER -d $NEUL_POSTGRES_DB \
-  -c "CREATE USER neul_app WITH PASSWORD '실제앱패스워드';"
-docker exec -it neul-postgres psql -U $NEUL_POSTGRES_ADMIN_USER -d $NEUL_POSTGRES_DB \
-  -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO neul_app;"
-docker exec -it neul-postgres psql -U $NEUL_POSTGRES_ADMIN_USER -d $NEUL_POSTGRES_DB \
-  -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO neul_app;"
-docker exec -it neul-postgres psql -U $NEUL_POSTGRES_ADMIN_USER -d $NEUL_POSTGRES_DB \
-  -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO neul_app;"
-docker exec -it neul-postgres psql -U $NEUL_POSTGRES_ADMIN_USER -d $NEUL_POSTGRES_DB \
-  -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO neul_app;"
+docker exec -it gak-postgres psql -U $GAK_POSTGRES_ADMIN_USER -d $GAK_POSTGRES_DB \
+  -c "CREATE USER gak_app WITH PASSWORD '실제앱패스워드';"
+docker exec -it gak-postgres psql -U $GAK_POSTGRES_ADMIN_USER -d $GAK_POSTGRES_DB \
+  -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO gak_app;"
+docker exec -it gak-postgres psql -U $GAK_POSTGRES_ADMIN_USER -d $GAK_POSTGRES_DB \
+  -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO gak_app;"
+docker exec -it gak-postgres psql -U $GAK_POSTGRES_ADMIN_USER -d $GAK_POSTGRES_DB \
+  -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO gak_app;"
+docker exec -it gak-postgres psql -U $GAK_POSTGRES_ADMIN_USER -d $GAK_POSTGRES_DB \
+  -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO gak_app;"
 ```
 
 ---
@@ -100,8 +100,8 @@ docker exec -it neul-postgres psql -U $NEUL_POSTGRES_ADMIN_USER -d $NEUL_POSTGRE
 서비스 기동 후 로그에 아래 WARN이 없어야 합니다.
 
 ```
-[Security] neul.owner-token-secret is using the insecure default value.
-[Security] neul.internal-api-secret is using the insecure default value.
+[Security] gak.owner-token-secret is using the insecure default value.
+[Security] gak.internal-api-secret is using the insecure default value.
 ```
 
 WARN이 보이면 `.env` 값이 반영되지 않은 것입니다. 서비스를 재시작하고 다시 확인합니다.
@@ -167,9 +167,9 @@ curl -s -H "Origin: https://evil.com" https://실제도메인.com/api/v1/lives
 1. `openssl rand -hex 32`로 새 값 생성
 2. `.env`의 해당 항목 교체
 3. 영향 받는 서비스 재시작
-   - `NEUL_OWNER_TOKEN_SECRET` 변경 시: core-api, collector 재시작 (기존 로그인 세션 전체 만료)
-   - `NEUL_INTERNAL_API_SECRET` 변경 시: core-api, analyzer 재시작
-   - `NEUL_POSTGRES_APP_PASSWORD` 변경 시: postgres 컨테이너에서 `ALTER USER neul_app WITH PASSWORD '새값';` 실행 후 core-api 재시작
+   - `GAK_OWNER_TOKEN_SECRET` 변경 시: core-api, collector 재시작 (기존 로그인 세션 전체 만료)
+   - `GAK_INTERNAL_API_SECRET` 변경 시: core-api, analyzer 재시작
+   - `GAK_POSTGRES_APP_PASSWORD` 변경 시: postgres 컨테이너에서 `ALTER USER gak_app WITH PASSWORD '새값';` 실행 후 core-api 재시작
 4. 로그에서 WARN 없음 확인
 
 ---

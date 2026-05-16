@@ -21,7 +21,7 @@ Java 구현체와 Rust 구현체가 동일한 입력에 대해 항상 동일한 
 
 ## 2. 문서화 가이드 (Documentation Guide)
 
-### 2-1. 성능 전이 로그 ([08_performance_migration_log.md](file:///c:/Users/Oneul/Desktop/Projects/Project-neul/docs/08_performance_migration_log.md))
+### 2-1. 성능 전이 로그 ([08_performance_migration_log.md](08_performance_migration_log.md))
 최적화 세션마다 다음 내용을 기록합니다.
 - **Target**: 최적화 대상 메서드/클래스.
 - **Metric Table**: Java 초기값, Rust 결과값, 개선율(%).

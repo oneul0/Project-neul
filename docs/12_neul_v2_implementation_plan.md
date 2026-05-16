@@ -1,4 +1,4 @@
-# [늘(neul) v2] 구현 계획서
+# [각(gak) v2] 구현 계획서
 
 > 작성일: 2026-03-29  
 > 목적: 기존 v1 구조를 유지하면서, 실시간 심리 가드레일 시스템 v2를 안전하게 분리 구현하기 위한 개발 기준 문서
@@ -18,7 +18,7 @@
 핵심 원칙은 다음과 같다.
 
 - 기존 v1 파이프라인은 유지한다.
-- v2는 `com.neul.v2` 네임스페이스와 `v2-` 토픽 접두어로 완전히 분리한다.
+- v2는 `com.gak.v2` 네임스페이스와 `v2-` 토픽 접두어로 완전히 분리한다.
 - 초기 전달 계층은 SSE를 유지하고, 기능 안정화 후 RSocket 전환을 검토한다.
 
 ---
@@ -63,7 +63,7 @@ graph LR
 
 ### 현재 구조에서 부족한 부분
 
-- `com.neul.v2` 패키지 분리 부재
+- `com.gak.v2` 패키지 분리 부재
 - `v2-` 토픽 체계 부재
 - 병렬 Agent 구조 부재
 - Trust Score / 유저 등급 엔진 부재
@@ -92,7 +92,7 @@ v2는 단순 채팅 감정 분석이 아니라, 스트리머의 인지 부하와
 ### 4.1 분리 원칙
 
 - v2는 기존 v1 클래스에 로직을 섞지 않는다.
-- 신규 코드는 원칙적으로 `com.neul.v2` 하위에만 작성한다.
+- 신규 코드는 원칙적으로 `com.gak.v2` 하위에만 작성한다.
 - v2 Kafka topic은 모두 `v2-` 접두어를 사용한다.
 - v1과 v2는 독립적으로 배포 및 롤백 가능해야 한다.
 
@@ -152,7 +152,7 @@ graph LR
 ### 6.1 common
 
 ```text
-backend/common/src/main/java/com/neul/v2/common/dto
+backend/common/src/main/java/com/gak/v2/common/dto
 ```
 
 추가 DTO 목록:
@@ -170,7 +170,7 @@ backend/common/src/main/java/com/neul/v2/common/dto
 ### 6.2 collector
 
 ```text
-backend/collector/src/main/java/com/neul/collector/v2
+backend/collector/src/main/java/com/gak/collector/v2
 ```
 
 추천 클래스:
@@ -182,7 +182,7 @@ backend/collector/src/main/java/com/neul/collector/v2
 ### 6.3 analyzer
 
 ```text
-backend/analyzer/src/main/java/com/neul/v2
+backend/analyzer/src/main/java/com/gak/v2
 ```
 
 추천 하위 패키지:
@@ -212,7 +212,7 @@ backend/analyzer/src/main/java/com/neul/v2
 ### 6.4 core-api
 
 ```text
-backend/core-api/src/main/java/com/neul/v2
+backend/core-api/src/main/java/com/gak/v2
 ```
 
 추천 클래스:
@@ -787,45 +787,45 @@ emaPositive = alpha * currentPositive + (1 - alpha) * previousEmaPositive
 
 ### 공통
 
-- `NEUL-V2-01` v2 DTO 추가
-- `NEUL-V2-02` v2 Kafka topic 설정 추가
+- `GAK-V2-01` v2 DTO 추가
+- `GAK-V2-02` v2 Kafka topic 설정 추가
 
 ### Collector
 
-- `NEUL-V2-03` `V2ChatProducer` 구현
-- `NEUL-V2-04` raw chat -> `V2RawChatMessage` 매핑 추가
+- `GAK-V2-03` `V2ChatProducer` 구현
+- `GAK-V2-04` raw chat -> `V2RawChatMessage` 매핑 추가
 
 ### Analyzer
 
-- `NEUL-V2-05` Sentiment Agent 구현
-- `NEUL-V2-06` Troll Agent 구현
-- `NEUL-V2-07` Trust Score Redis 반영 구현
-- `NEUL-V2-08` Context Agent 구현
-- `NEUL-V2-09` Anchor Chat 추출기 구현
-- `NEUL-V2-10` Aggregator 구현
-- `NEUL-V2-11` EMA Buffer 계산기 구현
-- `NEUL-V2-12` Narrative Briefing 구현
+- `GAK-V2-05` Sentiment Agent 구현
+- `GAK-V2-06` Troll Agent 구현
+- `GAK-V2-07` Trust Score Redis 반영 구현
+- `GAK-V2-08` Context Agent 구현
+- `GAK-V2-09` Anchor Chat 추출기 구현
+- `GAK-V2-10` Aggregator 구현
+- `GAK-V2-11` EMA Buffer 계산기 구현
+- `GAK-V2-12` Narrative Briefing 구현
 
 ### Core API
 
-- `NEUL-V2-13` `V2StreamService` 구현
-- `NEUL-V2-14` `/api/v2/stream/{roomId}` SSE endpoint 추가
-- `NEUL-V2-15` v2 상태 조회 API 추가
+- `GAK-V2-13` `V2StreamService` 구현
+- `GAK-V2-14` `/api/v2/stream/{roomId}` SSE endpoint 추가
+- `GAK-V2-15` v2 상태 조회 API 추가
 
 ### Frontend
 
-- `NEUL-V2-16` v2 dashboard state 모델 추가
-- `NEUL-V2-17` Mental Buffer UI 추가
-- `NEUL-V2-18` Anchor Chat UI 추가
-- `NEUL-V2-19` Narrative Briefing UI 추가
-- `NEUL-V2-20` Trust Filter UI 추가
+- `GAK-V2-16` v2 dashboard state 모델 추가
+- `GAK-V2-17` Mental Buffer UI 추가
+- `GAK-V2-18` Anchor Chat UI 추가
+- `GAK-V2-19` Narrative Briefing UI 추가
+- `GAK-V2-20` Trust Filter UI 추가
 
 ### 품질
 
-- `NEUL-V2-21` 단위 테스트 추가
-- `NEUL-V2-22` 통합 테스트 추가
-- `NEUL-V2-23` latency/perf 테스트 추가
-- `NEUL-V2-24` v1/v2 분리 회귀 검증
+- `GAK-V2-21` 단위 테스트 추가
+- `GAK-V2-22` 통합 테스트 추가
+- `GAK-V2-23` latency/perf 테스트 추가
+- `GAK-V2-24` v1/v2 분리 회귀 검증
 
 ---
 

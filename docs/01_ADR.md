@@ -1,6 +1,6 @@
 # Consolidated Architecture Decision Records (ADR)
 
-이 문서는 프로젝트 "늘(Neul)"의 모든 아키텍처 결정 사항을 통합 관리합니다.
+이 문서는 프로젝트 "각(Gak)"의 모든 아키텍처 결정 사항을 통합 관리합니다.
 
 ---
 
@@ -56,7 +56,7 @@
 ## [상세] ADR-005: Chat Optimizer 패턴 비교 및 채택
 
 ### Context
-`neul-analyzer`는 Kafka로부터 대규모 채팅 배칭을 수신하며, API 토큰 비용 및 JVM 연산 비용 최적화가 필요함. 장기적으로 Rust 네이티브 모듈 연동을 고려한 설계가 요구됨.
+`gak-analyzer`는 Kafka로부터 대규모 채팅 배칭을 수신하며, API 토큰 비용 및 JVM 연산 비용 최적화가 필요함. 장기적으로 Rust 네이티브 모듈 연동을 고려한 설계가 요구됨.
 
 ### Decision
 4가지 패턴(Strategy, Template Method, Chain of Responsibility, Port & Adapter)을 비교한 결과 **Port & Adapter (Hexagonal Architecture)**를 채택함.

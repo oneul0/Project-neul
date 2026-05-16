@@ -1,6 +1,6 @@
-# Project Neul 실행 가이드
+# Project Gak (각) 실행 가이드
 
-최종 업데이트: 2026-04-01
+최종 업데이트: 2026-05-16
 
 이 문서는 현재 코드 기준 실행 순서를 정리한 문서입니다.
 예전 문서에 있던 `schema.sql` 수동 반영, 공개 대시보드 전제, 오래된 배치 설명은 모두 제외했습니다.
@@ -31,17 +31,17 @@
 - 로컬 `5432`가 이미 다른 PostgreSQL에 사용 중이면 `backend/.env`에 아래 값을 추가합니다.
 
 ```env
-NEUL_POSTGRES_HOST_PORT=55432
+GAK_POSTGRES_HOST_PORT=55432
 ```
 
-- `core-api`는 `backend/.env`의 `NEUL_POSTGRES_HOST`, `NEUL_POSTGRES_HOST_PORT`, `NEUL_POSTGRES_DB`, `NEUL_POSTGRES_USER`, `NEUL_POSTGRES_PASSWORD`를 읽습니다.
+- `core-api`는 `backend/.env`의 `GAK_POSTGRES_HOST`, `GAK_POSTGRES_HOST_PORT`, `GAK_POSTGRES_DB`, `GAK_POSTGRES_APP_USER`, `GAK_POSTGRES_APP_PASSWORD`를 읽습니다.
 
 ## 3. 권장 실행 순서
 
 ### 3-1. 인프라 실행
 
 ```powershell
-cd C:\Users\Oneul\Desktop\Projects\Project-neul\backend
+cd backend
 docker compose up -d
 ```
 
@@ -56,32 +56,32 @@ docker ps
 중요:
 
 - core-api 시작 시 Flyway가 DB 스키마를 최신 상태로 맞춥니다.
-- `backend/.env`에 `NEUL_POSTGRES_HOST_PORT`를 넣었다면 같은 값으로 Docker 포트와 core-api 연결이 함께 바뀝니다.
+- `backend/.env`에 `GAK_POSTGRES_HOST_PORT`를 넣었다면 같은 값으로 Docker 포트와 core-api 연결이 함께 바뀝니다.
 - `8083` 포트가 이미 다른 프로세스에 사용 중이면 core-api가 시작되지 않습니다. 이 경우 먼저 해당 프로세스를 종료한 뒤 다시 실행합니다.
 
 ```powershell
-cd C:\Users\Oneul\Desktop\Projects\Project-neul\backend
+cd backend
 .\gradlew.bat :core-api:bootRun
 ```
 
 ### 3-3. analyzer 실행
 
 ```powershell
-cd C:\Users\Oneul\Desktop\Projects\Project-neul\backend
+cd backend
 .\gradlew.bat :analyzer:bootRun
 ```
 
 ### 3-4. collector 실행
 
 ```powershell
-cd C:\Users\Oneul\Desktop\Projects\Project-neul\backend
+cd backend
 .\gradlew.bat :collector:bootRun
 ```
 
 ### 3-5. frontend 실행
 
 ```powershell
-cd C:\Users\Oneul\Desktop\Projects\Project-neul\frontend
+cd frontend
 npm run dev
 ```
 
@@ -126,7 +126,7 @@ curl.exe -X POST "http://localhost:8081/api/v1/dev/mock-chat/채널ID?count=10"
 ## 8. 자주 하는 실수
 
 - 로컬 PostgreSQL이 5432를 잡고 있어 Docker DB 대신 그쪽으로 붙는 경우
-- 위 상황이면 `backend/.env`에 `NEUL_POSTGRES_HOST_PORT=55432`처럼 별도 포트를 지정하고 `docker compose up -d`부터 다시 실행합니다.
+- 위 상황이면 `backend/.env`에 `GAK_POSTGRES_HOST_PORT=55432`처럼 별도 포트를 지정하고 `docker compose up -d`부터 다시 실행합니다.
 - 로컬에서 다른 서버가 8083을 사용 중이라 core-api가 `Port 8083 was already in use`로 종료되는 경우
 - core-api보다 먼저 collector를 띄워 상태 조회가 꼬이는 경우
 - analyzer가 늦게 떠서 completion 이벤트를 놓치는 경우
@@ -139,13 +139,13 @@ curl.exe -X POST "http://localhost:8081/api/v1/dev/mock-chat/채널ID?count=10"
 인프라는:
 
 ```powershell
-cd C:\Users\Oneul\Desktop\Projects\Project-neul\backend
+cd backend
 docker compose down
 ```
 
 데이터까지 초기화하려면:
 
 ```powershell
-cd C:\Users\Oneul\Desktop\Projects\Project-neul\backend
+cd backend
 docker compose down -v
 ```

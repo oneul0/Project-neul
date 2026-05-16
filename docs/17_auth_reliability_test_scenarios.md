@@ -214,22 +214,22 @@ After the auth-fix-specific scenarios passed, we attempted to continue into real
 - **Result**: compile issue resolved, application reached Spring Boot startup
 - **New blocker**:
   - Flyway failed during startup with:
-    - `FATAL: password authentication failed for user "neul_user"`
+    - `FATAL: password authentication failed for user "gak_app"`
 
 ### Step D — Environment diagnosis
 
-- Runtime container/process check showed port `5432` already occupied by a different PostgreSQL instance (`getopp-postgres`), not the expected `neul-postgres` from this project compose stack.
-- This means the current machine state is not actually pointing at the intended Neul database, even though the port is open.
+- Runtime container/process check showed port `5432` already occupied by a different PostgreSQL instance (`getopp-postgres`), not the expected `gak-postgres` from this project compose stack.
+- This means the current machine state is not actually pointing at the intended Gak database, even though the port is open.
 
 ### Extended verification conclusion
 
 The owner-auth reliability fix itself is verified, but full owner-flow runtime verification is still blocked by local environment mismatches:
 
 1. backend compile path required Java 17 instead of the shell default Java 25
-2. core-api cannot start until `127.0.0.1:5432` resolves to the expected Neul PostgreSQL with credentials:
-   - database: `neul_db`
-   - user: `neul_user`
-   - password: `neul_password`
+2. core-api cannot start until `127.0.0.1:5432` resolves to the expected Gak PostgreSQL with credentials:
+   - database: `gak_db`
+   - user: `gak_app`
+   - password: `gak_app_password`
 3. until `8083` is healthy, poll / V2 / VOD owner-flow verification cannot be completed end-to-end
 
 ## 9. Final continuation run
@@ -239,10 +239,10 @@ We continued past the initial blocker by avoiding destructive changes to the mac
 ### Step E — Safe PostgreSQL workaround
 
 - Left the unrelated `getopp-postgres` on `5432` untouched.
-- Started a separate Neul PostgreSQL instance on `55432` with:
-  - database: `neul_db`
-  - user: `neul_user`
-  - password: `neul_password`
+- Started a separate Gak PostgreSQL instance on `55432` with:
+  - database: `gak_db`
+  - user: `gak_app`
+  - password: `gak_app_password`
 
 ### Step F — core-api boot with Java 17 + alternate DB
 
@@ -294,7 +294,7 @@ The remaining blockers are environmental, not auth logic:
 - real CHZZK owner login session was not established in this run, so owner mode was validated via browser-mocked `/api/chzzk/me`
 - downstream channel `test-channel` does not currently resolve to a live/valid collector/core dataset
 - local Java must use 17 for backend startup
-- local default PostgreSQL on `5432` still does not match the Neul credentials expected by `core-api`; this run used a safe alternate DB on `55432`
+- local default PostgreSQL on `5432` still does not match the Gak credentials expected by `core-api`; this run used a safe alternate DB on `55432`
 
 ## 11. Exit criteria
 

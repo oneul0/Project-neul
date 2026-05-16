@@ -24,12 +24,12 @@
 |------|------|
 | CHZZK OAuth 로그인 | 치지직 공식 OAuth 흐름. `frontend → Next proxy → collector → callback` |
 | Owner 전용 대시보드 | 로그인한 스트리머 본인 채널에만 접근 허용 |
-| HMAC-SHA256 토큰 | `NEUL_OWNER_ASSERTION` 쿠키 — 서명 + 세션 바인딩 구조 |
+| HMAC-SHA256 토큰 | `GAK_OWNER_ASSERTION` 쿠키 — 서명 + 세션 바인딩 구조 |
 | 즉시 revocation | 로그아웃 시 Redis 세션 키 삭제 → 탈취된 토큰 무효화 |
 | `OwnerAccessFilter` | `/api/v1/vod/**`, `/api/v1/me/**` 등 보호 경로 쿠키 검증 |
 | `InternalAccessFilter` | `/internal/**` 마이크로서비스 전용 경로 — `X-Internal-Secret` 헤더 검증, 불일치 시 404 |
 | `OwnerValidationFilter` | collector 단 소유자 검증 필터 |
-| Secure 쿠키 플래그 | `NEUL_COOKIE_SECURE=true` 설정 시 HTTPS 전용 쿠키 전송 |
+| Secure 쿠키 플래그 | `GAK_COOKIE_SECURE=true` 설정 시 HTTPS 전용 쿠키 전송 |
 
 ### 라이브 채팅 분석
 
@@ -108,7 +108,7 @@ collector ─(Kafka)─► analyzer (8082)  ← 감정 분석, 편집 후보 계
 로그인 버튼
   → Next proxy → collector /chzzk/login
   → CHZZK OAuth callback
-  → Redis 세션 저장 + NEUL_OWNER_ASSERTION 쿠키 발급
+  → Redis 세션 저장 + GAK_OWNER_ASSERTION 쿠키 발급
   → 이후 모든 요청에서 OwnerAccessFilter가 쿠키 서명·세션 검증
 ```
 
@@ -144,9 +144,9 @@ collector ─(Kafka)─► analyzer (8082)  ← 감정 분석, 편집 후보 계
 ```env
 CHZZK_CLIENT_ID=...
 CHZZK_CLIENT_SECRET=...
-NEUL_OWNER_JWT_SECRET=...
-NEUL_INTERNAL_API_SECRET=...
-NEUL_COOKIE_SECURE=false   # 로컬은 false, 프로덕션은 true
+GAK_OWNER_TOKEN_SECRET=...
+GAK_INTERNAL_API_SECRET=...
+GAK_COOKIE_SECURE=false   # 로컬은 false, 프로덕션은 true
 ```
 
 로컬 5432 포트 충돌 시:
@@ -218,7 +218,7 @@ owner 검증 필터가 `OPTIONS` preflight를 차단한 경우입니다.
 
 ---
 
-### `neul_user` / `gak_app` 비밀번호 인증 실패
+### `gak_app` 비밀번호 인증 실패
 
 로컬 PostgreSQL 서비스와 Docker PostgreSQL이 동시에 실행 중인 경우입니다.
 
@@ -273,7 +273,7 @@ frontend는 `timeline`이 비면 `highlights` 기반 fallback 타임라인을 �
 
 `GlobalErrorHandler` 컴포넌트가 401 응답을 감지하면 로그인 페이지로 리다이렉트합니다.  
 502 에러도 동일하게 UI 메시지를 표시합니다.  
-상태가 이상하면 브라우저 쿠키(`NEUL_OWNER_ASSERTION`)를 삭제하고 재로그인하세요.
+상태가 이상하면 브라우저 쿠키(`GAK_OWNER_ASSERTION`)를 삭제하고 재로그인하세요.
 
 ---
 
@@ -281,7 +281,7 @@ frontend는 `timeline`이 비면 `highlights` 기반 fallback 타임라인을 �
 
 로그아웃하면 Redis에서 `neul:owner-session:{ownerId}` 키가 삭제됩니다.  
 이후 탈취된 토큰으로 요청이 와도 세션 불일치로 401을 반환합니다.  
-프로덕션 환경에서는 `NEUL_COOKIE_SECURE=true`로 설정해 HTTP 도청을 차단하세요.
+프로덕션 환경에서는 `GAK_COOKIE_SECURE=true`로 설정해 HTTP 도청을 차단하세요.
 
 ---
 

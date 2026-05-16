@@ -95,7 +95,7 @@ docker compose up -d kafka
 - 앱은 정상 기동
 - 첫 LLM 호출 시 `Connection refused` → CircuitBreaker OPEN
 - 로그: `[OllamaAnalyzerService] LLM call failed, circuit breaker may open`
-- OPEN 상태에서는 이후 배치도 즉시 실패하며 `neul.llm.batch.skipped` 카운터 증가
+- OPEN 상태에서는 이후 배치도 즉시 실패하며 `gak.llm.batch.skipped` 카운터 증가
 
 **복구**
 ```bash
@@ -155,7 +155,7 @@ curl -s http://localhost:8081/api/v1/vod/{videoNo}/status
 redis-cli ping
 
 # Kafka 토픽 목록
-docker exec neul-kafka kafka-topics.sh --bootstrap-server localhost:9092 --list
+docker exec gak-kafka kafka-topics.sh --bootstrap-server localhost:9092 --list
 
 # Ollama 모델 상태
 ollama list
