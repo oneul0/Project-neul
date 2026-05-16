@@ -31,8 +31,8 @@ import java.util.Map;
 public class ChzzkAuthController {
 
     private static final Duration REFRESH_SKEW = Duration.ofMinutes(5);
-    private static final String AUTH_STATE_COOKIE = "NEUL_CHZZK_AUTH_STATE";
-    private static final String AUTH_SESSION_COOKIE = "NEUL_CHZZK_AUTH_SESSION";
+    private static final String AUTH_STATE_COOKIE = "GAK_CHZZK_AUTH_STATE";
+    private static final String AUTH_SESSION_COOKIE = "GAK_CHZZK_AUTH_SESSION";
     private static final String OWNER_ASSERTION_COOKIE = "GAK_OWNER_ASSERTION";
 
     private final ChzzkAuthStore authStore;

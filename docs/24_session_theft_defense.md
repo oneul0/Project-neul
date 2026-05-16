@@ -20,7 +20,7 @@
 
 **파일:** `collector/.../ChzzkAuthController.java`
 
-모든 인증 관련 쿠키(`NEUL_CHZZK_AUTH_STATE`, `NEUL_CHZZK_AUTH_SESSION`, `GAK_OWNER_ASSERTION`)에 `.secure(cookieSecure)` 추가.
+모든 인증 관련 쿠키(`GAK_CHZZK_AUTH_STATE`, `GAK_CHZZK_AUTH_SESSION`, `GAK_OWNER_ASSERTION`)에 `.secure(cookieSecure)` 추가.
 
 - `GAK_COOKIE_SECURE=true` 설정 시 HTTPS에서만 쿠키 전송
 - 로컬 개발(`GAK_COOKIE_SECURE=false`)은 HTTP 유지
