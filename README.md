@@ -196,11 +196,11 @@ curl -X POST "http://localhost:8083/dev/seed/{channelId}"
 
 ## 트러블슈팅
 
-### `${CHZZK_CLIENT_ID}`가 URL에 그대로 노출될 때
+### `${CHZZK_CLIENT_ID}`가 URL에 그대로 노출
 
-`backend/.env`가 Spring에 로드되지 않은 경우입니다.
+**원인** — `backend/.env`가 Spring에 로드되지 않음
 
-`collector/src/main/resources/application.yaml`에 아래 항목이 있는지 확인:
+**해결** — `collector/src/main/resources/application.yaml`에 아래 항목 추가:
 
 ```yaml
 spring:
@@ -212,77 +212,81 @@ spring:
 
 ---
 
-### CORS 에러처럼 보이는데 실제로는 preflight가 막힐 때
+### CORS 에러처럼 보이는데 실제로는 preflight 차단
 
-owner 검증 필터가 `OPTIONS` preflight를 차단한 경우입니다.  
-브라우저가 `8081`, `8083`을 직접 호출하지 않도록 반드시 **Next API proxy 경유**로 요청해야 합니다.
+**원인** — owner 검증 필터가 브라우저의 `OPTIONS` preflight 요청을 막음
+
+**해결** — 브라우저가 `8081`, `8083` 포트를 직접 호출하지 않도록 반드시 **Next.js API proxy 경유**로 요청해야 합니다.
 
 ---
 
 ### `gak_app` 비밀번호 인증 실패
 
-로컬 PostgreSQL 서비스와 Docker PostgreSQL이 동시에 실행 중인 경우입니다.
+**원인** — 로컬 PostgreSQL 서비스와 Docker PostgreSQL이 같은 포트(5432)에서 동시에 실행 중
+
+**해결** — 로컬 PostgreSQL을 중지한 뒤 Docker 컨테이너 상태를 확인:
 
 ```bash
-# 로컬 PostgreSQL 중지 (macOS)
+# macOS
 brew services stop postgresql@15
 
 # Windows
 Get-Service postgresql-x64-15 | Stop-Service
 
-docker ps  # gak-postgres 컨테이너 실행 중인지 확인
+docker ps  # gak-postgres 컨테이너가 실행 중인지 확인
 ```
 
 ---
 
 ### `relation "vod_timeline_points" does not exist`
 
-core-api 부팅 시 Flyway 마이그레이션이 실행되지 않은 경우입니다.
+**원인** — core-api 최초 부팅 시 Flyway 마이그레이션이 실행되지 않음
 
-core-api 로그에서 `Flyway migrate` 성공 여부를 확인하세요.  
-수동 `schema.sql` 반영은 더 이상 사용하지 않습니다.
+**해결** — core-api 로그에서 `Flyway migrate` 성공 메시지 확인. 수동 `schema.sql` 적용은 더 이상 사용하지 않으며, core-api를 먼저 실행해야 스키마가 생성됩니다.
 
 ---
 
-### VOD 분석 상태가 `ANALYZING`에서 멈출 때
+### VOD 분석 상태가 `ANALYZING`에서 멈춤
 
-`vod-analysis-complete-topic` 이벤트 체인이 끊긴 경우입니다.
+**원인** — `vod-analysis-complete-topic` 이벤트 체인이 끊겨 상태 전이가 일어나지 않음
+
+**해결** — 순서대로 확인:
 
 1. analyzer 로그에서 완료 이벤트 발행 여부 확인
 2. collector consumer group이 해당 토픽을 구독 중인지 확인
-3. core-api에 highlights가 이미 존재하면 collector가 자동으로 `COMPLETED`로 보정합니다
+3. core-api에 highlights가 이미 존재하면 collector가 자동으로 `COMPLETED`로 보정
 
 ---
 
-### VOD 하이라이트가 앞쪽 시간대에 몰릴 때
+### VOD 하이라이트가 앞쪽 시간대에만 몰림
 
-채팅 밀도가 높은 구간이 항상 상위 점수를 독점하는 현상입니다.  
-현재 로직은 시간대 버킷 대표를 우선 확보하고, 남은 슬롯을 전역 상위로 채웁니다.  
-`transitionScore`를 높이면 조용하다가 급증하는 구간 가중치를 높일 수 있습니다.
+**원인** — 채팅 밀도가 높은 초반 구간이 점수를 독점해 후반 구간이 선별되지 않음
 
----
-
-### 타임라인이 비어 있고 하이라이트만 보일 때
-
-`vod_timeline_points` 저장 또는 조회가 실패한 경우입니다.  
-frontend는 `timeline`이 비면 `highlights` 기반 fallback 타임라인을 자동 생성하므로 화면이 완전히 비지는 않습니다.  
-정확한 전체 타임라인이 필요하다면 core-api의 timeline 저장 경로 로그를 확인하세요.
+**해결** — 현재 로직은 시간대 버킷 대표를 먼저 확보한 뒤 남은 슬롯을 전역 상위로 채웁니다. `transitionScore` 가중치를 높이면 조용하다가 급증하는 구간을 더 적극적으로 선별할 수 있습니다.
 
 ---
 
-### 로그인 만료 후 API 요청이 자동으로 실패할 때
+### 타임라인이 비어 있고 하이라이트만 보임
 
-`GlobalErrorHandler` 컴포넌트가 401 응답을 감지하면 로그인 페이지로 리다이렉트합니다.  
-502 에러도 동일하게 UI 메시지를 표시합니다.  
-상태가 이상하면 브라우저 쿠키(`GAK_OWNER_ASSERTION`)를 삭제하고 재로그인하세요.
+**원인** — `vod_timeline_points` 저장 또는 조회 실패
+
+**해결** — frontend는 `timeline`이 비면 `highlights` 기반 fallback 타임라인을 자동 생성하므로 화면이 완전히 비지는 않습니다. 정확한 전체 타임라인이 필요하다면 core-api의 timeline 저장 경로 로그를 확인하세요.
 
 ---
 
-### 토큰 탈취 시 대응
+### 로그인 만료 후 API 요청이 자동으로 실패
 
-로그아웃하면 Redis에서 `gak:owner-session:{ownerId}` 키가 삭제됩니다.  
-이후 탈취된 토큰으로 요청이 와도 세션 불일치로 401을 반환합니다.  
-프로덕션 환경에서는 `GAK_COOKIE_SECURE=true`로 설정해 HTTP 도청을 차단하세요.
+**원인** — 세션 만료로 서버가 401을 반환하고, `GlobalErrorHandler`가 이를 감지해 리다이렉트
+
+**해결** — 브라우저 쿠키(`GAK_OWNER_ASSERTION`)를 삭제하고 재로그인. 502 에러도 동일하게 UI 메시지로 표시됩니다.
+
+---
+
+### 로그아웃 후에도 탈취된 토큰이 작동하는 것 같을 때
+
+**원인** — stateless 토큰은 서명만 유효하면 서버가 추가 검증 없이 수락하는 구조
+
+**해결** — 이 프로젝트는 Redis 세션 바인딩으로 즉시 revocation을 지원합니다. 로그아웃하면 `gak:owner-session:{ownerId}` 키가 즉시 삭제되어 이후 요청은 세션 불일치로 401을 반환합니다. 프로덕션에서는 반드시 `GAK_COOKIE_SECURE=true`로 설정해 HTTP 도청을 차단하세요.
 
 ---
 
