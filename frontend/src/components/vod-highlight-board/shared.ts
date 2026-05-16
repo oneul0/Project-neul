@@ -467,12 +467,12 @@ export function getStatusToneClass(
   isAnalysisActive: boolean,
 ) {
   return status.status === "COMPLETED"
-    ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+    ? "border-[#00FFA3]/25 bg-[#00FFA3]/10 text-[#00FFA3]"
     : status.status === "FAILED"
-      ? "border-amber-200 bg-amber-50 text-amber-900"
+      ? "border-amber-500/25 bg-amber-500/10 text-amber-400"
       : isAnalysisActive
-        ? "border-indigo-200 bg-indigo-50 text-indigo-900"
-        : "border-slate-200 bg-slate-50 text-slate-900";
+        ? "border-[#00FFA3]/25 bg-[#00FFA3]/10 text-[#00FFA3]"
+        : "border-white/[0.08] bg-[#1A1A1A] text-white/50";
 }
 
 export function getWorkspacePrimaryLabel(params: {
@@ -505,7 +505,7 @@ export function buildLookupState(params: {
     return {
       label: "조회 중",
       summary: "입력한 VOD를 확인하고 있습니다.",
-      toneClass: "border-indigo-200 bg-indigo-50 text-indigo-900",
+      toneClass: "border-[#00FFA3]/25 bg-[#00FFA3]/10 text-[#00FFA3]",
     };
   }
 
@@ -514,7 +514,7 @@ export function buildLookupState(params: {
       label: "VOD 선택 전",
       summary: "조회할 VOD를 아직 선택하지 않았습니다.",
       helpSummary: "번호만 입력하거나 전체 URL을 붙여 넣은 뒤 조회하면 됩니다.",
-      toneClass: "border-slate-200 bg-slate-50 text-slate-900",
+      toneClass: "border-white/[0.08] bg-[#1A1A1A] text-white/50",
     };
   }
 
@@ -524,7 +524,7 @@ export function buildLookupState(params: {
         label: "기존 결과 있음",
         summary: `${metadata.title || `VOD ${metadata.videoNo}`} 결과를 바로 열 수 있습니다.`,
         helpSummary: "이 VOD는 이미 분석되어 있어 새 분석 없이 바로 워크스페이스를 열 수 있습니다.",
-        toneClass: "border-emerald-200 bg-emerald-50 text-emerald-900",
+        toneClass: "border-[#00FFA3]/25 bg-[#00FFA3]/10 text-[#00FFA3]",
       };
     }
 
@@ -532,7 +532,7 @@ export function buildLookupState(params: {
       label: "찾았습니다",
       summary: `${metadata.title || `VOD ${metadata.videoNo}`} 준비 완료`,
       helpSummary: "영상 메타데이터 확인이 끝났습니다. 이어서 분석을 시작하면 편집 후보를 계산합니다.",
-      toneClass: "border-emerald-200 bg-emerald-50 text-emerald-900",
+      toneClass: "border-[#00FFA3]/25 bg-[#00FFA3]/10 text-[#00FFA3]",
     };
   }
 
@@ -558,7 +558,7 @@ export function buildSelectedVodState(params: {
       label: "VOD 선택 전",
       summary: "선택한 VOD 정보가 아직 없습니다.",
       helpSummary: "상단에서 조회한 VOD가 여기에 채워집니다.",
-      toneClass: "border-slate-200 bg-slate-50 text-slate-900",
+      toneClass: "border-white/[0.08] bg-[#1A1A1A] text-white/50",
     };
   }
 
@@ -583,8 +583,8 @@ export function buildSelectedVodState(params: {
   if (status.status === "CRAWLING") {
     return {
       label: "채팅 수집 중",
-      summary: `현재 ${status.pagesProcessed ?? 0}페이지, ${status.chatsCollected ?? 0}개 채팅을 확인하고 있습니다.`,
-      toneClass: "border-indigo-200 bg-indigo-50 text-indigo-900",
+      summary: `채팅 ${status.chatsCollected ?? 0}개를 분석 중입니다.`,
+      toneClass: "border-[#00FFA3]/25 bg-[#00FFA3]/10 text-[#00FFA3]",
     };
   }
 
@@ -592,7 +592,7 @@ export function buildSelectedVodState(params: {
     return {
       label: "차례 대기 중",
       summary: status.message || "분석 작업이 순서를 기다리고 있습니다.",
-      toneClass: "border-indigo-200 bg-indigo-50 text-indigo-900",
+      toneClass: "border-[#00FFA3]/25 bg-[#00FFA3]/10 text-[#00FFA3]",
     };
   }
 
@@ -600,7 +600,7 @@ export function buildSelectedVodState(params: {
     return {
       label: "요청 접수",
       summary: status.message || "분석 요청이 등록되었습니다.",
-      toneClass: "border-indigo-200 bg-indigo-50 text-indigo-900",
+      toneClass: "border-[#00FFA3]/25 bg-[#00FFA3]/10 text-[#00FFA3]",
     };
   }
 
@@ -608,7 +608,7 @@ export function buildSelectedVodState(params: {
     return {
       label: "후보 계산 중",
       summary: status.message || "편집 후보를 계산하고 있습니다.",
-      toneClass: "border-indigo-200 bg-indigo-50 text-indigo-900",
+      toneClass: "border-[#00FFA3]/25 bg-[#00FFA3]/10 text-[#00FFA3]",
     };
   }
 
@@ -621,7 +621,7 @@ export function buildSelectedVodState(params: {
       label: "분석 완료",
       summary: "이번 결과에는 바로 볼 후보가 없습니다.",
       helpSummary: "다른 VOD를 조회하면 같은 흐름으로 바로 이어서 볼 수 있습니다.",
-      toneClass: "border-emerald-200 bg-emerald-50 text-emerald-900",
+      toneClass: "border-[#00FFA3]/25 bg-[#00FFA3]/10 text-[#00FFA3]",
     };
   }
 
@@ -636,7 +636,7 @@ export function buildSelectedVodState(params: {
         selectedVideoNo === metadata.videoNo
           ? "타임라인과 목록이 같은 결과를 기준으로 함께 움직입니다."
           : "다시 계산하지 않고 저장된 결과를 바로 불러옵니다.",
-      toneClass: "border-emerald-200 bg-emerald-50 text-emerald-900",
+      toneClass: "border-[#00FFA3]/25 bg-[#00FFA3]/10 text-[#00FFA3]",
     };
   }
 
@@ -644,7 +644,7 @@ export function buildSelectedVodState(params: {
     label: "분석 시작 가능",
     summary: "영상 확인이 끝났습니다.",
     helpSummary: "새 분석을 시작하면 완료 후 워크스페이스가 채워집니다.",
-    toneClass: "border-slate-200 bg-slate-50 text-slate-900",
+    toneClass: "border-white/[0.08] bg-[#1A1A1A] text-white/50",
   };
 }
 
@@ -676,7 +676,7 @@ export function buildResultsEmptyState(params: {
     return {
       title: "후보 준비 중입니다",
       description: "완료되면 결과가 바로 표시됩니다.",
-      toneClass: "border-indigo-200 bg-indigo-50 text-indigo-900",
+      toneClass: "border-[#00FFA3]/25 bg-[#00FFA3]/10 text-[#00FFA3]",
     };
   }
 
@@ -685,7 +685,7 @@ export function buildResultsEmptyState(params: {
       title: "이번 영상은 후보 없음",
       description: "기준을 넘는 하이라이트가 아직 없습니다.",
       helpSummary: "다른 VOD를 조회하면 바로 다음 검토로 이어집니다.",
-      toneClass: "border-emerald-200 bg-emerald-50 text-emerald-900",
+      toneClass: "border-[#00FFA3]/25 bg-[#00FFA3]/10 text-[#00FFA3]",
     };
   }
 
@@ -694,7 +694,7 @@ export function buildResultsEmptyState(params: {
       title: "필터 결과 없음",
       description: "숨겨진 후보가 있어 현재 목록이 비어 있습니다.",
       helpSummary: "추천만은 낮은 우선순위를 제외하고, 전체는 모든 후보를 표시합니다.",
-      toneClass: "border-slate-200 bg-slate-50 text-slate-900",
+      toneClass: "border-white/[0.08] bg-[#1A1A1A] text-white/50",
     };
   }
 
@@ -704,7 +704,7 @@ export function buildResultsEmptyState(params: {
     helpSummary: hasExistingResults
       ? "상단의 결과 보기로 기존 분석을 바로 열 수 있습니다."
       : "상단에서 분석을 시작하면 결과가 준비된 뒤 이 영역이 채워집니다.",
-    toneClass: "border-slate-200 bg-slate-50 text-slate-900",
+    toneClass: "border-white/[0.08] bg-[#1A1A1A] text-white/50",
   };
 }
 

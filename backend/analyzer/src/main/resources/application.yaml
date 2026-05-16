@@ -28,3 +28,6 @@ app:
       highlight-user: classpath:prompts/ollama-highlight-user.txt
   core-api:
     base-url: ${CORE_API_BASE_URL:http://127.0.0.1:8083}
+
+gak:
+  internal-api-secret: ${GAK_INTERNAL_API_SECRET:dev-gak-internal-secret}

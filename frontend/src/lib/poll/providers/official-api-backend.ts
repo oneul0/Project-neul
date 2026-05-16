@@ -6,5 +6,5 @@ export const officialApiBackendProvider = createUnsupportedProvider("OFFICIAL_AP
   requiresBackend: true,
   browserDirect: false,
   official: true,
-  reason: "공식 문서에서 poll 엔드포인트 자체를 확인하지 못해 OFFICIAL_API_BACKEND는 provider scaffold만 준비했습니다.",
+  reason: "현재 지원하지 않는 모드입니다.",
 });

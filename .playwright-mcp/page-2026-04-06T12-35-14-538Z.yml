@@ -1,0 +1,127 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - link "Stream Ops NEUL Control" [ref=e5] [cursor=pointer]:
+          - /url: /
+          - img [ref=e7]
+          - generic [ref=e9]:
+            - generic [ref=e10]: Stream Ops
+            - generic [ref=e11]: NEUL Control
+        - generic [ref=e12]:
+          - img [ref=e13]
+          - text: Owner verified workspace
+    - main [ref=e16]:
+      - generic [ref=e17]:
+        - generic [ref=e19]:
+          - generic [ref=e20]:
+            - generic [ref=e21]:
+              - img [ref=e22]
+              - text: 내 방송 대시보드
+            - generic [ref=e28]:
+              - heading "지금 방송 분위기를 빠르게 보는 화면" [level=1] [ref=e29]
+              - paragraph [ref=e30]: 핵심 화면에서는 민심 흐름과 대표 반응만 먼저 보여주고, 상세 화면에서 키워드, 투표, 세부 로그를 확인할 수 있습니다.
+          - generic [ref=e31]:
+            - generic [ref=e32]:
+              - generic [ref=e33]:
+                - generic [ref=e34]: 접근 상태
+                - generic [ref=e35]: 치지직 로그인 상태를 확인하고 있습니다...
+              - generic [ref=e36]:
+                - img [ref=e37]
+                - text: Restricted
+            - generic [ref=e40]:
+              - button "치지직 로그인" [ref=e41]:
+                - img [ref=e42]
+                - text: 치지직 로그인
+              - button "분석 시작" [disabled] [ref=e45]:
+                - img [ref=e46]
+                - text: 분석 시작
+            - generic [ref=e51]:
+              - generic [ref=e52]:
+                - generic [ref=e53]: 방송 채널
+                - generic [ref=e54]: test-channel
+              - generic [ref=e55]:
+                - generic [ref=e56]: 분석 상태
+                - generic [ref=e57]: 대기 중
+        - generic [ref=e58]:
+          - generic [ref=e59]:
+            - generic [ref=e60]: 분석된 채팅 수
+            - generic [ref=e61]: "0"
+            - generic [ref=e62]: 현재 방송에서 분석된 전체 채팅 수입니다.
+          - generic [ref=e63]:
+            - generic [ref=e64]: 연결 상태
+            - generic [ref=e65]: 재연결 중
+            - generic [ref=e66]: 실시간 스트림을 다시 연결하고 있습니다.
+          - generic [ref=e67]:
+            - generic [ref=e68]: 수집 상태
+            - generic [ref=e69]: 중지됨
+            - generic [ref=e70]: 분석이 현재 중지된 상태입니다.
+          - generic [ref=e71]:
+            - generic [ref=e72]: 현재 분위기
+            - generic [ref=e73]: 대기 중
+            - generic [ref=e74]: 아직 분석된 채팅이 없습니다.
+        - generic [ref=e75]:
+          - generic [ref=e76]:
+            - button "실시간 보기" [ref=e77]
+            - button "다시보기" [ref=e78]
+          - generic [ref=e79]:
+            - button "핵심 보기" [ref=e80]
+            - button "상세 보기" [ref=e81]
+          - generic [ref=e82]:
+            - img [ref=e83]
+            - text: 스트리머 본인 방송 전용
+        - generic [ref=e87]:
+          - img [ref=e88]
+          - generic [ref=e90]:
+            - heading "Access limited to the verified owner" [level=2] [ref=e91]
+            - paragraph [ref=e92]: 이 채널을 소유한 치지직 계정으로 로그인해야 실시간 가드레일과 상세 분석을 볼 수 있습니다.
+        - generic [ref=e93]:
+          - generic [ref=e94]:
+            - generic [ref=e95]:
+              - generic [ref=e96]:
+                - generic [ref=e97]:
+                  - generic [ref=e98]: 지금 보면 좋은 것
+                  - generic [ref=e99]: 방송 흐름 요약
+                - img [ref=e100]
+              - generic [ref=e104]:
+                - generic [ref=e105]:
+                  - generic [ref=e106]: 현재 반응
+                  - generic [ref=e107]: 대기 중
+                  - paragraph [ref=e108]: 분석된 채팅이 들어오면 현재 분위기를 보여줍니다.
+                - generic [ref=e109]:
+                  - generic [ref=e110]: 대표 주제
+                  - generic [ref=e111]: 수집 중
+                  - paragraph [ref=e112]: 지금 채팅에서 반복적으로 드러나는 주제를 간단히 묶어서 보여줍니다.
+                - generic [ref=e113]:
+                  - generic [ref=e114]: 주의 신호
+                  - generic [ref=e115]: 0건
+                  - paragraph [ref=e116]: 신뢰도가 낮아 격리되거나 주의가 필요한 반응 수를 보여줍니다.
+            - generic [ref=e118]:
+              - generic [ref=e119]:
+                - generic [ref=e120]: 흐름 변화
+                - generic [ref=e121]: 감정 추이
+              - img [ref=e122]
+          - generic [ref=e128]:
+            - generic [ref=e129]:
+              - generic [ref=e130]:
+                - generic [ref=e131]:
+                  - generic [ref=e132]: 왜 이 화면을 보나요?
+                  - generic [ref=e133]: 핵심 목적
+                - img [ref=e134]
+              - generic [ref=e138]:
+                - paragraph [ref=e139]: 1. 전체 민심이 어느 방향인지 빠르게 확인합니다.
+                - paragraph [ref=e140]: 2. 악성 반응 하나에 흔들리지 않도록 보정된 흐름을 봅니다.
+                - paragraph [ref=e141]: 3. 지금 방송 맥락을 대표하는 채팅 몇 개만 바로 읽습니다.
+            - generic [ref=e142]:
+              - generic [ref=e143]:
+                - generic [ref=e144]:
+                  - generic [ref=e145]: 주요 장면
+                  - generic [ref=e146]: 최근 하이라이트
+                - img [ref=e147]
+              - generic [ref=e151]: 반응이 크게 튄 순간이 생기면 이곳에 정리됩니다.
+    - contentinfo [ref=e152]:
+      - generic [ref=e153]:
+        - generic [ref=e154]: NEUL Control for stream owners. Built for live moderation and audience context.
+        - generic [ref=e155]: Not affiliated with Naver or CHZZK.
+  - button "Open Next.js Dev Tools" [ref=e161] [cursor=pointer]:
+    - img [ref=e162]

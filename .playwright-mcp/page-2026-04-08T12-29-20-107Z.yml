@@ -1,0 +1,89 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - link "Stream Ops NEUL Control" [ref=e5] [cursor=pointer]:
+          - /url: /
+          - img [ref=e7]
+          - generic [ref=e9]:
+            - generic [ref=e10]: Stream Ops
+            - generic [ref=e11]: NEUL Control
+        - generic [ref=e12]:
+          - img [ref=e13]
+          - text: Owner verified workspace
+    - main [ref=e16]:
+      - generic [ref=e17]:
+        - generic [ref=e19]:
+          - generic [ref=e20]:
+            - generic [ref=e21]:
+              - img [ref=e177]
+              - text: 방송 다시보기
+            - generic [ref=e28]:
+              - heading "VOD 편집 후보를 고르는 워크스페이스" [level=1] [ref=e179]
+              - paragraph [ref=e30]: VOD를 조회한 뒤 바로 분석을 열어 후보를 검토합니다.
+          - generic [ref=e31]:
+            - generic [ref=e32]:
+              - button "실시간 보기" [ref=e33]:
+                - img [ref=e34]
+                - text: 실시간 보기
+              - button "다시보기" [active] [ref=e40]:
+                - img [ref=e41]
+                - text: 다시보기
+            - generic [ref=e43]:
+              - generic [ref=e44]: VOD 진행 순서
+              - generic [ref=e180]:
+                - generic [ref=e181]: 1. 조회
+                - generic [ref=e182]: 2. 상태 확인
+                - generic [ref=e183]: 3. 워크스페이스 열기
+              - generic [ref=e54]: 선택한 VOD 하나를 기준으로 바로 이어집니다.
+        - generic [ref=e185]:
+          - generic [ref=e186]:
+            - generic [ref=e187]:
+              - generic [ref=e188]:
+                - generic [ref=e189]:
+                  - img [ref=e190]
+                  - text: 1. VOD 조회
+                - heading "다시보기를 찾고 편집 후보 검토를 시작하세요" [level=3] [ref=e192]
+                - paragraph [ref=e193]: 번호나 링크를 조회한 뒤 바로 열거나 분석을 시작하면 됩니다.
+              - generic [ref=e194]:
+                - generic [ref=e195]:
+                  - img
+                  - textbox "VOD 번호 또는 전체 URL 붙여넣기" [ref=e196]
+                - button "조회" [ref=e197]
+            - generic [ref=e199]:
+              - generic [ref=e200]:
+                - generic [ref=e201]: VOD 선택 전
+                - paragraph [ref=e202]: 번호나 링크를 조회해 주세요.
+              - generic [ref=e203]:
+                - generic [ref=e204]: 조회
+                - generic [ref=e205]: VOD 확인
+          - generic [ref=e206]:
+            - generic [ref=e208]:
+              - generic [ref=e209]: 2. 선택한 VOD
+              - generic [ref=e210]: 조회한 영상의 메타데이터와 현재 상태
+            - generic [ref=e211]: 조회한 VOD의 상태와 버튼이 여기에 표시됩니다.
+          - generic [ref=e212]:
+            - generic [ref=e213]:
+              - generic [ref=e215]:
+                - generic [ref=e216]: My VOD Library
+                - generic [ref=e217]: 최근에 본 다시보기
+              - generic [ref=e218]: 로그인 후 최근에 본 다시보기와 저장한 활동 이력을 함께 볼 수 있습니다.
+            - generic [ref=e219]:
+              - generic [ref=e220]:
+                - generic [ref=e221]: Preference Profile
+                - generic [ref=e222]: 지금 반영 중인 내 취향
+              - generic [ref=e223]:
+                - generic [ref=e224]: 로그인 후 좋아요 / 편집점 / 별로예요 기록이 쌓이면 이 영역에서 선호 카테고리와 반응을 보여줍니다.
+                - generic [ref=e225]:
+                  - generic [ref=e226]: 선호 카테고리
+                  - generic [ref=e228]: 아직 활동 데이터가 부족해서 기본 정렬로 보여주고 있어요.
+                - generic [ref=e229]:
+                  - generic [ref=e230]: 선호 반응
+                  - generic [ref=e232]: 좋아요와 별로예요 이력이 쌓이면 여기에 반영돼요.
+    - contentinfo [ref=e157]:
+      - generic [ref=e158]:
+        - generic [ref=e159]: NEUL Control for stream owners. Built for live moderation and audience context.
+        - generic [ref=e160]: Not affiliated with Naver or CHZZK.
+  - button "Open Next.js Dev Tools" [ref=e166] [cursor=pointer]:
+    - img [ref=e167]
+  - alert [ref=e176]

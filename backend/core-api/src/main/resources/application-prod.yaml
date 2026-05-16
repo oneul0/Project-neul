@@ -1,0 +1,7 @@
+spring:
+  r2dbc:
+    username: ${GAK_POSTGRES_APP_USER}
+    password: ${GAK_POSTGRES_APP_PASSWORD}
+  flyway:
+    user: ${GAK_POSTGRES_ADMIN_USER}
+    password: ${GAK_POSTGRES_ADMIN_PASSWORD}

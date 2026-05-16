@@ -42,6 +42,8 @@ import {
   type VodTimelinePoint,
 } from "./shared";
 
+export type HighlightSort = "TIME" | "SCORE";
+
 export interface VodHighlightBoardViewModel {
   videoInput: string;
   setVideoInput: Dispatch<SetStateAction<string>>;
@@ -60,6 +62,10 @@ export interface VodHighlightBoardViewModel {
   analysisSubmitting: boolean;
   highlightFilter: HighlightFilter;
   setHighlightFilter: Dispatch<SetStateAction<HighlightFilter>>;
+  highlightSort: HighlightSort;
+  setHighlightSort: Dispatch<SetStateAction<HighlightSort>>;
+  compactHighlightList: boolean;
+  setCompactHighlightList: Dispatch<SetStateAction<boolean>>;
   chartMode: ChartMode;
   setChartMode: Dispatch<SetStateAction<ChartMode>>;
   hoveredChartBar: ChartHoverCard | null;
@@ -99,6 +105,7 @@ export interface VodHighlightBoardViewModel {
   handleAnalyze: () => Promise<void>;
   handleOpenAnalysis: () => Promise<void>;
   moveToCard: (id: number) => void;
+  jumpToNearestHighlight: (startSeconds: number, endSeconds: number) => void;
   handleHighlightAction: (
     highlightId: number,
     actionType: "GOOD" | "PIN" | "BAD",
@@ -127,6 +134,8 @@ export function useVodHighlightBoard(
   const [lookupLoading, setLookupLoading] = useState(false);
   const [analysisSubmitting, setAnalysisSubmitting] = useState(false);
   const [highlightFilter, setHighlightFilter] = useState<HighlightFilter>("ACTIVE");
+  const [highlightSort, setHighlightSort] = useState<HighlightSort>("TIME");
+  const [compactHighlightList, setCompactHighlightList] = useState(false);
   const [chartMode, setChartMode] = useState<ChartMode>("RESPONSIVE");
   const [chartWidth, setChartWidth] = useState(0);
   const [hoveredChartBar, setHoveredChartBar] = useState<ChartHoverCard | null>(null);
@@ -457,26 +466,28 @@ export function useVodHighlightBoard(
   );
 
   const filteredHighlights = useMemo(() => {
+    let filtered: VodHighlight[];
     if (highlightFilter === "PINNED") {
-      return highlights.filter(
+      filtered = highlights.filter(
         (item) => normalizeHighlightAction(highlightActions[item.id]) === "PIN",
       );
-    }
-
-    if (highlightFilter === "GOOD") {
-      return highlights.filter(
+    } else if (highlightFilter === "GOOD") {
+      filtered = highlights.filter(
         (item) => normalizeHighlightAction(highlightActions[item.id]) === "GOOD",
       );
-    }
-
-    if (highlightFilter === "ACTIVE") {
-      return highlights.filter(
+    } else if (highlightFilter === "ACTIVE") {
+      filtered = highlights.filter(
         (item) => normalizeHighlightAction(highlightActions[item.id]) !== "BAD",
       );
+    } else {
+      filtered = highlights;
     }
 
-    return highlights;
-  }, [highlightActions, highlightFilter, highlights]);
+    if (highlightSort === "SCORE") {
+      return [...filtered].sort((a, b) => b.highlightScore - a.highlightScore);
+    }
+    return filtered;
+  }, [highlightActions, highlightFilter, highlightSort, highlights]);
 
   const selectedHighlight = useMemo(
     () => highlights.find((item) => item.id === selectedHighlightId) ?? null,
@@ -597,6 +608,20 @@ export function useVodHighlightBoard(
     [recordHighlightActivity, selectedVideoNo],
   );
 
+  const jumpToNearestHighlight = useCallback(
+    (startSeconds: number, endSeconds: number) => {
+      if (highlights.length === 0) return;
+      const midpoint = (startSeconds + endSeconds) / 2;
+      const nearest = highlights.reduce((closest, current) => {
+        const currentGap = Math.abs(current.startSeconds - midpoint);
+        const closestGap = Math.abs(closest.startSeconds - midpoint);
+        return currentGap < closestGap ? current : closest;
+      }, highlights[0]);
+      moveToCard(nearest.id);
+    },
+    [highlights, moveToCard],
+  );
+
   const handleHighlightAction = useCallback(
     async (highlightId: number, actionType: "GOOD" | "PIN" | "BAD") => {
       if (!selectedVideoNo || !personalizationEnabled) {
@@ -664,6 +689,10 @@ export function useVodHighlightBoard(
     analysisSubmitting,
     highlightFilter,
     setHighlightFilter,
+    highlightSort,
+    setHighlightSort,
+    compactHighlightList,
+    setCompactHighlightList,
     chartMode,
     setChartMode,
     hoveredChartBar,
@@ -698,6 +727,7 @@ export function useVodHighlightBoard(
     handleAnalyze,
     handleOpenAnalysis,
     moveToCard,
+    jumpToNearestHighlight,
     handleHighlightAction,
     handleCopyHighlightTimecode,
   };

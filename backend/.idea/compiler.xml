@@ -5,11 +5,15 @@
       <profile name="Gradle Imported" enabled="true">
         <outputRelativeToContentRoot value="true" />
         <processorPath useClasspath="false">
-          <entry name="$USER_HOME$/.gradle/caches/modules-2/files-2.1/org.projectlombok/lombok/1.18.42/8365263844ebb62398e0dc33057ba10ba472d3b8/lombok-1.18.42.jar" />
+          <entry name="$USER_HOME$/.gradle/caches/modules-2/files-2.1/org.projectlombok/lombok/1.18.30/f195ee86e6c896ea47a1d39defbe20eb59cd149d/lombok-1.18.30.jar" />
         </processorPath>
-        <module name="backend.analyzer.main" />
+        <module name="backend.analyzer.test" />
+        <module name="backend.collector.test" />
         <module name="backend.common.main" />
+        <module name="backend.analyzer.main" />
+        <module name="backend.core-api.test" />
         <module name="backend.collector.main" />
+        <module name="backend.common.test" />
         <module name="backend.core-api.main" />
       </profile>
     </annotationProcessing>
@@ -23,9 +27,6 @@
       <module name="backend.collector" options="-parameters" />
       <module name="backend.collector.main" options="-parameters" />
       <module name="backend.collector.test" options="-parameters" />
-      <module name="backend.common" options="-parameters" />
-      <module name="backend.common.main" options="-parameters" />
-      <module name="backend.common.test" options="-parameters" />
       <module name="backend.core-api" options="-parameters" />
       <module name="backend.core-api.main" options="-parameters" />
       <module name="backend.core-api.test" options="-parameters" />

@@ -2,6 +2,11 @@
 .idea/
 backend/.gradle-user-home/
 
+# 환경변수 — 시크릿 포함, 절대 커밋하지 않음
+.env
+.env.*
+!.env.example
+
 backend/*_debug*.txt
 backend/*debug*.txt
 backend/*test_info*.txt
