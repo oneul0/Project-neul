@@ -81,8 +81,8 @@ export default function Home() {
           </h1>
 
           <p className="mt-4 text-base leading-8 text-white/60">
-            늘 스트리머가 자신의 방송 채팅 흐름을 빠르게 파악하고,
-            악성 반응에 과몰입하지 않도록 돕는 실시간 심리 가드레일 대시보드입니다.
+            실시간 투표·도네이션 룰렛으로 방송을 풍성하게 하고,
+            VOD 채팅 분석으로 편집 후보 구간을 빠르게 찾을 수 있는 스트리머 전용 운영 도구입니다.
           </p>
 
           <div className="mt-10 rounded-[24px] border border-white/[0.08] bg-[#1A1A1A] p-6 text-left">
