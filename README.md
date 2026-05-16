@@ -4,6 +4,14 @@
 다시보기에서 편집 후보 구간을 빠르게 찾을 수 있도록 돕는 분석 도구입니다.
 
 ---
+## 미리보기  
+1. 메인 랜딩 페이지  
+   <img width="1470" height="782" alt="Image" src="https://github.com/user-attachments/assets/9c8f9877-4725-4195-86ed-f324efa04134" />
+
+2. VOD 하이라이트 추출
+    <img width="1470" height="802" alt="Image" src="https://github.com/user-attachments/assets/0aba945c-7fb4-4454-a050-f1166f1e1051" />
+
+---
 
 ## AI 협업 방식
 
