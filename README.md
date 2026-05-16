@@ -279,7 +279,7 @@ frontend는 `timeline`이 비면 `highlights` 기반 fallback 타임라인을 �
 
 ### 토큰 탈취 시 대응
 
-로그아웃하면 Redis에서 `neul:owner-session:{ownerId}` 키가 삭제됩니다.  
+로그아웃하면 Redis에서 `gak:owner-session:{ownerId}` 키가 삭제됩니다.  
 이후 탈취된 토큰으로 요청이 와도 세션 불일치로 401을 반환합니다.  
 프로덕션 환경에서는 `GAK_COOKIE_SECURE=true`로 설정해 HTTP 도청을 차단하세요.
 

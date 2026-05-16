@@ -82,7 +82,7 @@ npx tsc --noEmit
 
 ```
 NidChatCollector(cmd=93102) → DonationProducer → donation-events(Kafka)
-  → DonationService(@KafkaListener) → Redis RPUSH neul:donations:{channelId}
+  → DonationService(@KafkaListener) → Redis RPUSH gak:donations:{channelId}
   → GET /api/v1/donations/{channelId} → frontend useDonationRoulette
 ```
 
@@ -91,7 +91,7 @@ NidChatCollector(cmd=93102) → DonationProducer → donation-events(Kafka)
 | ID | 항목 | 절차 | 기대 결과 |
 |----|------|------|-----------|
 | P2-01 | DONATION Kafka 라우팅 | Chzzk 방송 중 채팅 도네이션 발생 | `donation-events` 토픽에 메시지 적재 (kafka-console-consumer 확인) |
-| P2-02 | Redis 저장 | P2-01 이후 `LRANGE neul:donations:{channelId} 0 -1` | DonationEntry JSON 직렬화 항목 확인 |
+| P2-02 | Redis 저장 | P2-01 이후 `LRANGE gak:donations:{channelId} 0 -1` | DonationEntry JSON 직렬화 항목 확인 |
 | P2-03 | 도네이션 목록 조회 | `GET /api/channels/{channelId}/donations` | 200, DonationEntry 배열 반환 |
 | P2-04 | 풀 최대치 | 200개 초과 도네이션 발생 | Redis LTRIM으로 자동 200개 유지 |
 | P2-05 | 룰렛 스핀 | "스핀" 버튼 클릭 | POST `/donations/spin` → 랜덤 당첨자 표시 (보라색 winner 배너) |
@@ -103,7 +103,7 @@ NidChatCollector(cmd=93102) → DonationProducer → donation-events(Kafka)
 
 ### 검증 방법
 - 실제 방송 or Postman으로 `/api/v1/donations/{channelId}` 직접 POST 테스트
-- Redis CLI: `LRANGE neul:donations:{channelId} 0 -1`
+- Redis CLI: `LRANGE gak:donations:{channelId} 0 -1`
 
 ---
 
@@ -132,11 +132,11 @@ getChatChannelId()
 | P3-02 | 성인 방송 + API 미설정 | `chzzk.client-id` 미설정 | 422 `adult_stream_api_unconfigured`, 프론트 경고 표시 |
 | P3-03 | 성인 방송 + API 설정 + 미로그인 | `client-id` 설정, 세션 없음 | 422 `adult_stream_login_required`, 프론트 "치지직 공식 로그인 후 시도" 표시 |
 | P3-04 | 성인 방송 + 로그인 완료 | `client-id` 설정, 세션 존재 | Official API 폴백 성공 → 200 `subscribed` |
-| P3-05 | 로그인 시 SessionRegistry 등록 | OAuth 콜백 완료 | `neul:owner-session:{channelId}` Redis 키 존재 확인 |
-| P3-06 | 로그아웃 시 SessionRegistry 삭제 | 로그아웃 요청 | `neul:owner-session:{channelId}` Redis 키 삭제 확인 |
+| P3-05 | 로그인 시 SessionRegistry 등록 | OAuth 콜백 완료 | `gak:owner-session:{channelId}` Redis 키 존재 확인 |
+| P3-06 | 로그아웃 시 SessionRegistry 삭제 | 로그아웃 요청 | `gak:owner-session:{channelId}` Redis 키 삭제 확인 |
 
 ### 검증 방법
-- Redis CLI: `GET neul:owner-session:{channelId}`
+- Redis CLI: `GET gak:owner-session:{channelId}`
 - 성인 방송 채널 없는 경우: Mockito로 `NidChatCollector.getChatChannelIdViaNid()` → `Mono.empty()` 강제 반환 테스트
 
 ---

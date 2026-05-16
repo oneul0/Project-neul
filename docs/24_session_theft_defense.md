@@ -53,7 +53,7 @@ GAK_COOKIE_SECURE=true
   ├─ GAK_OWNER_ASSERTION 쿠키 서명 검증 (HMAC-SHA256)
   │     실패 → 401
   │
-  ├─ Redis GET neul:owner-session:{ownerId}
+  ├─ Redis GET gak:owner-session:{ownerId}
   │     키 없음 → 401 (세션 만료 또는 로그아웃)
   │     값 불일치 → 401 (탈취된 토큰 또는 재로그인 후 구 토큰)
   │

@@ -424,10 +424,10 @@ SSE는 클라이언트가 언제 연결할지 모르므로 반드시 `replay()`�
 
 ```
 Kafka 메시지 헤더:
-  __TypeId__: com.neul.analyzer.dto.AnalyzedChatMessage  ← analyzer 패키지
+  __TypeId__: com.gak.analyzer.dto.AnalyzedChatMessage  ← analyzer 패키지
 ```
 
-`core-api`의 consumer가 이 헤더를 보면 `com.neul.analyzer.dto.*` 패키지에서 클래스를 찾으려 합니다. 하지만 `core-api`에는 해당 패키지가 없습니다!
+`core-api`의 consumer가 이 헤더를 보면 `com.gak.analyzer.dto.*` 패키지에서 클래스를 찾으려 합니다. 하지만 `core-api`에는 해당 패키지가 없습니다!
 
 ## 해결
 
