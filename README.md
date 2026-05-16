@@ -1,157 +1,17 @@
 # 각(Gak) — 치지직 스트리머 분석 대시보드
 
-스트리밍에 사용할 수 있는 투표, 룰렛 기능을 제공하고   
+스트리밍에 사용할 수 있는 투표, 룰렛 기능을 제공하고
 다시보기에서 편집 후보 구간을 빠르게 찾을 수 있도록 돕는 분석 도구입니다.
 
 ---
-## 미리보기  
-1. 메인 랜딩 페이지  
+
+## 미리보기
+
+1. 메인 랜딩 페이지
    <img width="1470" height="782" alt="Image" src="https://github.com/user-attachments/assets/9c8f9877-4725-4195-86ed-f324efa04134" />
 
 2. VOD 하이라이트 추출
-    <img width="1470" height="802" alt="Image" src="https://github.com/user-attachments/assets/0aba945c-7fb4-4454-a050-f1166f1e1051" />
-
----
-
-## AI 협업 방식
-
-이 프로젝트는 개발 전 과정에서 Claude(Anthropic)를 적극적으로 활용했습니다.  
-단순 코드 생성이 아니라, 설계 결정·보안 검토·디버깅·문서화를 포함한 **전 주기 페어 프로그래밍** 방식으로 운영했습니다.
-
----
-
-### 개발자 역할 및 기술 이해도
-
-AI와 협업할 때 개발자의 기술 이해도는 지시의 품질과 결과물의 신뢰도를 결정합니다.  
-이 프로젝트에서 개발자가 직접 판단하고 검증한 기술 영역은 다음과 같습니다.
-
-#### 비동기 파이프라인
-
-Spring WebFlux / Project Reactor의 비동기 모델을 이해하고 있어, AI가 생성한 코드의 구독 시점·백프레셔·에러 전파 방식을 직접 검토했습니다.
-
-- SSE 구독 이전 메시지 유실 문제를 `Sinks.multicast()` → `Sinks.replay(100)` 교체로 해결한 배경을 직접 파악
-- `doFinally`를 통한 성공·실패·취소 모든 경로에서의 리소스 반납 패턴을 코드 리뷰에서 검증
-
-#### 분산 시스템 설계
-
-Kafka, Redis의 동작 원리를 이해하고 있어 단순 사용이 아닌 설계 수준의 결정을 내렸습니다.
-
-- Kafka 토픽 파티션 키를 `roomId`로 설정해 방별 메시지 순서 보장 — API 한도 우회를 위한 NID WebSocket 직접 연동 판단
-- VOD 동시성 제한을 in-memory가 아닌 Redis 카운터 + TTL로 설계해 수평 확장 가능성 확보
-- `vod:active:global`, `vod:active:user:{ownerId}`, `vod:owner:{videoNo}` 키 구조 직접 설계
-
-#### 보안 모델
-
-인증·인가 취약점을 이해하고 있어 AI가 놓친 부분을 직접 요구사항으로 제시했습니다.
-
-- `OwnerIdentityResolver`의 헤더·쿼리 폴백이 IDOR 취약점임을 먼저 인지하고 수정 지시
-- HMAC-SHA256 서명 + Redis 세션 바인딩 구조로 토큰 탈취 후 즉시 revocation 설계
-- `InternalAccessFilter`에서 불일치 시 404 반환(경로 존재 자체를 숨기는 방어)을 의도적으로 선택
-
-#### LLM 시스템 통합
-
-LLM을 파이프라인에 통합할 때 발생하는 신뢰 경계 문제를 이해하고 있어, AI 생성 코드가 LLM 출력을 그대로 신뢰하는 구조적 문제를 직접 발견하고 가드레일 설계를 지시했습니다.
-
----
-
-### 가드레일 설계
-
-이 프로젝트에서 가드레일은 두 층으로 적용됩니다.  
-**Claude에게 부여한 행동 규칙**과 **제품 코드 안에 박힌 LLM 방어 로직**입니다.
-
-#### 1. AI 에이전트(Claude) 가드레일 — `CLAUDE.md`
-
-```
-IMPORTANT: This project has a knowledge graph. ALWAYS use the
-code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
-the codebase.
-```
-
-Claude가 코드를 탐색할 때 파일을 무작정 읽기 전에 **지식 그래프로 구조를 파악**하도록 강제했습니다.
-
-| 규칙 | 이유 |
-|------|------|
-| `semantic_search_nodes` / `query_graph` 우선 | 파일 스캔보다 호출 관계·의존성을 먼저 파악 |
-| `get_impact_radius` 로 영향 범위 확인 후 수정 | 수정 전 파급 범위를 모르면 안전하지 않은 변경이 될 수 있음 |
-| `detect_changes` + `get_review_context` 로 코드 리뷰 | 전체 파일을 읽지 않고 변경된 부분의 맥락만 효율적으로 파악 |
-| Grep/Glob/Read는 그래프가 커버하지 못할 때만 허용 | 토큰 낭비와 컨텍스트 오염 방지 |
-
-**반영된 철학:** AI도 코드를 "읽기" 전에 "이해"해야 한다. 구조를 모르는 상태에서 파일을 읽으면 잘못된 국소적 판단을 내릴 수 있다.
-
-#### 2. 제품 코드 안의 LLM 가드레일 — `OllamaAnalyzerService`
-
-LLM은 신뢰할 수 없는 외부 시스템 경계입니다. 입력과 출력 양쪽에 강제 검증을 적용했습니다.
-
-**입력 가드레일**
-
-```
-빈 채팅 제거 → 배치 크기 상한(MAX_BATCH_SIZE=30) → 총 문자 수 상한(MAX_INPUT_CHARS=3000)
-```
-
-- 상한 초과 시 `gak.llm.batch.capped` 메트릭 기록 — 가드레일 발동이 눈에 보이도록
-- 모든 입력이 걸러지면 LLM 호출 없이 즉시 반환 — 불필요한 API 호출 차단
-
-**출력 가드레일**
-
-```
-감정 키 7개 완결성 검증 → 점수 [0.0, 1.0] 클램핑 → 합계 < 0.001이면 NEUTRAL 교정
-```
-
-- LLM이 키를 빠뜨려도 DB에 불완전한 데이터가 저장되지 않도록 강제
-- 점수 범위를 벗어난 값을 그대로 저장하면 하이라이트 선별 로직이 오동작할 수 있음
-
-**동시성 가드레일**
-
-```java
-// Before: 조용한 데이터 손실
-if (isProcessing.get()) return Mono.just(List.of());
-
-// After: 관측 가능한 스킵
-if (!llmSlot.tryAcquire()) {
-    recordCount("gak.llm.batch.skipped");
-    return Mono.just(List.of());
-}
-return doAnalyzeBatch(capped).doFinally(ignored -> llmSlot.release());
-```
-
-`AtomicBoolean`의 조용한 손실을 `Semaphore + 메트릭`으로 교체해, 스킵이 발생했을 때 추적 가능하게 만들었습니다.
-
-**VOD 분석 슬롯 — fail-open 의식적 선택**
-
-Redis 장애 시 VOD 분석은 허용(fail-open), 인증 검증 실패 시 접근은 차단(fail-secure).  
-같은 Redis 의존이라도 **무엇을 보호하느냐에 따라 장애 전략을 다르게 설정**했습니다.
-
-| 시스템 | Redis 장애 시 | 이유 |
-|--------|-------------|------|
-| `OwnerAccessFilter` 세션 검증 | 401 반환 (fail-secure) | 인증 실패는 보안 문제 |
-| `VodAnalysisSlotService` 동시성 제한 | 분석 허용 (fail-open) | 카운터가 틀려도 서비스 중단보다 낫다 |
-
-**반영된 철학:** LLM은 예측 불가능한 외부 시스템이다. 입력을 제한하고 출력을 검증하지 않으면 파이프라인 전체가 LLM의 품질에 종속된다. 또한 실패는 관측 가능해야 하며, 조용한 손실은 없어야 한다.
-
----
-
-### AI 활용 방식
-
-| 단계 | 활용 내용 |
-|------|----------|
-| **설계** | 아키텍처 트레이드오프 검토, ADR 초안, 패키지 구조 제안 |
-| **구현** | Spring Boot WebFlux 필터·서비스, Next.js API proxy, Kafka 파이프라인 코드 생성 |
-| **보안 검토** | 취약점 발견 요청, `InternalAccessFilter` · `OwnerValidationFilter` 구현 |
-| **디버깅** | SSE 메시지 유실, Kafka consumer group, Flyway 오류 원인 분석 |
-| **리팩터링** | neul → gak 전체 이관, 패키지·환경변수·Redis 키 일괄 정리 |
-| **문서화** | 트러블슈팅 가이드, 보안 강화 기록, 프로덕션 배포 체크리스트, 이 README |
-| **코드 리뷰** | 변경 영향 범위 분석, 잠재 버그 지적, 개선 방향 제안 |
-
-### AI 활용 역량 포인트
-
-**지시의 정밀도** — "코드 짜줘"가 아니라 요구사항과 제약 조건을 명확히 전달했습니다.  
-예: *"쿠키 검증 실패 시 헤더·쿼리 폴백을 완전히 제거하고 쿠키만 허용해줘. X-Chzzk-Owner-Id 헤더 하나로 타인 계정 위조가 가능하기 때문이야."*
-
-**결과물 검증** — AI가 생성한 코드를 그대로 쓰지 않고 직접 실행·테스트 후 문제를 피드백해 반복 개선했습니다.
-
-**범위 판단** — 구현 세부사항은 AI에게, 아키텍처 결정과 최종 승인은 개발자가 유지했습니다.
-
-**컨텍스트 관리** — ADR, 트러블슈팅 이력, 보안 모델을 문서로 축적해 AI가 매 대화마다 일관된 판단을 내릴 수 있는 환경을 만들었습니다.
+   <img width="1470" height="802" alt="Image" src="https://github.com/user-attachments/assets/0aba945c-7fb4-4454-a050-f1166f1e1051" />
 
 ---
 
@@ -440,6 +300,172 @@ docker ps  # gak-postgres 컨테이너가 실행 중인지 확인
 
 ---
 
+## AI 협업 방식
+
+이 프로젝트는 개발 전 과정에서 Claude(Anthropic)를 적극적으로 활용했습니다.
+단순 코드 생성이 아니라, 설계 결정·보안 검토·디버깅·문서화를 포함한 **전 주기 페어 프로그래밍** 방식으로 운영했습니다.
+
+---
+
+### 개발자 역할 및 기술 이해도
+
+AI와 협업할 때 개발자의 기술 이해도는 지시의 품질과 결과물의 신뢰도를 결정합니다.
+이 프로젝트에서 개발자가 직접 판단하고 검증한 기술 영역은 다음과 같습니다.
+
+#### 비동기 파이프라인
+
+Spring WebFlux / Project Reactor의 비동기 모델을 이해하고 있어, AI가 생성한 코드의 구독 시점·백프레셔·에러 전파 방식을 직접 검토했습니다.
+
+- SSE 구독 이전 메시지 유실 문제를 `Sinks.multicast()` → `Sinks.replay(100)` 교체로 해결한 배경을 직접 파악
+- `doFinally`를 통한 성공·실패·취소 모든 경로에서의 리소스 반납 패턴을 코드 리뷰에서 검증
+
+#### 분산 시스템 설계
+
+Kafka, Redis의 동작 원리를 이해하고 있어 단순 사용이 아닌 설계 수준의 결정을 내렸습니다.
+
+- Kafka 토픽 파티션 키를 `roomId`로 설정해 방별 메시지 순서 보장 — API 한도 우회를 위한 NID WebSocket 직접 연동 판단
+- VOD 동시성 제한을 in-memory가 아닌 Redis 카운터 + TTL로 설계해 수평 확장 가능성 확보
+- `vod:active:global`, `vod:active:user:{ownerId}`, `vod:owner:{videoNo}` 키 구조 직접 설계
+
+#### 보안 모델
+
+인증·인가 취약점을 이해하고 있어 AI가 놓친 부분을 직접 요구사항으로 제시했습니다.
+
+- `OwnerIdentityResolver`의 헤더·쿼리 폴백이 IDOR 취약점임을 먼저 인지하고 수정 지시
+- HMAC-SHA256 서명 + Redis 세션 바인딩 구조로 토큰 탈취 후 즉시 revocation 설계
+- `InternalAccessFilter`에서 불일치 시 404 반환(경로 존재 자체를 숨기는 방어)을 의도적으로 선택
+
+#### LLM 시스템 통합
+
+LLM을 파이프라인에 통합할 때 발생하는 신뢰 경계 문제를 이해하고 있어, AI 생성 코드가 LLM 출력을 그대로 신뢰하는 구조적 문제를 직접 발견하고 가드레일 설계를 지시했습니다.
+
+---
+
+### 가드레일 설계
+
+이 프로젝트에서 가드레일은 두 층으로 적용됩니다.
+**Claude에게 부여한 행동 규칙**과 **제품 코드 안에 박힌 LLM 방어 로직**입니다.
+
+#### 1. AI 에이전트(Claude) 가드레일 — `CLAUDE.md`
+
+```
+IMPORTANT: This project has a knowledge graph. ALWAYS use the
+code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
+the codebase.
+```
+
+Claude가 코드를 탐색할 때 파일을 무작정 읽기 전에 **지식 그래프로 구조를 파악**하도록 강제했습니다.
+
+| 규칙 | 이유 |
+|------|------|
+| `semantic_search_nodes` / `query_graph` 우선 | 파일 스캔보다 호출 관계·의존성을 먼저 파악 |
+| `get_impact_radius` 로 영향 범위 확인 후 수정 | 수정 전 파급 범위를 모르면 안전하지 않은 변경이 될 수 있음 |
+| `detect_changes` + `get_review_context` 로 코드 리뷰 | 전체 파일을 읽지 않고 변경된 부분의 맥락만 효율적으로 파악 |
+| Grep/Glob/Read는 그래프가 커버하지 못할 때만 허용 | 토큰 낭비와 컨텍스트 오염 방지 |
+
+**반영된 철학:** AI도 코드를 "읽기" 전에 "이해"해야 한다. 구조를 모르는 상태에서 파일을 읽으면 잘못된 국소적 판단을 내릴 수 있다.
+
+#### 2. 제품 코드 안의 LLM 가드레일 — `OllamaAnalyzerService`
+
+LLM은 신뢰할 수 없는 외부 시스템 경계입니다. 입력과 출력 양쪽에 강제 검증을 적용했습니다.
+
+**입력 가드레일**
+
+```
+빈 채팅 제거 → 배치 크기 상한(MAX_BATCH_SIZE=30) → 총 문자 수 상한(MAX_INPUT_CHARS=3000)
+```
+
+- 상한 초과 시 `gak.llm.batch.capped` 메트릭 기록 — 가드레일 발동이 눈에 보이도록
+- 모든 입력이 걸러지면 LLM 호출 없이 즉시 반환 — 불필요한 API 호출 차단
+
+**출력 가드레일**
+
+```
+감정 키 7개 완결성 검증 → 점수 [0.0, 1.0] 클램핑 → 합계 < 0.001이면 NEUTRAL 교정
+```
+
+- LLM이 키를 빠뜨려도 DB에 불완전한 데이터가 저장되지 않도록 강제
+- 점수 범위를 벗어난 값을 그대로 저장하면 하이라이트 선별 로직이 오동작할 수 있음
+
+**동시성 가드레일**
+
+```java
+// Before: 조용한 데이터 손실
+if (isProcessing.get()) return Mono.just(List.of());
+
+// After: 관측 가능한 스킵
+if (!llmSlot.tryAcquire()) {
+    recordCount("gak.llm.batch.skipped");
+    return Mono.just(List.of());
+}
+return doAnalyzeBatch(capped).doFinally(ignored -> llmSlot.release());
+```
+
+`AtomicBoolean`의 조용한 손실을 `Semaphore + 메트릭`으로 교체해, 스킵이 발생했을 때 추적 가능하게 만들었습니다.
+
+**VOD 분석 슬롯 — fail-open 의식적 선택**
+
+Redis 장애 시 VOD 분석은 허용(fail-open), 인증 검증 실패 시 접근은 차단(fail-secure).
+같은 Redis 의존이라도 **무엇을 보호하느냐에 따라 장애 전략을 다르게 설정**했습니다.
+
+| 시스템 | Redis 장애 시 | 이유 |
+|--------|-------------|------|
+| `OwnerAccessFilter` 세션 검증 | 401 반환 (fail-secure) | 인증 실패는 보안 문제 |
+| `VodAnalysisSlotService` 동시성 제한 | 분석 허용 (fail-open) | 카운터가 틀려도 서비스 중단보다 낫다 |
+
+**반영된 철학:** LLM은 예측 불가능한 외부 시스템이다. 입력을 제한하고 출력을 검증하지 않으면 파이프라인 전체가 LLM의 품질에 종속된다. 또한 실패는 관측 가능해야 하며, 조용한 손실은 없어야 한다.
+
+---
+
+### AI 활용 방식
+
+| 단계 | 활용 내용 |
+|------|----------|
+| **설계** | 아키텍처 트레이드오프 검토, ADR 초안, 패키지 구조 제안 |
+| **구현** | Spring Boot WebFlux 필터·서비스, Next.js API proxy, Kafka 파이프라인 코드 생성 |
+| **보안 검토** | 취약점 발견 요청, `InternalAccessFilter` · `OwnerValidationFilter` 구현 |
+| **디버깅** | SSE 메시지 유실, Kafka consumer group, Flyway 오류 원인 분석 |
+| **리팩터링** | neul → gak 전체 이관, 패키지·환경변수·Redis 키 일괄 정리 |
+| **문서화** | 트러블슈팅 가이드, 보안 강화 기록, 프로덕션 배포 체크리스트, 이 README |
+| **코드 리뷰** | 변경 영향 범위 분석, 잠재 버그 지적, 개선 방향 제안 |
+
+---
+
+### AI 활용 역량 포인트
+
+#### 지시의 정밀도 — 공격 경로까지 특정해서 전달
+
+AI가 보안 필터를 구현할 때 `X-Chzzk-Owner-Id` 헤더 폴백을 남겨뒀습니다.
+이 헤더를 임의로 설정하면 타인 채널로 위장할 수 있는 IDOR 취약점임을 개발자가 먼저 파악하고, 공격 경로를 명시해 수정을 지시했습니다.
+
+> *"쿠키 검증 실패 시 헤더·쿼리 폴백을 완전히 제거하고 쿠키만 허용해줘. X-Chzzk-Owner-Id 헤더 하나로 타인 계정 위조가 가능하기 때문이야."*
+
+마찬가지로 `AtomicBoolean`의 조용한 손실 문제를 발견했을 때도 단순히 "수정해줘"가 아니라 왜 메트릭이 필요한지를 함께 전달했습니다.
+
+> *"AtomicBoolean 대신 Semaphore로 바꾸고 스킵 발생 시 메트릭을 기록해줘. 운영 중 배치가 무시되고 있어도 지금 구조로는 추적이 불가능해."*
+
+#### 결과물 검증 — 실행해서 문제를 직접 확인
+
+AI가 생성한 코드를 그대로 적용하지 않고, 실행 결과를 보고 원인을 분석한 뒤 수정을 지시했습니다.
+
+- SSE를 구독하기 전에 도착한 메시지가 유실되는 현상을 직접 재현 → `Sinks.multicast()` → `Sinks.replay(100)` 교체 지시
+- `application-dev.yaml`에 설정된 `gak_user` 계정이 실제 DB에 존재하지 않음을 부팅 실패로 확인 → Docker 볼륨을 `pg_authid` 바이너리까지 파서 구 계정(`neul_user`)이 남아있음을 특정, 볼륨 재생성으로 해결
+- core-api 실행 시 포트 충돌(8083 already in use)을 감지해 이전 프로세스를 정리한 뒤 재기동
+
+#### 범위 판단 — 아키텍처 결정은 개발자가 유지
+
+구현 세부사항은 AI에게 맡기고, 설계 수준의 트레이드오프는 개발자가 직접 판단했습니다.
+
+- Redis 장애 시 인증은 fail-secure(401), VOD 슬롯 카운팅은 fail-open(허용) — 같은 Redis 의존이지만 보호 대상이 달라 장애 전략을 다르게 가져가야 한다는 판단은 개발자가 직접
+- VOD 동시성 제한을 in-memory 대신 Redis로 설계한 것도 AI의 제안이 아니라 수평 확장 가능성을 고려한 개발자의 결정
+- 마이크로서비스 경계(collector / analyzer / core-api 분리)와 Kafka 토픽 파티션 키(`roomId`) 선택도 동일
+
+#### 컨텍스트 관리 — AI가 일관된 판단을 내릴 수 있는 환경 설계
+
+매 대화마다 배경을 다시 설명하지 않아도 되도록, 보안 모델·트러블슈팅 이력·아키텍처 결정을 25개 문서로 축적했습니다.
+`CLAUDE.md`에 코드 그래프 우선 탐색 규칙을 명시해 AI가 파일을 무작정 읽는 대신 구조를 먼저 파악하도록 강제했고, 이를 통해 넓은 범위의 변경(neul → gak 전체 이관, 보안 필터 교체)도 안전하게 진행할 수 있었습니다.
+
+---
 
 ## 문서 목록
 
