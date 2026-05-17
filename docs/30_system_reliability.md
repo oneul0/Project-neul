@@ -426,7 +426,7 @@ classDiagram
 
 ```mermaid
 sequenceDiagram
-    participant Listener as LiveChatAnalysisListener
+    participant Listener as ChatAnalysisProcessor
     participant Guard as OllamaAnalyzerService
     participant CB as CircuitBreaker
     participant Sem as Semaphore(1)

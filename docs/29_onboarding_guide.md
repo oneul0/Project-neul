@@ -92,20 +92,29 @@ core-api  ──────────── PostgreSQL + Redis
 
 ---
 
-## 6. 실시간 채팅 분석 파이프라인
+## 6. 채팅 수집 파이프라인
+
+투표·룰렛·VOD 분석 모두 동일한 채팅 수집 인프라를 공유한다. **감정 분류는 VOD 분석에만 사용**되며, 투표·룰렛은 채팅 데이터를 감정 분석 없이 처리한다.
 
 ```
 Chzzk NID WebSocket (치지직 내부 프로토콜)
   → collector (채팅 수집, 2초 배치)
   → Kafka: raw-chat-batch-topic (key=roomId → 방별 순서 보장)
-  → analyzer (OllamaAnalyzerService)
-      ├─ 입력 가드레일: 빈 채팅 제거, MAX_BATCH=30, MAX_CHARS=3000
-      ├─ Ollama LLM → 7가지 감정 분류
-      └─ 출력 가드레일: 키 완결성, [0,1] 클램핑, 합계<0.001→NEUTRAL
+  → analyzer (ChatAnalysisProcessor)
+      ├─ DONATION → passthrough → SSE (룰렛 트리거)
+      ├─ SUBSCRIPTION → passthrough → SSE (알림)
+      ├─ VOTE (!투표 N) → passthrough → Redis 투표 집계 (투표 기능)
+      └─ CHAT → HeuristicSentimentAnalyzer (Fast-Path, 즉시 발행)
+                    ├─ 명확한 채팅 → analyzed-chat-topic 즉시 발행
+                    └─ 모호한 채팅 → OllamaAnalyzerService (Slow-Path)
+                            ├─ 입력 가드레일: 빈 채팅 제거, MAX_BATCH=30, MAX_CHARS=3000
+                            ├─ Ollama LLM → 7가지 감정 분류
+                            └─ 출력 가드레일: 키 완결성, [0,1] 클램핑, 합계<0.001→NEUTRAL
   → Kafka: analyzed-chat-topic
-  → core-api → Redis Hash (실시간 집계)
-  → SSE (Sinks.replay(100)) → frontend
+  → core-api (ChatStreamService) → DB 저장 + SSE (Sinks.replay(100)) → frontend
 ```
+
+> **감정 분류 결과의 사용처**: CHAT의 감정 점수(`chat_analyzed`, `stats_update`)는 현재 프론트엔드에서 소비하지 않는다. `OllamaAnalyzerService`가 의미 있게 사용되는 경로는 **VOD 하이라이트 LLM 리뷰** (`VodHighlightAnalyzer`)다.
 
 **`Sinks.replay(100)`**: 구독 전에 도착한 최대 100개 메시지를 보관해 구독 직후 유실을 방지한다.
 
@@ -158,6 +167,8 @@ ERD: [`27_erd.md`](27_erd.md)
 
 ## 9. LLM 가드레일 (`OllamaAnalyzerService`)
 
+`OllamaAnalyzerService`는 **VOD 하이라이트 LLM 리뷰** (`VodHighlightAnalyzer`)에서 핵심적으로 사용된다. 라이브 채팅 Slow-Path에서도 호출되지만 그 결과는 현재 UI에 노출되지 않는다.
+
 ```
 입력: 빈 채팅 제거 → MAX_BATCH_SIZE=30 → MAX_INPUT_CHARS=3000
 출력: 감정 키 7개 완결성 → [0.0, 1.0] 클램핑 → 합계<0.001→NEUTRAL 교정
@@ -189,49 +200,50 @@ LLM은 신뢰할 수 없는 외부 시스템 경계로 취급한다. 입력 제�
 
 ```
 collector/
-  ChzzkOAuthController.java      ← 로그인 시작·콜백 처리
-  OwnerSessionService.java        ← 세션 발급·검증
+  controller/ChzzkAuthController.java  ← 로그인 시작·콜백 처리
+  auth/ChzzkAuthService.java           ← 세션 발급·검증
 
 core-api/
-  filter/OwnerAccessFilter.java  ← HMAC 검증 + Redis 세션 확인
-  filter/InternalAccessFilter.java ← 내부 API 차단
-  service/OwnerIdentityResolver.java ← exchange에서 ownerId 추출
+  config/OwnerAccessFilter.java        ← HMAC 검증 + Redis 세션 확인
+  config/InternalAccessFilter.java     ← 내부 API 차단
+  domain/chat/service/OwnerIdentityResolver.java ← exchange에서 ownerId 추출
 ```
 
 ### 실시간 채팅 분석
 
 ```
 collector/
-  ChzzkWebSocketService.java     ← NID WebSocket 연결·수집
-  LiveChatBatchPublisher.java    ← 2초 배치 Kafka 발행
+  service/NidChatCollector.java      ← NID WebSocket 연결·수집
+  service/ChatProducer.java          ← 2초 배치 Kafka 발행
 
 analyzer/
-  OllamaAnalyzerService.java     ← LLM 감정 분류 + 가드레일
-  LiveChatAnalysisListener.java  ← Kafka 소비 → 분석 → 저장
+  service/ChatAnalysisProcessor.java    ← Kafka 소비 → Fast-Path/Slow-Path 분기
+  service/HeuristicSentimentAnalyzer.java ← Fast-Path: 키워드 기반 즉시 분류
+  service/OllamaAnalyzerService.java    ← Slow-Path: 모호한 채팅만 LLM 분석 + 가드레일
 
 core-api/
-  service/ChatSseService.java    ← Sinks.replay(100), SSE 스트리밍
-  controller/SseController.java  ← /api/v1/sse/{channelId}
+  domain/chat/service/ChatStreamService.java    ← Sinks.replay(100), SSE 스트리밍
+  domain/chat/controller/StreamController.java  ← /api/v1/sse/{channelId}
 ```
 
 ### VOD 하이라이트
 
 ```
 collector/
-  VodCollectorController.java    ← POST /crawl, GET /status
-  VodChatCrawlerService.java     ← 페이지네이션 크롤링
-  VodAnalysisStatusService.java  ← in-memory 상태 머신
+  controller/VodCollectorController.java  ← POST /crawl, GET /status
+  service/VodChatCrawlerService.java      ← 페이지네이션 크롤링
+  service/VodAnalysisStatusService.java   ← in-memory 상태 머신
 
 analyzer/
-  VodHighlightAnalyzer.java      ← 30초 윈도우 집계·점수화·LLM 리뷰
+  service/VodHighlightAnalyzer.java      ← 30초 윈도우 집계·점수화·LLM 리뷰
 
 core-api/
-  controller/VodController.java          ← 분석 시작, 결과 조회
-  service/VodAnalysisSlotService.java    ← Redis 동시성 가드레일
-  service/VodHighlightConsumer.java      ← vod-analyzed-topic 소비
-  service/VodTimelinePointConsumer.java  ← vod-window-summary-topic 소비
-  service/VodAnalysisEventConsumer.java  ← 슬롯 반납
-  rag/HighlightEmbeddingService.java     ← pgvector 임베딩 저장
+  domain/chat/controller/VodController.java          ← 분석 시작, 결과 조회
+  domain/chat/service/VodAnalysisSlotService.java    ← Redis 동시성 가드레일
+  domain/chat/service/VodHighlightConsumer.java      ← vod-analyzed-topic 소비
+  domain/chat/service/VodTimelinePointConsumer.java  ← vod-window-summary-topic 소비
+  domain/chat/service/VodAnalysisEventConsumer.java  ← 슬롯 반납
+  rag/HighlightEmbeddingService.java                 ← pgvector 임베딩 저장
 ```
 
 ---

@@ -18,10 +18,10 @@
 
 ## ✨ 앱 플로우 소개
 
-|  🔐 로그인  |  💬 실시간 채팅 분석  |  🎬 VOD 하이라이트  |  🎯 투표 & 룰렛  |
-|:---:|:---:|:---:|:---:|
-| <!-- 로그인 스크린샷 --> | <!-- 채팅 분석 스크린샷 --> | <img width="1470" height="802" alt="Image" src="https://github.com/user-attachments/assets/0aba945c-7fb4-4454-a050-f1166f1e1051" /> | <!-- 투표/룰렛 스크린샷 --> |
-| CHZZK OAuth 로그인 | 실시간 감정 분석 파이프라인 | 편집 후보 구간 자동 선별 | 도네이션 기반 가중 룰렛 |
+|  🔐 로그인  |  🎬 VOD 하이라이트  |  🎯 투표 & 룰렛  |
+|:---:|:---:|:---:|
+| <!-- 로그인 스크린샷 --> | <img width="1470" height="802" alt="Image" src="https://github.com/user-attachments/assets/0aba945c-7fb4-4454-a050-f1166f1e1051" /> | <!-- 투표/룰렛 스크린샷 --> |
+| CHZZK OAuth 로그인 | 편집 후보 구간 자동 선별 | 채팅 기반 투표 & 도네이션 룰렛 |
 
 ---
 
@@ -32,9 +32,9 @@
 - HMAC-SHA256 서명 + Redis 세션 바인딩으로 즉시 토큰 revocation
 - `OwnerAccessFilter` / `InternalAccessFilter` 이중 보호
 
-### 💬 라이브 채팅 분석
-- NID WebSocket 직접 연동으로 실시간 채팅 수집
-- 7가지 감정 분류 — 2초 배치 단위 Ollama 로컬 LLM 분석
+### 💬 채팅 수집 & 이벤트 처리
+- NID WebSocket 직접 연동으로 실시간 채팅 수집 (2초 배치)
+- 투표 명령(`!투표 N`) → Redis 집계 / 도네이션·구독 → SSE로 룰렛 트리거
 - SSE `Sinks.replay(100)` — 구독 이전 메시지 유실 방지
 
 ### 🎬 VOD 분석 & 하이라이트
@@ -57,7 +57,7 @@ Browser
        ├─ /api/chzzk/*  →  collector (8081)   ← 로그인, 채팅 수집, VOD 크롤링
        └─ /api/v1/*     →  core-api  (8083)   ← 분석 결과, SSE, 접근 제어
 
-collector ─(Kafka)─► analyzer (8082)  ← 감정 분석, 편집 후보 계산
+collector ─(Kafka)─► analyzer (8082)  ← 투표·도네이션 처리, VOD 편집 후보 계산
                           │
                      core-api ─► PostgreSQL (pgvector)
                           │
@@ -74,7 +74,7 @@ SSE 구독 이전 메시지 유실 문제를 `Sinks.multicast()` → `Sinks.repl
 ### 분산 시스템 설계
 VOD 동시성 제한을 in-memory가 아닌 **Redis 카운터 + TTL**로 설계해 수평 확장 가능성을 확보했습니다. Kafka 파티션 키를 `roomId`로 설정해 방별 메시지 순서를 보장합니다.
 
-### LLM 가드레일
+### LLM 가드레일 (VOD 하이라이트 분석)
 | 구분 | 내용 |
 |------|------|
 | 입력 | 빈 채팅 제거 → 배치 크기 상한(30) → 총 문자 상한(3,000자) |
