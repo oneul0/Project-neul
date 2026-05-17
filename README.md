@@ -136,6 +136,7 @@ collector ─(Kafka)─► analyzer (8082)  ← 감정 분석, 편집 후보 계
 | [ERD](docs/27_erd.md) | 전체 테이블 ERD + 컬럼 설명, 인덱스, Redis 키 네임스페이스 |
 | [정규화 분석](docs/28_normalization_analysis.md) | 3NF 충족 여부 및 의도된 비정규화 근거 |
 | [온보딩 가이드](docs/29_onboarding_guide.md) | 서비스 구성·인증·파이프라인·코드 탐색 경로 종합 |
+| [시스템 신뢰성 설계](docs/30_system_reliability.md) | 재시도·보안·DB 정합성·LLM 가드레일·개선 전후 수치 비교 |
 
 ---
 
@@ -515,3 +516,4 @@ AI가 생성한 코드를 그대로 적용하지 않고, 실행 결과를 보고
 | [27_erd](docs/27_erd.md) | 전체 DB ERD |
 | [28_normalization_analysis](docs/28_normalization_analysis.md) | 정규화 분석 |
 | [29_onboarding_guide](docs/29_onboarding_guide.md) | 종합 온보딩 가이드 |
+| [30_system_reliability](docs/30_system_reliability.md) | 시스템 신뢰성 설계 (재시도·보안·DB 정합성·운영 관측성) |

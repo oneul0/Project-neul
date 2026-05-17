@@ -40,6 +40,7 @@
 | 27 | `27_erd.md` | 전체 DB ERD + 테이블별 설명 |
 | 28 | `28_normalization_analysis.md` | 정규화 적용/미적용 분석 |
 | 29 | `29_onboarding_guide.md` | 종합 온보딩 가이드 |
+| 30 | `30_system_reliability.md` | 시스템 신뢰성 설계 — 재시도·보안·DB 정합성·LLM 가드레일·개선 전후 수치 |
 
 ## 이번 정리에서 병합/정리된 문서
 
