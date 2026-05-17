@@ -19,6 +19,7 @@
 
 - [구현된 기능](#구현된-기능)
 - [아키텍처](#아키텍처)
+- [설계 문서](#설계-문서)
 - [기술 스택](#기술-스택)
 - [로컬 실행](#로컬-실행)
 - [트러블슈팅](#트러블슈팅)
@@ -122,6 +123,19 @@ collector ─(Kafka)─► analyzer (8082)  ← 감정 분석, 편집 후보 계
   → Redis 세션 저장 + GAK_OWNER_ASSERTION 쿠키 발급
   → 이후 모든 요청에서 OwnerAccessFilter가 쿠키 서명·세션 검증
 ```
+
+---
+
+## 설계 문서
+
+구현과 대조 검증된 설계 산출물입니다.
+
+| 문서 | 내용 |
+|------|------|
+| [VOD 하이라이트 시퀀스 다이어그램](docs/26_vod_highlight_sequence_diagrams.md) | 분석 요청부터 개인화 조회까지 6단계 Mermaid 시퀀스 다이어그램 |
+| [ERD](docs/27_erd.md) | 전체 테이블 ERD + 컬럼 설명, 인덱스, Redis 키 네임스페이스 |
+| [정규화 분석](docs/28_normalization_analysis.md) | 3NF 충족 여부 및 의도된 비정규화 근거 |
+| [온보딩 가이드](docs/29_onboarding_guide.md) | 서비스 구성·인증·파이프라인·코드 탐색 경로 종합 |
 
 ---
 
@@ -497,3 +511,7 @@ AI가 생성한 코드를 그대로 적용하지 않고, 실행 결과를 보고
 | [23_production_deploy_checklist](docs/23_production_deploy_checklist.md) | 프로덕션 배포 체크리스트 |
 | [24_session_theft_defense](docs/24_session_theft_defense.md) | 세션 탈취 방어 전략 |
 | [25_ui_naming_update](docs/25_ui_naming_update.md) | UI 네이밍 최신화 기록 |
+| [26_vod_highlight_sequence_diagrams](docs/26_vod_highlight_sequence_diagrams.md) | VOD 하이라이트 추출 6단계 시퀀스 다이어그램 |
+| [27_erd](docs/27_erd.md) | 전체 DB ERD |
+| [28_normalization_analysis](docs/28_normalization_analysis.md) | 정규화 분석 |
+| [29_onboarding_guide](docs/29_onboarding_guide.md) | 종합 온보딩 가이드 |
