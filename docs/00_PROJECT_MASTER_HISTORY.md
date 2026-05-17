@@ -36,6 +36,10 @@
 | 23 | `23_production_deploy_checklist.md` | 프로덕션 배포 체크리스트 |
 | 24 | `24_session_theft_defense.md` | 세션 탈취 방어 전략 |
 | 25 | `25_ui_naming_update.md` | UI 네이밍 최신화 기록 |
+| 26 | `26_vod_highlight_sequence_diagrams.md` | VOD 하이라이트 추출 단계별 시퀀스 다이어그램 (Mermaid) |
+| 27 | `27_erd.md` | 전체 DB ERD + 테이블별 설명 |
+| 28 | `28_normalization_analysis.md` | 정규화 적용/미적용 분석 |
+| 29 | `29_onboarding_guide.md` | 종합 온보딩 가이드 |
 
 ## 이번 정리에서 병합/정리된 문서
 
@@ -54,6 +58,14 @@
 - VOD 분석 결과는 단순 감정 점수보다 "편집 후보 탐색" 관점으로 고도화 중입니다.
 
 ## 날짜별 기록
+
+### 2026-05-17
+
+- 포트폴리오 설계 문서 생성 (26~29):
+  - VOD 하이라이트 추출 6단계 Mermaid 시퀀스 다이어그램
+  - 전체 DB ERD (Flyway V1~V7 기준)
+  - 정규화 분석 (3NF 충족, 의도된 비정규화 근거 명시)
+  - 종합 온보딩 가이드 (인증·채팅 분석·VOD 흐름·코드 탐색 가이드)
 
 ### 2026-02 ~ 2026-03 중순
 
