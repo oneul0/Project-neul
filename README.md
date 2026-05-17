@@ -18,10 +18,10 @@
 
 ## ✨ 앱 플로우 소개
 
-|  🔐 로그인  |  🎬 VOD 하이라이트  |  🎯 투표 & 룰렛  |
-|:---:|:---:|:---:|
-| <!-- 로그인 스크린샷 --> | <img width="1470" height="802" alt="Image" src="https://github.com/user-attachments/assets/0aba945c-7fb4-4454-a050-f1166f1e1051" /> | <!-- 투표/룰렛 스크린샷 --> |
-| CHZZK OAuth 로그인 | 편집 후보 구간 자동 선별 | 채팅 기반 투표 & 도네이션 룰렛 |
+|  🔐 로그인  |  🎬 VOD 하이라이트  |  🎯 투표  | 🎯 룰렛 |
+|:---:|:---:|:---:| :---:|
+| <img width="1470" height="782" alt="Image" src="https://github.com/user-attachments/assets/9c8f9877-4725-4195-86ed-f324efa04134" /> | <img width="1470" height="802" alt="Image" src="https://github.com/user-attachments/assets/0aba945c-7fb4-4454-a050-f1166f1e1051" /> | <img width="1446" height="733" alt="Image" src="https://github.com/user-attachments/assets/83602286-293b-468a-b6a3-c4e63facb7a2" /> | <img width="1453" height="727" alt="Image" src="https://github.com/user-attachments/assets/661f9143-13f9-452b-ad56-458377303ff9" /> |
+| CHZZK OAuth 로그인 | 편집 후보 구간 자동 선별 | 채팅 기반 투표 | 도네이션 룰렛 |
 
 ---
 
