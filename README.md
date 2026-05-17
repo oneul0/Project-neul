@@ -7,10 +7,10 @@
 
 ## 미리보기
 
-<!-- 메인 배너 이미지 -->
+<!-- 메인 기능 이미지 -->
 <br/>
 <p align="center">
-  <img width="1470" height="782" alt="Image" src="https://github.com/user-attachments/assets/9c8f9877-4725-4195-86ed-f324efa04134" />
+  <img width="1470" height="802" alt="Image" src="https://github.com/user-attachments/assets/0aba945c-7fb4-4454-a050-f1166f1e1051" />
 </p>
 <br/>
 
