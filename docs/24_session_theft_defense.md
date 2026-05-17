@@ -1,20 +1,29 @@
-# 24. 토큰 탈취 방어
+# 24. 세션 탈취 방어
 
-> 작업일: 2026-05-06  
-> 브랜치: `feature/security-ux`
-
----
-
-## 배경
-
-`GAK_OWNER_ASSERTION`은 HMAC-SHA256 서명 기반의 stateless 토큰입니다.  
-기존 구조에서는 토큰이 탈취되면 로그아웃해도 만료 전까지 공격자가 계속 사용 가능했습니다.
-
-또한 쿠키에 `Secure` 플래그가 없어 HTTP 환경에서 네트워크 도청으로 탈취 가능했습니다.
+> 작업일: 2026-05-06 / 브랜치: `feature/security-ux`  
+> 관련 문서: [22_security_hardening.md](22_security_hardening.md)
 
 ---
 
-## 적용한 방어 2가지
+## 배경 및 문제
+
+`GAK_OWNER_ASSERTION`은 HMAC-SHA256 서명 기반 stateless 토큰이다.
+
+**문제 1**: 쿠키에 `Secure` 플래그가 없어 HTTP 구간에서 네트워크 도청으로 탈취 가능했다.
+
+**문제 2**: stateless 토큰은 로그아웃해도 만료 전까지 유효하다. 탈취된 토큰으로 공격자가 계속 접근 가능하다.
+
+### 의사결정: Revocation 방식
+
+| 방식 | 설명 | 판단 |
+|------|------|------|
+| JWT 단독 (stateless) | 서버 상태 없음 | 기각 — revocation 불가 |
+| 블랙리스트 DB | 만료된 토큰 저장 | 기각 — 저장 비용, 조회 지연 |
+| **HMAC + Redis 세션 바인딩** | 세션 ID를 토큰에 포함, Redis 키 삭제로 즉시 무효화 | **채택** |
+
+---
+
+## 적용한 방어
 
 ### 1. Secure 플래그
 

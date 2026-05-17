@@ -1,97 +1,116 @@
-# VOD 동시성 및 안전성 계획
+# 14. VOD 동시성 제어 설계
 
-작성일: 2026-03-31
-최종 업데이트: 2026-04-01
+> 작성일: 2026-03-31 / 구현 완료: 2026-05-02  
+> 구현 상세: [18_llm_guardrail_plan.md](18_llm_guardrail_plan.md) §3-5
 
-## 1. 현재 상태
+---
 
-현재 VOD 분석은 다음 구조로 동작합니다.
+## 배경
 
-- 사용자가 `분석 시작`을 누르면 HTTP 요청은 바로 끝남
-- 실제 VOD 크롤링/분석은 백그라운드 비동기 작업으로 진행
-- 서로 다른 VOD 작업은 동시에 실행될 수 있음
-- 한 VOD 내부의 채팅 청크 수집은 순차적으로 진행
+VOD 분석은 "분석 시작" 버튼 클릭 즉시 비동기로 시작되며, 완료까지 수 분이 소요된다. 내부 흐름은 다음과 같다.
 
-즉 "작업 간 병렬, 작업 내부는 순차" 구조입니다.
+```
+사용자 요청
+  → collector: VOD 채팅 크롤링 (수백~수천 페이지)
+  → Kafka: 청크 단위 전송
+  → analyzer: 30초 윈도우 집계 + Ollama LLM 리뷰 (상위 12개 후보)
+  → core-api: DB 저장 + SSE 알림
+```
 
-## 2. 왜 제한이 필요한가
+하나의 분석 작업이 Ollama를 수 분간 점유한다. 동시 분석 수 제한 없이 여러 요청이 쌓이면:
 
-지금은 아래 제한이 아직 없습니다.
+- Ollama LLM 큐 적체 → 분석 시간 예측 불가
+- collector 메모리·Kafka lag 선형 증가
+- 동시 사용자 모두 기아 상태(starvation)
 
-- 사용자별 동시 분석 제한
-- 시스템 전체 동시 분석 제한
-- 큐 정책
+---
 
-그래서 동시 사용자가 많아지면:
+## 의사결정: 동시성 제어 방식
 
-- collector outbound 요청 증가
-- analyzer 메모리 사용량 증가
-- Kafka 적체
-- DB 저장 지연
+### 고려한 선택지
 
-같은 문제가 생길 수 있습니다.
+| 방식 | 설명 | 판단 |
+|------|------|------|
+| in-memory ConcurrentHashMap | 구현 간단 | 기각 — 수평 확장 시 각 인스턴스가 개별 카운터 보유 → 제한 무력화 |
+| DB 기반 상태 조회 | 정확 | 기각 — 요청 진입 시점에 즉각 판단 필요, DB 조회 지연 허용 불가 |
+| **Redis 카운터 + TTL** | 분산 환경 지원, TTL로 stuck 자동 만료 | **채택** |
+| 대기열(Queue) | 거절 없이 순차 처리 | 추후 고려 — 현재는 즉시 거절이 UX상 명확 |
 
-## 3. 먼저 측정할 것
+### 결정
 
-- VOD 1건당 평균 처리 시간
-- pagesProcessed / chatsCollected 평균
-- collector 응답 지연
-- analyzer 메모리 사용량
-- Kafka lag
-- 1건, 2건, 3건, 5건 동시 실행 시 처리 시간 변화
+**Redis 카운터(사용자별 1건, 전역 3건) + TTL 30분** 채택.
 
-## 4. 초기 가설
+Redis 장애 시 `fail-open`: 분석을 허용하고 슬롯 카운터만 갱신하지 않는다. 인증(fail-secure)과 반대 전략 — 분석 차단보다 분석 허용이 사용자에게 덜 해롭다고 판단.
 
-실측 전 보수적인 시작점:
+---
 
-- 사용자당 동시 VOD 분석 1건
-- 시스템 전체 동시 VOD 분석 2~3건
+## 구현된 구조
 
-## 5. 구현 방향
+### Redis 키 설계
 
-### 사용자별 제한
+```
+vod:active:global          → 전체 동시 분석 수 (상한 3)
+vod:active:user:{ownerId}  → 사용자별 동시 분석 수 (상한 1)
+vod:owner:{videoNo}        → ownerId 저장 (슬롯 반납 시 역매핑)
+```
 
-- owner channel id 기준 실행 중 작업 수 추적
-- 이미 진행 중이면 새 요청 거절 또는 대기열 등록
+모든 키 TTL = 30분 → analyzer 크래시로 완료 이벤트가 오지 않아도 자동 해제.
 
-### 시스템 전체 제한
+### 슬롯 생애주기
 
-- collector에서 전역 실행 중 작업 수 추적
-- 최대치를 넘기면 거절 또는 큐 처리
+```
+POST /vod/{videoNo}/analyze
+  └─ VodAnalysisSlotService.tryAcquire(ownerId, videoNo)
+        ├─ REJECTED_USER (429)   → 이미 분석 중인 VOD 있음
+        ├─ REJECTED_GLOBAL (503) → 시스템 전체 슬롯 소진
+        └─ ACQUIRED
+              └─ 분석 파이프라인 시작
+                    └─ Kafka: vod-analysis-complete-topic 또는 vod-analysis-failed-topic
+                          └─ VodAnalysisEventConsumer.releaseByVideoNo(videoNo)
+```
 
-### 상태 모델 확장 후보
+### HTTP 응답 코드 선택 근거
 
-현재 상태:
+| 상태 | 코드 | 이유 |
+|------|------|------|
+| REJECTED_USER | 429 Too Many Requests | 사용자가 발생시킨 제한 |
+| REJECTED_GLOBAL | 503 Service Unavailable | 시스템 자원 소진, 사용자 귀책 아님 |
 
-- `IDLE`
-- `REQUESTED`
-- `CRAWLING`
-- `ANALYZING`
-- `COMPLETED`
-- `FAILED`
+### 영향 클래스
 
-추가 후보:
+```
+core-api/domain/chat/service/VodAnalysisSlotService.java    ← 슬롯 획득/반납
+core-api/domain/chat/service/VodAnalysisEventConsumer.java  ← 완료/실패 시 반납
+core-api/domain/chat/controller/VodController.java          ← 429/503 응답 처리
+```
 
-- `QUEUED`
-- `REJECTED_LIMIT`
+---
 
-## 6. UI 반영 방향
+## VOD 상태 머신
 
-- 지금 실행 중인지
-- 대기 중인지
-- 제한 때문에 시작이 안 되었는지
-- 동일 사용자의 다른 분석 작업 때문에 막힌 것인지
+```
+IDLE → REQUESTED → CRAWLING → ANALYZING → COMPLETED
+                                        ↘ FAILED
+```
 
-를 명확히 보여줘야 합니다.
+| 상태 | 주체 | 전환 조건 |
+|------|------|----------|
+| IDLE | — | 초기 상태 |
+| REQUESTED | collector | 분석 시작 요청 수신 |
+| CRAWLING | collector | 첫 번째 청크 수집 시작 |
+| ANALYZING | analyzer | VOD 크롤 완료, 분석 중 |
+| COMPLETED | collector | vod-analysis-complete-topic 수신 or highlight fallback |
+| FAILED | collector | vod-analysis-failed-topic 수신 or 30분 타임아웃 |
 
-## 7. 적용 전 체크리스트
+**상태는 collector의 in-memory(`ConcurrentHashMap`)에 저장된다.** 재시작 시 IDLE로 초기화된다. 이로 인한 stuck 상태는 highlight 존재 여부 fallback으로 자동 복구된다 — 상세: [19_status_polling_plan.md](19_status_polling_plan.md).
 
-- 동시 1건 정상 동작 확인
-- 동시 2건 이상에서 처리 시간과 메모리 변화를 측정
-- 상태가 stuck 되지 않는지 확인
-- 실패 작업이 끝난 뒤 슬롯이 정상 반납되는지 확인
+---
 
-## 8. 메모
+## 알려진 한계 및 향후 고려사항
 
-이 항목은 아직 "구현 완료"가 아니라 "실측 후 제한값 결정" 단계입니다.
-실험 브랜치에서 감정/편집 후보 품질이 어느 정도 안정화된 뒤 이어서 진행하는 것이 맞습니다.
+| 항목 | 현황 | 개선 방향 |
+|------|------|----------|
+| MAX_GLOBAL 값 | 보수적으로 3 설정 | Ollama 서버 스펙 실측 후 조정 |
+| 대기열(QUEUED 상태) | 미구현, 즉시 거절 | 트래픽 증가 시 도입 검토 |
+| StatusService 영속화 | in-memory (재시작 시 소실) | 잦은 재시작 환경에서는 Redis 저장으로 전환 |
+| LLM 슬롯 공유 | 실시간 채팅 Slow-Path와 VOD가 동일 Ollama 사용 | 부하 실측 후 Semaphore 슬롯 수 조정 |

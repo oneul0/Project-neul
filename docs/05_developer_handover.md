@@ -131,8 +131,8 @@ Project Gak(각)은 스트리머 본인이 자신의 방송과 다시보기를 �
 
 - VOD 분석 완료 상태는 completion 이벤트와 fallback 보정으로 안정화했지만, 서비스 기동 순서가 꼬이면 여전히 관찰이 필요합니다.
 - timeline은 fallback이 있어 화면이 완전히 비지는 않지만, 정확한 전체 흐름을 보려면 timeline 저장이 정상이어야 합니다.
-- VOD 동시성 제한은 아직 계획 단계입니다.
-- 편집 후보 점수는 실험 브랜치에서 계속 튜닝 중입니다.
+- VOD 동시성 제한은 **구현 완료** (사용자별 1건 / 전체 3건 Redis 기반). 상세: [14_vod_concurrency_plan.md](14_vod_concurrency_plan.md)
+- 편집 후보 점수(`intensityScore`, `transitionScore`, `editabilityScore`)는 현재 코드에 반영되어 있으며, LLM 리뷰(상위 12개 후보)를 통한 최종 선별까지 동작 중입니다.
 
 ## 8. 다음에 이어서 보기 좋은 문서
 
