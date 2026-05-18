@@ -92,6 +92,41 @@ LLM이 반환하는 감정 분석 JSON은 필드 누락·범위 초과·zero-sco
 - **수치 근거 강제**: 유저 프롬프트에 Z-Score·densityRatio·laughRatio 등 정량 지표를 포함시켜 LLM이 텍스트 인상이 아닌 수치 기반으로 판정하도록 구성
 - **RAG few-shot 주입**: 과거 승인·거절된 하이라이트 사례를 검색해 프롬프트에 삽입 — 일관된 판단 기준 확보
 
+```mermaid
+flowchart TD
+    Start([채팅 배치 입력]) --> I1
+
+    subgraph CODE_IN ["코드 · 입력 가드"]
+        I1[빈 채팅 제거] --> I2["배치 크기 ≤ 30개"]
+        I2 --> I3["총 문자 수 ≤ 3,000자"]
+    end
+
+    I3 --> SEM{"Semaphore(1)\n슬롯 여유?"}
+    SEM -- "없음" --> SKIP([skip + 카운터 기록])
+    SEM -- "있음" --> PROMPT
+
+    subgraph PROMPT ["프롬프트 · 출력 형식 강제"]
+        P1["format:json 이중 강제"]
+        P2["scores 합계 = 1.0 명시"]
+        P3["NEUTRAL 남발 억제 규칙"]
+        P4["카테고리 허용 목록 4종"]
+        P5["Z-Score 등 수치 포함 → 근거 기반 판정"]
+        P6["RAG few-shot 주입"]
+    end
+
+    PROMPT --> LLM["LLM 호출\n타임아웃 = min(90, 20 + n×1.5)초"]
+    LLM -- "장애" --> CB(["Circuit Breaker\nNEUTRAL fallback"])
+    LLM -- "성공" --> O1
+
+    subgraph CODE_OUT ["코드 · 출력 가드"]
+        O1["7개 감정 키 완결성 확인"] --> O2["점수 [0.0, 1.0] 클램핑"]
+        O2 --> O3["합계 < 0.001 → NEUTRAL 강제"]
+    end
+
+    O3 --> Result([감정 분석 결과])
+    CB --> Result
+```
+
 가드 적용 전에는 응답 JSON 파싱 실패 시 전체 배치가 드롭되었고, zero-score 뭉침으로 모든 채팅이 NEUTRAL로 집계되는 문제가 있었습니다.
 
 ### 채팅 패턴 기반 하이라이트 추출
