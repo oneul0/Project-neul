@@ -103,18 +103,18 @@ flowchart TD
 
     I3 --> SEM{"Semaphore(1)\n슬롯 여유?"}
     SEM -- "없음" --> SKIP([skip + 카운터 기록])
-    SEM -- "있음" --> PROMPT
+    SEM -- "있음" --> P1
 
     subgraph PROMPT ["프롬프트 · 출력 형식 강제"]
         P1["format:json 이중 강제"]
         P2["scores 합계 = 1.0 명시"]
         P3["NEUTRAL 남발 억제 규칙"]
         P4["카테고리 허용 목록 4종"]
-        P5["Z-Score 등 수치 포함 → 근거 기반 판정"]
+        P5["Z-Score 등 수치 포함\n→ 근거 기반 판정"]
         P6["RAG few-shot 주입"]
     end
 
-    PROMPT --> LLM["LLM 호출\n타임아웃 = min(90, 20 + n×1.5)초"]
+    P1 & P2 & P3 & P4 & P5 & P6 --> LLM["LLM 호출\n타임아웃 = min(90, 20 + n×1.5)초"]
     LLM -- "장애" --> CB(["Circuit Breaker\nNEUTRAL fallback"])
     LLM -- "성공" --> O1
 
