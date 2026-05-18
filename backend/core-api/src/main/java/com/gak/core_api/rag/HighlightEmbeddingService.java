@@ -101,24 +101,12 @@ public class HighlightEmbeddingService {
     }
 
     private Mono<Void> storeEmbedding(Long highlightId, String embeddingText, float[] vector) {
-        String pgVectorLiteral = toPgVectorLiteral(vector);
-
         return databaseClient.sql(
                         "UPDATE vod_highlights SET embedding_text = :text, embedding = :vec::vector WHERE id = :id")
                 .bind("text", embeddingText)
-                .bind("vec", pgVectorLiteral)
+                .bind("vec", PgVectorUtils.toLiteral(vector))
                 .bind("id", highlightId)
                 .then();
-    }
-
-    private String toPgVectorLiteral(float[] vector) {
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < vector.length; i++) {
-            if (i > 0) sb.append(',');
-            sb.append(vector[i]);
-        }
-        sb.append(']');
-        return sb.toString();
     }
 
     private static String safe(String value, String fallback) {

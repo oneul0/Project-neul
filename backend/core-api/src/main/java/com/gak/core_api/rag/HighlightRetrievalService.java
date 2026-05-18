@@ -10,11 +10,11 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
-
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 /**
  * RAG 하이라이트 추천 — 3전략 혼합 검색.
@@ -49,7 +49,7 @@ public class HighlightRetrievalService {
 
         return embeddingService.requestEmbeddingPublic(embeddingText)
                 .flatMap(vector -> {
-                    String pgVec = toPgVectorLiteral(vector);
+                    String pgVec = PgVectorUtils.toLiteral(vector);
                     int kA = Math.max(1, (int) Math.round(totalK * RATIO_A));
                     int kB = Math.max(1, (int) Math.round(totalK * RATIO_B));
                     int kC = totalK - kA - kB;
@@ -138,18 +138,11 @@ public class HighlightRetrievalService {
     /** A → B → C 순서로 삽입하되 id 기준 중복 제거, totalK 이하로 자른다. */
     private List<VodHighlight> merge(List<VodHighlight> a, List<VodHighlight> b, List<VodHighlight> c, int totalK) {
         Map<Long, VodHighlight> seen = new LinkedHashMap<>();
-        for (VodHighlight h : concat(a, b, c)) {
-            if (h.getId() != null) seen.putIfAbsent(h.getId(), h);
-        }
+        Stream.of(a, b, c).flatMap(List::stream)
+                .filter(h -> h.getId() != null)
+                .forEach(h -> seen.putIfAbsent(h.getId(), h));
         List<VodHighlight> result = new ArrayList<>(seen.values());
         return result.size() > totalK ? result.subList(0, totalK) : result;
-    }
-
-    @SafeVarargs
-    private List<VodHighlight> concat(List<VodHighlight>... lists) {
-        List<VodHighlight> all = new ArrayList<>();
-        for (List<VodHighlight> list : lists) all.addAll(list);
-        return all;
     }
 
     private VodHighlight mapRow(Readable row) {
@@ -177,7 +170,7 @@ public class HighlightRetrievalService {
      * 코사인 유사도가 threshold 이상인 경우에만 결과를 반환한다.
      */
     public Mono<V2SimilarHighlightAlert> findMostSimilarLive(String roomId, float[] queryVector, double threshold, String trigger) {
-        String pgVec = toPgVectorLiteral(queryVector);
+        String pgVec = PgVectorUtils.toLiteral(queryVector);
         return databaseClient.sql("""
                         SELECT id, video_no, scene_label, category, reason_summary,
                                1 - (embedding <=> :vec::vector) AS similarity
@@ -211,15 +204,5 @@ public class HighlightRetrievalService {
 
     private String safeCategory(String category) {
         return (category == null || category.isBlank()) ? "UNKNOWN" : category;
-    }
-
-    private String toPgVectorLiteral(float[] vector) {
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < vector.length; i++) {
-            if (i > 0) sb.append(',');
-            sb.append(vector[i]);
-        }
-        sb.append(']');
-        return sb.toString();
     }
 }
