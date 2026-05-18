@@ -164,4 +164,4 @@ curl -X POST "http://localhost:8083/dev/seed/{channelId}"
 
 ## 🏷️ 바로가기
 
-[Wiki](#) · [컨벤션](#) · [설계 문서](docs/)
+· [설계 문서](docs/)
