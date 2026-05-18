@@ -54,6 +54,16 @@ gak:
   internal-api-secret: ${GAK_INTERNAL_API_SECRET:dev-gak-internal-secret}
   cors:
     allowed-origins: ${GAK_CORS_ALLOWED_ORIGINS:http://localhost:3000}
+  v2:
+    spike:
+      positive-threshold: 0.55
+      negative-threshold: 0.45
+    similarity:
+      threshold: 0.72
+      alert-cooldown-minutes: 3
+  rag:
+    ratio-a: 0.6
+    ratio-b: 0.2
 
 # Chzzk Open API 설정 (환경변수로 주입)
 chzzk:

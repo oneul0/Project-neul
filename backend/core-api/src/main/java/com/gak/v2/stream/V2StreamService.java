@@ -9,6 +9,7 @@ import com.gak.v2.common.dto.MentalBufferState;
 import com.gak.v2.common.dto.V2AggregateFrame;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -26,10 +27,17 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class V2StreamService {
 
-    private static final double POSITIVE_SPIKE_THRESHOLD = 0.55;
-    private static final double NEGATIVE_SPIKE_THRESHOLD = 0.45;
-    private static final double SIMILARITY_THRESHOLD     = 0.72;
-    private static final Duration ALERT_COOLDOWN         = Duration.ofMinutes(3);
+    @Value("${gak.v2.spike.positive-threshold:0.55}")
+    private double positiveThreshold;
+
+    @Value("${gak.v2.spike.negative-threshold:0.45}")
+    private double negativeThreshold;
+
+    @Value("${gak.v2.similarity.threshold:0.72}")
+    private double similarityThreshold;
+
+    @Value("${gak.v2.similarity.alert-cooldown-minutes:3}")
+    private int alertCooldownMinutes;
 
     private final ObjectMapper objectMapper;
     private final V2RedisStateService v2RedisStateService;
@@ -63,14 +71,14 @@ public class V2StreamService {
         if (trigger == null) return;
 
         Instant last = lastAlertAt.get(frame.getRoomId());
-        if (last != null && Duration.between(last, Instant.now()).compareTo(ALERT_COOLDOWN) < 0) return;
+        if (last != null && Duration.between(last, Instant.now()).compareTo(Duration.ofMinutes(alertCooldownMinutes)) < 0) return;
 
         lastAlertAt.put(frame.getRoomId(), Instant.now());
         String embeddingText = buildLiveEmbeddingText(frame);
 
         highlightEmbeddingService.requestEmbeddingPublic(embeddingText)
                 .flatMap(vector -> highlightRetrievalService.findMostSimilarLive(
-                        frame.getRoomId(), vector, SIMILARITY_THRESHOLD, trigger))
+                        frame.getRoomId(), vector, similarityThreshold, trigger))
                 .subscribe(
                         alert -> {
                             Sinks.Many<Object> sink = roomSinks.get(frame.getRoomId());
@@ -87,8 +95,8 @@ public class V2StreamService {
     private String detectSpikeTrigger(V2AggregateFrame frame) {
         MentalBufferState mb = frame.getMentalBuffer();
         if (mb == null) return null;
-        if (mb.getEmaPositive() > POSITIVE_SPIKE_THRESHOLD) return "positive_spike";
-        if (mb.getEmaNegative() > NEGATIVE_SPIKE_THRESHOLD) return "negative_spike";
+        if (mb.getEmaPositive() > positiveThreshold) return "positive_spike";
+        if (mb.getEmaNegative() > negativeThreshold) return "negative_spike";
         return null;
     }
 

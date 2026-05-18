@@ -5,6 +5,7 @@ import com.gak.v2.stream.V2SimilarHighlightAlert;
 import io.r2dbc.spi.Readable;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.r2dbc.core.DatabaseClient;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
@@ -30,9 +31,11 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 public class HighlightRetrievalService {
 
-    private static final double RATIO_A = 0.6;
-    private static final double RATIO_B = 0.2;
-    private static final double RATIO_C = 0.2;
+    @Value("${gak.rag.ratio-a:0.6}")
+    private double ratioA;
+
+    @Value("${gak.rag.ratio-b:0.2}")
+    private double ratioB;
 
     private final DatabaseClient databaseClient;
     private final HighlightEmbeddingService embeddingService;
@@ -50,8 +53,8 @@ public class HighlightRetrievalService {
         return embeddingService.requestEmbeddingPublic(embeddingText)
                 .flatMap(vector -> {
                     String pgVec = PgVectorUtils.toLiteral(vector);
-                    int kA = Math.max(1, (int) Math.round(totalK * RATIO_A));
-                    int kB = Math.max(1, (int) Math.round(totalK * RATIO_B));
+                    int kA = Math.max(1, (int) Math.round(totalK * ratioA));
+                    int kB = Math.max(1, (int) Math.round(totalK * ratioB));
                     int kC = totalK - kA - kB;
 
                     Mono<List<VodHighlight>> strategyA = queryStrategyA(pgVec, candidate.getCategory(), candidate.getVideoNo(), kA);
