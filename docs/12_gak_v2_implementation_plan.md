@@ -213,14 +213,18 @@ backend/analyzer/src/main/java/com/gak/v2/
 ### 6.4 core-api
 
 ```text
-backend/core-api/src/main/java/com/gak/v2/
-└── stream/
-    ├── V2RedisStateService.java   ← Redis 읽기·쓰기 (계획의 redis/V2RedisService에 해당)
-    ├── V2StreamController.java    ← /api/v2/stream/{roomId}, /api/v2/state/{roomId} 포함
-    └── V2StreamService.java
+backend/core-api/src/main/java/com/gak/
+├── core_api/rag/
+│   ├── HighlightEmbeddingService.java   ← 임베딩 생성 (nomic-embed-text, 768-dim)
+│   └── HighlightRetrievalService.java   ← pgvector 유사도 검색 (findMostSimilarLive 추가)
+└── v2/stream/
+    ├── V2RedisStateService.java         ← Redis 읽기·쓰기 (계획의 redis/V2RedisService에 해당)
+    ├── V2SimilarHighlightAlert.java     ← 스파이크 감지 시 프론트로 전송되는 알림 DTO
+    ├── V2StreamController.java          ← /api/v2/stream/{roomId}, /api/v2/state/{roomId} 포함
+    └── V2StreamService.java             ← HighlightEmbeddingService, HighlightRetrievalService 주입
 ```
 
-`redis/` 패키지 대신 `stream/` 하위에 위치함. `V2StreamController`가 state 조회 엔드포인트도 함께 제공하므로 별도 `V2StatusController` 없음.
+`redis/` 패키지 대신 `stream/` 하위에 위치함. `V2StreamController`가 state 조회 엔드포인트도 함께 제공하므로 별도 `V2StatusController` 없음. `HighlightEmbeddingService`와 `HighlightRetrievalService`는 `core_api/rag/` 패키지에 위치하며 v1 VOD 하이라이트 RAG 파이프라인과 공유한다.
 
 ### 6.5 frontend
 
@@ -229,10 +233,14 @@ frontend/src/
 ├── app/api/channels/[channelId]/v2/[[...v2Path]]/
 │   └── route.ts                  ← /api/v2/* 프록시 라우트
 ├── components/v2/
-│   └── V2GuardrailCard.tsx       ← EMA 지표·브리핑·앵커·키워드·신뢰 등급 통합 카드
+│   └── V2GuardrailCard.tsx       ← EMA 지표·브리핑·앵커·키워드·신뢰 등급·유사 하이라이트 배너 통합 카드
 └── hooks/
-    └── useV2Stream.ts            ← SSE 구독 + 초기 스냅샷 로드
+    └── useV2Stream.ts            ← SSE 구독 + 초기 스냅샷 로드 + 유사 하이라이트 알림 관리
 ```
+
+`useV2Stream` 반환 시그니처: `{ frame, connected, similarAlert, dismissAlert }`
+
+`V2GuardrailCard`는 `V2AggregateFrame` 외에 `V2SimilarHighlightAlert | null` 타입의 `similarAlert`와 `onDismissAlert` 콜백을 추가로 받는다. 알림이 있을 때 `SimilarHighlightBanner` 인라인 컴포넌트를 렌더링하며, 30초 후 자동 해제된다.
 
 초기 계획의 5개 독립 컴포넌트(`MentalBufferBar`, `AnchorChatPanel`, `NarrativeBriefingCard`, `TrustFilterWidget`, `AudienceBalanceCard`)는 `V2GuardrailCard` 단일 파일로 통합됨. 모든 섹션이 동일한 `V2AggregateFrame`을 공유하므로 분리 이득이 없었음.
 
@@ -602,22 +610,42 @@ emaPositive = alpha * currentPositive + (1 - alpha) * previousEmaPositive
 
 현재 구조는 SSE 기반이고, 프론트도 이에 맞춰 동작 중이다. 따라서 1차 구현은 SSE를 유지하는 것이 적절하다.
 
-### 1차 계획
+### 1차 계획 (구현 완료)
 
 - `V2StreamService`가 `v2-aggregate` 토픽을 소비
 - `V2StreamController`가 `/api/v2/stream/{roomId}` SSE endpoint 제공
 - 프론트는 v2 dashboard에서 해당 이벤트만 별도 구독
 
-### 권장 이벤트
+### 실제 SSE 이벤트 계약
 
-- `v2_frame`
-- `v2_balance_update`
-- `v2_buffer_update`
-- `v2_anchor_update`
-- `v2_trust_update`
-- `v2_briefing_update`
+계획 단계 권장 이벤트 목록(`v2_balance_update` 등)과 달리, 실제 구현에서는 이벤트를 2종류로 단순화했다.
 
-초기 구현은 `v2_frame` 하나만으로 시작하는 것을 권장한다.
+| 이벤트 | 발생 조건 | 데이터 타입 |
+|---|---|---|
+| `v2_frame` | 매 aggregate 프레임마다 | `V2AggregateFrame` |
+| `v2_similar_highlight` | 스파이크 감지 + 쿨다운 경과 + 유사도 임계치 초과 시 | `V2SimilarHighlightAlert` |
+| `ping` | 15초 주기 keep-alive | `"keep-alive"` 문자열 |
+
+### 유사 하이라이트 실시간 알림 (live highlight alert)
+
+`V2StreamService`는 매 aggregate 프레임에서 스파이크를 감지하고, 조건을 만족하면 `v2_similar_highlight` 이벤트를 추가로 emit한다.
+
+**스파이크 감지 기준**
+- `emaPositive > 0.55` → `positive_spike`
+- `emaNegative > 0.45` → `negative_spike`
+
+**알림 발화 조건 (모두 충족해야 함)**
+1. 스파이크 감지됨
+2. 마지막 알림 이후 3분 경과 (`ALERT_COOLDOWN`)
+3. `HighlightEmbeddingService`로 생성한 임베딩과 과거 하이라이트의 cosine 유사도 ≥ 0.72
+
+**임베딩 텍스트 구성**
+```
+[LIVE] {topicLabel}
+balance={balance} positive={emaPositive} negative={emaNegative}
+keywords: {keywords joined}
+{top anchor content}
+```
 
 ### 2차 계획
 
@@ -664,7 +692,7 @@ emaPositive = alpha * currentPositive + (1 - alpha) * previousEmaPositive
 
 ## 15. 단계별 구현 로드맵
 
-## Phase 1. v2 기반 골격 구성
+## Phase 1. v2 기반 골격 구성 ✅ 완료
 
 작업:
 
@@ -678,7 +706,7 @@ emaPositive = alpha * currentPositive + (1 - alpha) * previousEmaPositive
 
 - `v2-raw-chat`에 raw 이벤트가 안정적으로 유입됨
 
-## Phase 2. Sentiment / Trust 구현
+## Phase 2. Sentiment / Trust 구현 ✅ 완료
 
 작업:
 
@@ -690,7 +718,7 @@ emaPositive = alpha * currentPositive + (1 - alpha) * previousEmaPositive
 
 - `v2-sentiment`, `v2-troll` 결과 생성
 
-## Phase 3. Context / Aggregator 구현
+## Phase 3. Context / Aggregator 구현 ✅ 완료
 
 작업:
 
@@ -782,6 +810,7 @@ emaPositive = alpha * currentPositive + (1 - alpha) * previousEmaPositive
 | Briefing 품질 편차 | 자연어 요약이 부정확할 수 있음 | timeout, fallback, 미표시 허용 |
 | 전달 계층 과도한 변경 | 기능 개발과 RSocket 전환을 동시에 하면 복잡도 증가 | 1차는 SSE 유지 |
 | v1/v2 혼재 | 기존 클래스에 v2 로직이 섞이면 유지보수 난이도 증가 | 패키지/토픽 분리 원칙 고수 |
+| 실시간 임베딩 생성 지연 | 스파이크 감지 후 Ollama 임베딩 생성 → pgvector 검색 경로가 동기 I/O로 묶이면 alert 지연 또는 SSE 프레임 emit 차단 가능 | `handleSpikeDetection`은 완전 비동기(reactive chain)로 처리하고, 임베딩 실패 시 `onErrorResume(Mono.empty())`로 무음 처리하여 메인 프레임 경로에 영향을 주지 않도록 설계됨 |
 
 ---
 
@@ -789,38 +818,43 @@ emaPositive = alpha * currentPositive + (1 - alpha) * previousEmaPositive
 
 ### 공통
 
-- `GAK-V2-01` v2 DTO 추가
-- `GAK-V2-02` v2 Kafka topic 설정 추가
+- ✅ `GAK-V2-01` v2 DTO 추가
+- ✅ `GAK-V2-02` v2 Kafka topic 설정 추가
 
 ### Collector
 
-- `GAK-V2-03` `V2ChatProducer` 구현
-- `GAK-V2-04` raw chat -> `V2RawChatMessage` 매핑 추가
+- ✅ `GAK-V2-03` `V2ChatProducer` 구현
+- ✅ `GAK-V2-04` raw chat -> `V2RawChatMessage` 매핑 추가
 
 ### Analyzer
 
-- `GAK-V2-05` Sentiment Agent 구현
-- `GAK-V2-06` Troll Agent 구현
-- `GAK-V2-07` Trust Score Redis 반영 구현
-- `GAK-V2-08` Context Agent 구현
-- `GAK-V2-09` Anchor Chat 추출기 구현
-- `GAK-V2-10` Aggregator 구현
-- `GAK-V2-11` EMA Buffer 계산기 구현
-- `GAK-V2-12` Narrative Briefing 구현
+- ✅ `GAK-V2-05` Sentiment Agent 구현
+- ✅ `GAK-V2-06` Troll Agent 구현
+- ✅ `GAK-V2-07` Trust Score Redis 반영 구현
+- ✅ `GAK-V2-08` Context Agent 구현
+- ✅ `GAK-V2-09` Anchor Chat 추출기 구현
+- ✅ `GAK-V2-10` Aggregator 구현
+- ✅ `GAK-V2-11` EMA Buffer 계산기 구현
+- ✅ `GAK-V2-12` Narrative Briefing 구현
 
 ### Core API
 
-- `GAK-V2-13` `V2StreamService` 구현
-- `GAK-V2-14` `/api/v2/stream/{roomId}` SSE endpoint 추가
-- `GAK-V2-15` v2 상태 조회 API 추가
+- ✅ `GAK-V2-13` `V2StreamService` 구현
+- ✅ `GAK-V2-14` `/api/v2/stream/{roomId}` SSE endpoint 추가
+- ✅ `GAK-V2-15` v2 상태 조회 API 추가
+- ✅ `GAK-V2-25` `V2SimilarHighlightAlert` DTO 추가
+- ✅ `GAK-V2-26` `V2StreamService` 스파이크 감지 + 알림 emit 추가
+- ✅ `GAK-V2-27` `HighlightRetrievalService.findMostSimilarLive()` 추가
 
 ### Frontend
 
-- `GAK-V2-16` v2 dashboard state 모델 추가
-- `GAK-V2-17` Mental Buffer UI 추가
-- `GAK-V2-18` Anchor Chat UI 추가
-- `GAK-V2-19` Narrative Briefing UI 추가
-- `GAK-V2-20` Trust Filter UI 추가
+- ✅ `GAK-V2-16` v2 dashboard state 모델 추가 (`useV2Stream`)
+- ✅ `GAK-V2-17` Mental Buffer UI 추가
+- ✅ `GAK-V2-18` Anchor Chat UI 추가
+- ✅ `GAK-V2-19` Narrative Briefing UI 추가
+- ✅ `GAK-V2-20` Trust Filter UI 추가
+- ✅ `GAK-V2-28` `v2_similar_highlight` 이벤트 구독 + `similarAlert` 상태 관리
+- ✅ `GAK-V2-29` `SimilarHighlightBanner` 컴포넌트 추가 (30초 자동 해제)
 
 ### 품질
 
@@ -883,13 +917,18 @@ emaPositive = alpha * currentPositive + (1 - alpha) * previousEmaPositive
 
 ### SSE 이벤트 계약
 
-`V2StreamService`가 emit하는 이벤트 이름은 `v2_frame`이고, 데이터는 `V2AggregateFrame` 직렬화 JSON이다. 프론트 훅은 `v2_frame` 이벤트만 구독한다.
+`V2StreamService`가 emit하는 이벤트는 2종류다. 프론트 훅(`useV2Stream`)은 두 이벤트를 각각 구독한다.
 
 ```
-// SSE 응답 예시
+// 매 aggregate 프레임
 event: v2_frame
 data: {"roomId":"abc","balance":0.62,"mentalBuffer":{...},"briefing":{...},...}
 
+// 스파이크 감지 시 (쿨다운·유사도 조건 만족한 경우에만)
+event: v2_similar_highlight
+data: {"roomId":"abc","highlightId":42,"videoNo":"...","sceneLabel":"클리어 순간","category":"achievement","reasonSummary":"...","similarity":0.81,"trigger":"positive_spike","detectedAt":"2026-05-18T..."}
+
+// 15초 주기 keep-alive
 event: ping
 data: keep-alive
 ```
@@ -902,13 +941,67 @@ data: keep-alive
 
 ---
 
+## 21. 실시간 유사 하이라이트 알림 구현 기록
+
+> 작업일: 2026-05-18 / 브랜치: `feature/v2-live-highlight-alert`
+
+### 배경
+
+pgvector 인프라는 v1 VOD 하이라이트 RAG 용도로 먼저 도입됐다. v2에서 실시간 유사 하이라이트 알림을 추가함으로써 pgvector 도입의 정당성을 확보했다. SQL 레벨 유사도 검색만으로는 "라이브 채팅 패턴이 과거 어떤 하이라이트와 의미상 가장 가까운가"를 풀 수 없었기 때문이다.
+
+### 구현 파일
+
+| 파일 | 유형 | 역할 |
+|---|---|---|
+| `backend/core-api/.../v2/stream/V2SimilarHighlightAlert.java` | 신규 | 알림 DTO |
+| `backend/core-api/.../v2/stream/V2StreamService.java` | 수정 | 스파이크 감지 + 알림 emit 로직 추가 |
+| `backend/core-api/.../core_api/rag/HighlightRetrievalService.java` | 수정 | `findMostSimilarLive()` 메서드 추가 |
+| `frontend/src/hooks/useV2Stream.ts` | 수정 | `v2_similar_highlight` 구독 + 30초 자동 해제 |
+| `frontend/src/components/v2/V2GuardrailCard.tsx` | 수정 | `SimilarHighlightBanner` 컴포넌트 추가 |
+| `frontend/src/app/channels/[channelId]/page.tsx` | 수정 | `similarAlert`, `dismissAlert` prop 연결 |
+
+### 핵심 흐름
+
+```
+[매 aggregate 프레임]
+    V2StreamService.consumeAggregate()
+        └─ handleSpikeDetection(frame)        ← 비동기, 메인 프레임 emit과 독립
+                ├─ detectSpikeTrigger()       ← emaPositive > 0.55 or emaNegative > 0.45
+                ├─ 쿨다운 체크 (3분)
+                ├─ HighlightEmbeddingService.requestEmbeddingPublic(text)
+                └─ HighlightRetrievalService.findMostSimilarLive(roomId, vector, 0.72, trigger)
+                        └─ 조건 만족 시 → sink.tryEmitNext("v2_similar_highlight", alert)
+
+[프론트]
+    useV2Stream
+        ├─ v2_frame → setFrame()
+        └─ v2_similar_highlight → setSimilarAlert() + 30초 후 자동 해제
+```
+
+### 설계 결정
+
+- `handleSpikeDetection`은 완전 비동기 reactive chain으로 작성. 임베딩 실패 시 `onErrorResume(Mono.empty())`로 무음 처리하여 메인 `v2_frame` emit 경로에 영향 없음.
+- 쿨다운(`lastAlertAt` Map)은 인스턴스 메모리 기반. 서버 재시작 시 리셋되나, alert은 UX 보조 기능이므로 수용 가능한 트레이드오프.
+- 프론트 자동 해제 타이머(`ALERT_AUTO_DISMISS_MS = 30_000`)는 새 알림 수신 시 이전 타이머를 clearTimeout 후 재설정.
+
+---
+
 ## 19. 결론
 
-현재 프로젝트는 v2를 올릴 기반을 이미 충분히 갖추고 있다. 다만 기존 구조는 단일 감정 분석 스트림 중심이므로, v2의 실제 핵심은 다음 3가지 신규 축에 있다.
+v2 심리 가드레일 시스템은 2026-05-18 기준으로 Phase 1~4가 모두 완료되었다.
 
-- 병렬 Agent 구조
-- Redis 기반 실시간 상태 모델
-- 프론트 전달용 Aggregate Frame
+**구현 완료 항목**
 
-따라서 v2 구현은 UI보다 먼저, `토픽 분리 -> DTO 표준화 -> Agent 분리 -> Aggregator 설계` 순서로 진행해야 한다. 이 원칙을 지키면 기존 v1을 건드리지 않고도 점진적으로 v2를 도입할 수 있다.
+- 병렬 Agent 구조 (`V2SentimentAgent`, `V2TrollAgent`, `V2ContextAgent`)
+- Redis 기반 실시간 상태 모델 + `V2Aggregator` → `v2-aggregate` 토픽
+- SSE 기반 Core API 전달 계층 (`v2_frame` + `v2_similar_highlight` + `ping`)
+- 프론트 대시보드 (`V2GuardrailCard` + `useV2Stream`) — 가드레일 탭으로 채널 대시보드에 통합
+- pgvector 기반 실시간 유사 하이라이트 알림 — 스파이크 감지 시 과거 VOD 하이라이트와 의미 유사도 비교 후 SSE push
+
+**잔여 항목**
+
+- Phase 5: `V2BriefingService` circuit breaker, end-to-end latency 검증
+- Phase 6: RSocket 전환 검토
+- 테스트: 단위/통합/perf 테스트 (GAK-V2-21~24)
+- `trustSummary` 직렬화 키 camelCase 통일
 
