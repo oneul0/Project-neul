@@ -147,94 +147,94 @@ graph LR
 
 ---
 
-## 6. 패키지 구조 제안
+## 6. 패키지 구조
+
+> 2026-05-18 기준 실제 구현 구조로 업데이트.
 
 ### 6.1 common
 
 ```text
-backend/common/src/main/java/com/gak/v2/common/dto
+backend/common/src/main/java/com/gak/v2/common/dto/
+├── AnchorChat.java
+├── MentalBufferState.java
+├── NarrativeBriefing.java
+├── UserTrustProfile.java
+├── V2AggregateFrame.java
+├── V2ContextResult.java
+├── V2RawChatMessage.java
+├── V2SentimentResult.java
+└── V2TrollResult.java
 ```
-
-추가 DTO 목록:
-
-- `V2RawChatMessage`
-- `V2SentimentResult`
-- `V2TrollResult`
-- `V2ContextResult`
-- `V2AggregateFrame`
-- `UserTrustProfile`
-- `AnchorChat`
-- `NarrativeBriefing`
-- `MentalBufferState`
 
 ### 6.2 collector
 
 ```text
-backend/collector/src/main/java/com/gak/collector/v2
+backend/collector/src/main/java/com/gak/collector/v2/
+└── producer/
+    └── V2ChatProducer.java
 ```
 
-추천 클래스:
-
-- `producer/V2ChatProducer`
-- `mapper/V2RawChatMapper`
-- `config/V2KafkaProducerConfig`
+매핑 로직은 `V2ChatProducer` 내부에 인라인으로 구현됨. 별도 `V2RawChatMapper` 클래스 없음.
 
 ### 6.3 analyzer
 
 ```text
-backend/analyzer/src/main/java/com/gak/v2
+backend/analyzer/src/main/java/com/gak/v2/
+├── aggregate/
+│   ├── V2AggregatePublisher.java
+│   ├── V2Aggregator.java          ← 내부 RoomAggregateState로 상태 관리 (별도 StateStore 없음)
+│   ├── V2BriefingService.java
+│   └── V2EmaBufferService.java
+├── bootstrap/
+│   └── V2RawChatBootstrapConsumer.java  ← 디버그용 raw 이벤트 로그 컨슈머
+├── context/
+│   ├── V2ContextAgent.java        ← 앵커 추출·키워드 집계 인라인 구현
+│   └── V2ContextPublisher.java
+├── sentiment/
+│   ├── V2SentimentAgent.java
+│   ├── V2SentimentMapper.java
+│   └── V2SentimentPublisher.java
+└── troll/
+    ├── TrustEvaluation.java       ← 계산 결과 Value Object
+    ├── V2TrollAgent.java
+    ├── V2TrollPublisher.java
+    └── V2TrustScoreService.java   ← 스팸 감지 로직 인라인 포함
 ```
 
-추천 하위 패키지:
+초기 계획에서 별도 클래스로 제안했던 항목 중 아래는 상위 클래스 내부에 흡수됨:
 
-- `sentiment`
-- `troll`
-- `context`
-- `aggregate`
-- `briefing`
-- `config`
-
-추천 클래스:
-
-- `sentiment/V2SentimentAgent`
-- `sentiment/V2VadScorer`
-- `troll/V2TrustScoreService`
-- `troll/V2SpamDetector`
-- `troll/V2TrollAgent`
-- `context/V2AnchorExtractor`
-- `context/V2KeywordClusterer`
-- `context/V2ContextAgent`
-- `aggregate/V2AggregateStateStore`
-- `aggregate/V2EmaBufferService`
-- `aggregate/V2Aggregator`
-- `briefing/V2BriefingService`
+| 계획 클래스 | 실제 위치 |
+|---|---|
+| `V2SpamDetector` | `V2TrustScoreService.isNegative()`, `isHostile()` |
+| `V2AnchorExtractor`, `V2KeywordClusterer` | `V2ContextAgent.consume()` |
+| `V2AggregateStateStore` | `V2Aggregator` 내 `ConcurrentHashMap<String, RoomAggregateState>` |
+| `V2VadScorer` | 미구현 — v1 `HeuristicSentimentAnalyzer` 재사용으로 대체 |
 
 ### 6.4 core-api
 
 ```text
-backend/core-api/src/main/java/com/gak/v2
+backend/core-api/src/main/java/com/gak/v2/
+└── stream/
+    ├── V2RedisStateService.java   ← Redis 읽기·쓰기 (계획의 redis/V2RedisService에 해당)
+    ├── V2StreamController.java    ← /api/v2/stream/{roomId}, /api/v2/state/{roomId} 포함
+    └── V2StreamService.java
 ```
 
-추천 클래스:
-
-- `stream/V2StreamService`
-- `stream/V2StreamController`
-- `redis/V2RedisService`
-- `controller/V2StatusController`
+`redis/` 패키지 대신 `stream/` 하위에 위치함. `V2StreamController`가 state 조회 엔드포인트도 함께 제공하므로 별도 `V2StatusController` 없음.
 
 ### 6.5 frontend
 
 ```text
-frontend/src/components/v2
+frontend/src/
+├── app/api/channels/[channelId]/v2/[[...v2Path]]/
+│   └── route.ts                  ← /api/v2/* 프록시 라우트
+├── components/v2/
+│   └── V2GuardrailCard.tsx       ← EMA 지표·브리핑·앵커·키워드·신뢰 등급 통합 카드
+└── hooks/
+    └── useV2Stream.ts            ← SSE 구독 + 초기 스냅샷 로드
 ```
 
-추천 컴포넌트:
-
-- `MentalBufferBar.tsx`
-- `AnchorChatPanel.tsx`
-- `NarrativeBriefingCard.tsx`
-- `TrustFilterWidget.tsx`
-- `AudienceBalanceCard.tsx`
+초기 계획의 5개 독립 컴포넌트(`MentalBufferBar`, `AnchorChatPanel`, `NarrativeBriefingCard`, `TrustFilterWidget`, `AudienceBalanceCard`)는 `V2GuardrailCard` 단일 파일로 통합됨. 모든 섹션이 동일한 `V2AggregateFrame`을 공유하므로 분리 이득이 없었음.
 
 ---
 
@@ -703,7 +703,7 @@ emaPositive = alpha * currentPositive + (1 - alpha) * previousEmaPositive
 
 - `v2-aggregate` 프레임이 생성됨
 
-## Phase 4. Dashboard 연동
+## Phase 4. Dashboard 연동 ✅ 완료 (2026-05-18)
 
 작업:
 
@@ -714,6 +714,8 @@ emaPositive = alpha * currentPositive + (1 - alpha) * previousEmaPositive
 완료 기준:
 
 - 실제 대시보드에서 v2 카드가 동작함
+
+> 구현 상세는 [섹션 20](#20-phase-4-구현-기록) 참고.
 
 ## Phase 5. Briefing / 안정화
 
@@ -826,6 +828,77 @@ emaPositive = alpha * currentPositive + (1 - alpha) * previousEmaPositive
 - `GAK-V2-22` 통합 테스트 추가
 - `GAK-V2-23` latency/perf 테스트 추가
 - `GAK-V2-24` v1/v2 분리 회귀 검증
+
+---
+
+## 20. Phase 4 구현 기록
+
+> 작업일: 2026-05-18 / 브랜치: `feature/v2-guardrail-ui`
+
+### 구현 파일
+
+| 파일 | 유형 | 역할 |
+|---|---|---|
+| `frontend/src/hooks/useV2Stream.ts` | 신규 | SSE 구독 + 초기 스냅샷 로드 훅 |
+| `frontend/src/components/v2/V2GuardrailCard.tsx` | 신규 | v2 통합 대시보드 카드 |
+| `frontend/src/app/channels/[channelId]/page.tsx` | 수정 | "가드레일" 탭 추가, 훅 연결 |
+
+### `useV2Stream` 동작 방식
+
+```
+탭 진입 (enabled=true)
+    └─ GET /api/channels/{channelId}/v2/state  ← 초기 스냅샷 (Redis)
+    └─ EventSource /api/channels/{channelId}/v2/stream
+           └─ v2_frame 이벤트 수신 시 frame 상태 갱신
+탭 이탈 (enabled=false)
+    └─ EventSource.close()  ← 불필요한 SSE 연결 즉시 종료
+```
+
+탭 진입 시에만 SSE를 연결하는 방식(`enabled` 플래그)으로 서버 커넥션 낭비를 방지한다.
+
+### `V2GuardrailCard` 구성
+
+| 섹션 | 표시 데이터 |
+|---|---|
+| 헤더 | SSE 연결 상태, `topicLabel` |
+| 심리 완충 지표 | `emaPositive/emaNegative` 프로그레스 바, `balance` 점수 (색상 코딩: ≥0.6 초록 / ≥0.4 노랑 / 미만 빨강) |
+| AI 브리핑 | `briefing.summary` 자연어 + 신뢰도 |
+| 앵커 채팅 | `anchors[]` 상위 3개, 가중치 표시 |
+| 키워드 | `keywords[]` 최대 8개 칩 |
+| 신뢰 등급 분포 | `trustSummary`의 FAN / NORMAL / TROLL_CANDIDATE 수 + 비율 바 |
+
+### 계획 대비 변경 사항
+
+계획 문서(섹션 14)는 5개 독립 컴포넌트를 제안했으나, 실제 구현에서는 `V2GuardrailCard` 단일 파일로 통합했다.
+
+| 계획 컴포넌트 | 실제 구현 위치 |
+|---|---|
+| `AudienceBalanceCard` | `V2GuardrailCard` > `MentalBufferSection` |
+| `MentalBufferBar` | `V2GuardrailCard` > `BarRow` |
+| `AnchorChatPanel` | `V2GuardrailCard` > `AnchorSection` |
+| `NarrativeBriefingCard` | `V2GuardrailCard` > `BriefingSection` |
+| `TrustFilterWidget` | `V2GuardrailCard` > `KeywordsAndTrustSection` |
+
+단일 카드로 통합한 이유: 각 섹션이 동일한 `V2AggregateFrame` 프레임을 공유하므로 props 분리가 불필요하고, 섹션별 독립 분리가 요구될 경우 추후 추출할 수 있다.
+
+### SSE 이벤트 계약
+
+`V2StreamService`가 emit하는 이벤트 이름은 `v2_frame`이고, 데이터는 `V2AggregateFrame` 직렬화 JSON이다. 프론트 훅은 `v2_frame` 이벤트만 구독한다.
+
+```
+// SSE 응답 예시
+event: v2_frame
+data: {"roomId":"abc","balance":0.62,"mentalBuffer":{...},"briefing":{...},...}
+
+event: ping
+data: keep-alive
+```
+
+### 향후 잔여 작업
+
+- **Phase 5**: `V2BriefingService` circuit breaker 적용, end-to-end 1초 미만 검증
+- **Phase 6**: RSocket 전환 여부 결정 (현재 SSE로 운영)
+- **신뢰 등급 분포**: `trustSummary` 필드 키 정규화 — `V2Aggregator`가 camelCase (`fanCount`, `trollCount`, `normalCount`)로 일관되게 직렬화되면 프론트 fallback 분기(`trust_count`) 제거 가능
 
 ---
 
