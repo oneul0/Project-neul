@@ -3,10 +3,8 @@ package com.gak.analyzer.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gak.analyzer.config.OllamaPromptProperties;
+import com.gak.analyzer.llm.ChatLlmClient;
 import com.gak.common.dto.AnalyzedChatMessage;
-import com.gak.analyzer.dto.ollama.OllamaMessage;
-import com.gak.analyzer.dto.ollama.OllamaRequest;
-import com.gak.analyzer.dto.ollama.OllamaResponse;
 import com.gak.analyzer.optimization.CompressedChat;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,6 +39,7 @@ public class OllamaAnalyzerService {
     private static final Set<String> VALID_EMOTIONS =
             Set.of("JOY", "HOPE", "NEUTRAL", "SADNESS", "ANGER", "WONDER", "DISGUST");
 
+    private final ChatLlmClient chatClient;
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
@@ -48,24 +47,20 @@ public class OllamaAnalyzerService {
     private final OllamaPromptProperties promptProperties;
 
     public OllamaAnalyzerService(
+            ChatLlmClient chatClient,
             WebClient webClient,
             ObjectMapper objectMapper,
             MeterRegistry meterRegistry,
             PromptTemplateService promptTemplateService,
             OllamaPromptProperties promptProperties
     ) {
+        this.chatClient = chatClient;
         this.webClient = webClient;
         this.objectMapper = objectMapper;
         this.meterRegistry = meterRegistry;
         this.promptTemplateService = promptTemplateService;
         this.promptProperties = promptProperties;
     }
-
-    @Value("${app.ollama.api-url}")
-    private String ollamaApiUrl;
-
-    @Value("${app.ollama.model}")
-    private String ollamaModel;
 
     @Value("${app.core-api.base-url}")
     private String coreApiBaseUrl;
@@ -109,28 +104,18 @@ public class OllamaAnalyzerService {
         }
 
         String promptText = buildSentimentPrompt(chats, originalIdToLogicalId);
-        OllamaRequest requestDto = buildOllamaRequest(
-                getSentimentSystemPrompt(),
-                promptText,
-                0.4,
-                1024
-        );
 
         Timer.Sample sample = (meterRegistry != null) ? Timer.start(meterRegistry) : null;
         recordCount("gak.llm.api.calls.total");
 
-        return webClient.post()
-                .uri(ollamaApiUrl)
-                .bodyValue(requestDto)
-                .retrieve()
-                .bodyToMono(OllamaResponse.class)
+        return chatClient.chat(getSentimentSystemPrompt(), promptText, 0.4, 1024)
                 // [가드레일 타임아웃] 배치 크기에 비례한 동적 타임아웃
                 .timeout(computeTimeout(chats.size()))
-                .map(response -> {
+                .map(content -> {
                     if (sample != null && meterRegistry != null) {
                         sample.stop(meterRegistry.timer("gak.llm.api.latency"));
                     }
-                    return parseOllamaResponse(response, chats, originalIdToLogicalId);
+                    return parseResponse(content, chats, originalIdToLogicalId);
                 });
     }
 
@@ -191,20 +176,9 @@ public class OllamaAnalyzerService {
                     Map.entry("fewShotExamples", fewShot)
             ));
 
-            OllamaRequest requestDto = buildOllamaRequest(
-                    getHighlightSystemPrompt(),
-                    userPrompt,
-                    0.2,
-                    768
-            );
-
-            return webClient.post()
-                    .uri(ollamaApiUrl)
-                    .bodyValue(requestDto)
-                    .retrieve()
-                    .bodyToMono(OllamaResponse.class)
+            return chatClient.chat(getHighlightSystemPrompt(), userPrompt, 0.2, 768)
                     .timeout(Duration.ofSeconds(45))
-                    .map(this::parseHighlightDecision);
+                    .map(this::parseHighlightContent);
         } catch (Exception error) {
             log.warn("[Ollama] Highlight prompt preparation failed: {}", error.getMessage());
             return Mono.just(HighlightDecision.fallback("LLM highlight prompt preparation failed, fallback to heuristic ranking."));
@@ -314,8 +288,7 @@ public class OllamaAnalyzerService {
         ));
     }
 
-    private List<AnalyzedChatMessage> parseOllamaResponse(OllamaResponse response, List<CompressedChat> originalChats, Map<String, String> originalIdToLogicalId) {
-        String content = response.getMessage() != null ? response.getMessage().getContent() : "";
+    private List<AnalyzedChatMessage> parseResponse(String content, List<CompressedChat> originalChats, Map<String, String> originalIdToLogicalId) {
         if (content == null || content.isBlank()) {
             log.warn("[Ollama] Empty content received from LLM.");
             return createFallbackList(originalChats);
@@ -434,8 +407,7 @@ public class OllamaAnalyzerService {
         return text.trim();
     }
 
-    private HighlightDecision parseHighlightDecision(OllamaResponse response) {
-        String content = response.getMessage() != null ? response.getMessage().getContent() : "";
+    private HighlightDecision parseHighlightContent(String content) {
         if (content == null || content.isBlank()) {
             return HighlightDecision.fallback("LLM returned empty highlight decision.");
         }
@@ -484,23 +456,6 @@ public class OllamaAnalyzerService {
     public Mono<List<AnalyzedChatMessage>> fallbackAnalyzeBatch(List<CompressedChat> chats, Throwable t) {
         log.error("[Ollama] API call failed. CircuitBreaker fallback triggered. Cause: {}", t.getMessage());
         return Mono.just(createFallbackMessages(chats));
-    }
-
-    private OllamaRequest buildOllamaRequest(String systemPrompt, String userPrompt, double temperature, int numPredict) {
-        return OllamaRequest.builder()
-                .model(ollamaModel)
-                .messages(List.of(
-                        OllamaMessage.builder().role("system").content(systemPrompt).build(),
-                        OllamaMessage.builder().role("user").content(userPrompt).build()
-                ))
-                .stream(false)
-                .format("json")
-                .options(Map.of(
-                        "temperature", temperature,
-                        "num_predict", numPredict,
-                        "top_p", 0.8
-                ))
-                .build();
     }
 
     private List<AnalyzedChatMessage> createFallbackMessages(List<CompressedChat> chats) {
