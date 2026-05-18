@@ -214,4 +214,12 @@ curl -X POST "http://localhost:8083/dev/seed/{channelId}"
 
 ## 🏷️ 바로가기
 
-· [설계 문서](docs/)
+| 문서 | 설명 |
+|------|------|
+| [프로젝트 개요](docs/00_project_overview.md) | VOD 하이라이트 추출 목적·AI 통합 방식·POC 검증·기술 스택 선택 근거 |
+| [아키텍처 결정 기록 (ADR)](docs/01_ADR.md) | Kafka·WebFlux·pgvector 등 주요 기술 결정과 트레이드오프 |
+| [LLM 가드레일 설계](docs/18_llm_guardrail_plan.md) | 입출력 가드레일·동시성 제어·VOD 슬롯 제한 구현 기록 |
+| [VOD 하이라이트 흐름도](docs/26_vod_highlight_sequence_diagrams.md) | 분석 요청부터 결과 저장까지 6단계 Mermaid 시퀀스 다이어그램 |
+| [ERD](docs/27_erd.md) | 전체 테이블 구조 및 pgvector 임베딩 컬럼 설명 |
+| [시스템 신뢰성 설계](docs/30_system_reliability.md) | 재시도·Circuit Breaker·fail-open/secure 전략 |
+| [온보딩 가이드](docs/29_onboarding_guide.md) | 로컬 실행·인증 흐름·코드 탐색 가이드 |
