@@ -2,12 +2,14 @@
 
 import { use, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Film, Gift, Lock, LogIn, Vote } from "lucide-react";
+import { Film, Gift, Lock, LogIn, ShieldCheck, Vote } from "lucide-react";
 import VodHighlightBoard from "@/components/VodHighlightBoard";
 import PollCard from "@/components/poll/PollCard";
 import RouletteCard from "@/components/RouletteCard";
+import V2GuardrailCard from "@/components/v2/V2GuardrailCard";
 import { usePollSession } from "@/hooks/usePollSession";
 import { useDonationRoulette } from "@/hooks/useDonationRoulette";
+import { useV2Stream } from "@/hooks/useV2Stream";
 import { useOwnerDashboardSession } from "./dashboard-helpers";
 import dynamic from "next/dynamic";
 
@@ -24,7 +26,7 @@ export default function ChannelDashboard({
   const { channelId } = use(params);
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState<"poll" | "roulette" | "vod">("poll");
+  const [activeTab, setActiveTab] = useState<"poll" | "roulette" | "vod" | "guardrail">("poll");
   const [isTogglingPoll, setIsTogglingPoll] = useState(false);
   const [isRouletteActive, setIsRouletteActive] = useState(false);
   const [isTogglingRoulette, setIsTogglingRoulette] = useState(false);
@@ -64,6 +66,8 @@ export default function ChannelDashboard({
     isOwner: isAuthorizedChannel,
     fetchOwned,
   });
+
+  const { frame: v2Frame, connected: v2Connected } = useV2Stream(channelId, activeTab === "guardrail");
 
   const handleLogin = () => {
     window.location.href = "/api/chzzk/login";
@@ -170,22 +174,24 @@ export default function ChannelDashboard({
         <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
           <div className="space-y-2">
             <div className="text-[11px] font-black uppercase tracking-[0.28em] text-white/55">
-              {activeTab === "poll" ? "투표 관리" : activeTab === "roulette" ? "룰렛 관리" : "VOD 하이라이트"}
+              {activeTab === "poll" ? "투표 관리" : activeTab === "roulette" ? "룰렛 관리" : activeTab === "guardrail" ? "심리 가드레일" : "VOD 하이라이트"}
             </div>
             <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">
-              {activeTab === "poll" ? "투표" : activeTab === "roulette" ? "도네이션 룰렛" : "VOD 하이라이트 워크스페이스"}
+              {activeTab === "poll" ? "투표" : activeTab === "roulette" ? "도네이션 룰렛" : activeTab === "guardrail" ? "실시간 심리 분석" : "VOD 하이라이트 워크스페이스"}
             </h1>
             <p className="text-sm leading-6 text-white/65">
               {activeTab === "poll"
                 ? "항목을 만들고 실시간 집계 결과와 참여 시청자 기록을 관리합니다."
                 : activeTab === "roulette"
                   ? "도네이션 금액에 따라 확률이 올라가는 룰렛을 구성하고 돌립니다."
-                  : "VOD를 조회한 뒤 하이라이트 후보를 검토하고 편집점을 저장합니다."}
+                  : activeTab === "guardrail"
+                    ? "채팅 심리 흐름, 대표 의견, 트롤 필터를 실시간으로 모니터링합니다."
+                    : "VOD를 조회한 뒤 하이라이트 후보를 검토하고 편집점을 저장합니다."}
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <div className="grid grid-cols-3 rounded-[20px] border border-white/[0.08] bg-[#1A1A1A] p-1">
+            <div className="grid grid-cols-4 rounded-[20px] border border-white/[0.08] bg-[#1A1A1A] p-1">
               <button
                 onClick={() => setActiveTab("poll")}
                 className={`inline-flex items-center justify-center gap-2 rounded-[16px] px-4 py-2.5 text-sm font-black transition ${
@@ -218,6 +224,17 @@ export default function ChannelDashboard({
               >
                 <Film className="h-4 w-4" />
                 VOD
+              </button>
+              <button
+                onClick={() => setActiveTab("guardrail")}
+                className={`inline-flex items-center justify-center gap-2 rounded-[16px] px-4 py-2.5 text-sm font-black transition ${
+                  activeTab === "guardrail"
+                    ? "bg-[#00FFA3] text-[#000000] shadow-[0_0_12px_rgba(0,255,163,0.25)]"
+                    : "text-white/50 hover:text-white"
+                }`}
+              >
+                <ShieldCheck className="h-4 w-4" />
+                가드레일
               </button>
             </div>
 
@@ -314,6 +331,8 @@ export default function ChannelDashboard({
           onClearAll={roulette.clearAll}
           isOwner={isAuthorizedChannel}
         />
+      ) : activeTab === "guardrail" ? (
+        <V2GuardrailCard frame={v2Frame} connected={v2Connected} />
       ) : (
         <PollCard session={pollSession} />
       )}
