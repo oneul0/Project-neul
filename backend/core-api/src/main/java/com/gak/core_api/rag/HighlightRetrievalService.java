@@ -1,12 +1,15 @@
 package com.gak.core_api.rag;
 
 import com.gak.core_api.domain.chat.entity.VodHighlight;
+import com.gak.v2.stream.V2SimilarHighlightAlert;
 import io.r2dbc.spi.Readable;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.r2dbc.core.DatabaseClient;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
+
+import java.time.LocalDateTime;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -167,6 +170,43 @@ public class HighlightRetrievalService {
                 .keywordSummary(row.get("keyword_summary", String.class))
                 .highlightScore(row.get("highlight_score", Double.class))
                 .build();
+    }
+
+    /**
+     * 실시간 프레임 벡터로 가장 유사한 과거 하이라이트 하나를 검색한다.
+     * 코사인 유사도가 threshold 이상인 경우에만 결과를 반환한다.
+     */
+    public Mono<V2SimilarHighlightAlert> findMostSimilarLive(String roomId, float[] queryVector, double threshold, String trigger) {
+        String pgVec = toPgVectorLiteral(queryVector);
+        return databaseClient.sql("""
+                        SELECT id, video_no, scene_label, category, reason_summary,
+                               1 - (embedding <=> :vec::vector) AS similarity
+                        FROM vod_highlights
+                        WHERE embedding IS NOT NULL
+                        ORDER BY embedding <=> :vec::vector
+                        LIMIT 1
+                        """)
+                .bind("vec", pgVec)
+                .map(row -> {
+                    Double sim = row.get("similarity", Double.class);
+                    return V2SimilarHighlightAlert.builder()
+                            .roomId(roomId)
+                            .highlightId(row.get("id", Long.class))
+                            .videoNo(row.get("video_no", String.class))
+                            .sceneLabel(row.get("scene_label", String.class))
+                            .category(row.get("category", String.class))
+                            .reasonSummary(row.get("reason_summary", String.class))
+                            .similarity(sim != null ? sim : 0.0)
+                            .trigger(trigger)
+                            .detectedAt(LocalDateTime.now())
+                            .build();
+                })
+                .one()
+                .filter(alert -> alert.getSimilarity() >= threshold)
+                .onErrorResume(e -> {
+                    log.warn("[Retrieval] Live similarity search failed: {}", e.getMessage());
+                    return Mono.empty();
+                });
     }
 
     private String safeCategory(String category) {
