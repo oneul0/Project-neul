@@ -147,94 +147,94 @@ graph LR
 
 ---
 
-## 6. 패키지 구조 제안
+## 6. 패키지 구조
+
+> 2026-05-18 기준 실제 구현 구조로 업데이트.
 
 ### 6.1 common
 
 ```text
-backend/common/src/main/java/com/gak/v2/common/dto
+backend/common/src/main/java/com/gak/v2/common/dto/
+├── AnchorChat.java
+├── MentalBufferState.java
+├── NarrativeBriefing.java
+├── UserTrustProfile.java
+├── V2AggregateFrame.java
+├── V2ContextResult.java
+├── V2RawChatMessage.java
+├── V2SentimentResult.java
+└── V2TrollResult.java
 ```
-
-추가 DTO 목록:
-
-- `V2RawChatMessage`
-- `V2SentimentResult`
-- `V2TrollResult`
-- `V2ContextResult`
-- `V2AggregateFrame`
-- `UserTrustProfile`
-- `AnchorChat`
-- `NarrativeBriefing`
-- `MentalBufferState`
 
 ### 6.2 collector
 
 ```text
-backend/collector/src/main/java/com/gak/collector/v2
+backend/collector/src/main/java/com/gak/collector/v2/
+└── producer/
+    └── V2ChatProducer.java
 ```
 
-추천 클래스:
-
-- `producer/V2ChatProducer`
-- `mapper/V2RawChatMapper`
-- `config/V2KafkaProducerConfig`
+매핑 로직은 `V2ChatProducer` 내부에 인라인으로 구현됨. 별도 `V2RawChatMapper` 클래스 없음.
 
 ### 6.3 analyzer
 
 ```text
-backend/analyzer/src/main/java/com/gak/v2
+backend/analyzer/src/main/java/com/gak/v2/
+├── aggregate/
+│   ├── V2AggregatePublisher.java
+│   ├── V2Aggregator.java          ← 내부 RoomAggregateState로 상태 관리 (별도 StateStore 없음)
+│   ├── V2BriefingService.java
+│   └── V2EmaBufferService.java
+├── bootstrap/
+│   └── V2RawChatBootstrapConsumer.java  ← 디버그용 raw 이벤트 로그 컨슈머
+├── context/
+│   ├── V2ContextAgent.java        ← 앵커 추출·키워드 집계 인라인 구현
+│   └── V2ContextPublisher.java
+├── sentiment/
+│   ├── V2SentimentAgent.java
+│   ├── V2SentimentMapper.java
+│   └── V2SentimentPublisher.java
+└── troll/
+    ├── TrustEvaluation.java       ← 계산 결과 Value Object
+    ├── V2TrollAgent.java
+    ├── V2TrollPublisher.java
+    └── V2TrustScoreService.java   ← 스팸 감지 로직 인라인 포함
 ```
 
-추천 하위 패키지:
+초기 계획에서 별도 클래스로 제안했던 항목 중 아래는 상위 클래스 내부에 흡수됨:
 
-- `sentiment`
-- `troll`
-- `context`
-- `aggregate`
-- `briefing`
-- `config`
-
-추천 클래스:
-
-- `sentiment/V2SentimentAgent`
-- `sentiment/V2VadScorer`
-- `troll/V2TrustScoreService`
-- `troll/V2SpamDetector`
-- `troll/V2TrollAgent`
-- `context/V2AnchorExtractor`
-- `context/V2KeywordClusterer`
-- `context/V2ContextAgent`
-- `aggregate/V2AggregateStateStore`
-- `aggregate/V2EmaBufferService`
-- `aggregate/V2Aggregator`
-- `briefing/V2BriefingService`
+| 계획 클래스 | 실제 위치 |
+|---|---|
+| `V2SpamDetector` | `V2TrustScoreService.isNegative()`, `isHostile()` |
+| `V2AnchorExtractor`, `V2KeywordClusterer` | `V2ContextAgent.consume()` |
+| `V2AggregateStateStore` | `V2Aggregator` 내 `ConcurrentHashMap<String, RoomAggregateState>` |
+| `V2VadScorer` | 미구현 — v1 `HeuristicSentimentAnalyzer` 재사용으로 대체 |
 
 ### 6.4 core-api
 
 ```text
-backend/core-api/src/main/java/com/gak/v2
+backend/core-api/src/main/java/com/gak/v2/
+└── stream/
+    ├── V2RedisStateService.java   ← Redis 읽기·쓰기 (계획의 redis/V2RedisService에 해당)
+    ├── V2StreamController.java    ← /api/v2/stream/{roomId}, /api/v2/state/{roomId} 포함
+    └── V2StreamService.java
 ```
 
-추천 클래스:
-
-- `stream/V2StreamService`
-- `stream/V2StreamController`
-- `redis/V2RedisService`
-- `controller/V2StatusController`
+`redis/` 패키지 대신 `stream/` 하위에 위치함. `V2StreamController`가 state 조회 엔드포인트도 함께 제공하므로 별도 `V2StatusController` 없음.
 
 ### 6.5 frontend
 
 ```text
-frontend/src/components/v2
+frontend/src/
+├── app/api/channels/[channelId]/v2/[[...v2Path]]/
+│   └── route.ts                  ← /api/v2/* 프록시 라우트
+├── components/v2/
+│   └── V2GuardrailCard.tsx       ← EMA 지표·브리핑·앵커·키워드·신뢰 등급 통합 카드
+└── hooks/
+    └── useV2Stream.ts            ← SSE 구독 + 초기 스냅샷 로드
 ```
 
-추천 컴포넌트:
-
-- `MentalBufferBar.tsx`
-- `AnchorChatPanel.tsx`
-- `NarrativeBriefingCard.tsx`
-- `TrustFilterWidget.tsx`
-- `AudienceBalanceCard.tsx`
+초기 계획의 5개 독립 컴포넌트(`MentalBufferBar`, `AnchorChatPanel`, `NarrativeBriefingCard`, `TrustFilterWidget`, `AudienceBalanceCard`)는 `V2GuardrailCard` 단일 파일로 통합됨. 모든 섹션이 동일한 `V2AggregateFrame`을 공유하므로 분리 이득이 없었음.
 
 ---
 
