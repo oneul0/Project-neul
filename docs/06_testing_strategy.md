@@ -94,3 +94,41 @@ backend/collector/src/test/java/com/gak/collector/mock/
 - GitHub Actions 워크플로우에 통합.
 - 각 서비스의 `Pull Request` 생성 시 전체 E2E 테스트 자동 실행.
 - 중대한 실패 발생 시 알림 시스템(Slack/Discord) 연동.
+
+---
+
+## 6. 현재 테스트 현황 (2026-05-18 기준)
+
+### 6-1. 단위 테스트 — 전체 통과
+
+| 테스트 클래스 | 모듈 | 테스트 수 | 결과 | 검증 대상 |
+|---|---|---|---|---|
+| `OwnerIdentityResolverTest` | core-api | 9 | ✅ 전체 통과 | IDOR 방어, 쿠키 인증, 필터 캐시 |
+| `OllamaAnalyzerServiceTest` | analyzer | 9 | ✅ 전체 통과 | LLM 배치 분석, 하이라이트 판정, 폴백 |
+| `VodHighlightAnalyzerTest` | analyzer | 4 | ✅ 전체 통과 | 하이라이트 스코어링, LLM 리뷰 흐름 |
+| `JavaChatOptimizerTest` | analyzer | 9 | ✅ 전체 통과 | 채팅 압축·중복 제거 |
+| `CollectorApplicationTests` | collector | 1 | ✅ 전체 통과 | 스프링 컨텍스트 로드 |
+
+**총 32개 단위 테스트, 0개 실패**
+
+### 6-2. E2E 테스트 — 인프라 필요로 스킵
+
+Testcontainers(Kafka · Redis · PostgreSQL) 환경이 갖춰진 CI에서만 실행.
+로컬에서는 `@Disabled` 또는 환경변수 조건으로 기본 제외된다.
+
+| 테스트 클래스 | 테스트 수 | 상태 | 필요 인프라 |
+|---|---|---|---|
+| `VodFlowE2ETest` | 12 | SKIPPED | Kafka · Redis · PostgreSQL |
+| `FullPipelineE2ETest` | 1 | SKIPPED | 동일 |
+| `HighlightE2ETest` | 1 | SKIPPED | 동일 |
+| `DatabaseConnectionTest` | 1 | SKIPPED | PostgreSQL |
+
+### 6-3. 브라우저 기반 수동 검증 — 완료
+
+Playwright 기반 수동 시나리오 결과는 [17_auth_reliability_test_scenarios.md](17_auth_reliability_test_scenarios.md) 참고.
+
+| 시나리오 | 결과 |
+|---|---|
+| AUTH-001 ~ AUTH-004 (인증 신뢰성 핵심 4개) | 통과 |
+| AUTH-005 (런타임 의존성) | 환경 제약으로 일부 제한 |
+| AUTH-006 ~ AUTH-007 (real 8083 백엔드 포함) | 통과 |

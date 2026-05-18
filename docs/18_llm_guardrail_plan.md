@@ -200,3 +200,30 @@ Redis 없이 분석이 막히는 것보다 분석이 진행되는 편이 낫다�
 - **MAX_GLOBAL 조정**: 현재 보수적으로 3으로 설정. Ollama 서버 스펙과 실측 데이터를 기반으로 조정 필요.
 - **QUEUED 상태**: `REJECTED_*` 대신 대기열에 등록하고 순차 처리하는 방식. 프론트엔드 상태 표시와 함께 고려.
 - **Semaphore 슬롯 수**: 실시간 분석과 VOD 분석이 같은 Ollama 인스턴스를 공유하므로, LLM 부하 실측 후 조정.
+
+---
+
+## 8. 단위 테스트 검증 결과 (2026-05-18)
+
+### OllamaAnalyzerServiceTest — 9개 전체 통과
+
+| 테스트 | 검증 항목 |
+|---|---|
+| `analyzeBatch_Success` | LLM 응답 정상 파싱, 감정 점수 매핑 |
+| `analyzeBatch_PartialMissingResponse` | 누락 메시지 NEUTRAL 폴백 |
+| `analyzeBatch_WithMarkdownCodeBlock` | Markdown 코드 블록 포함 응답 파싱 |
+| `analyzeBatch_WithExtraText` | 여분 텍스트 포함 응답에서 JSON 추출 |
+| `analyzeBatch_MalformedJson_Fallback` | 파싱 불가 응답 → 전체 NEUTRAL 폴백 |
+| `analyzeHighlight_Success` | RAG few-shot 주입 + 하이라이트 판정 정상 파싱, 신호 비율 포맷 포함 |
+| `analyzeHighlight_DefaultsAndClamp` | 빈 필드 기본값 채움, intensity 1~10 범위 클램핑 |
+| `analyzeHighlight_BlankOrMalformed_Fallback` | 빈 응답·손상 응답 → fallback 결정 반환 |
+| `analyzeHighlight_PromptLoadFailure_Fallback` | 프롬프트 로딩 실패 → fallback 반환, Ollama LLM 미호출 확인 |
+
+### VodHighlightAnalyzerTest — 4개 전체 통과
+
+| 테스트 | 검증 항목 |
+|---|---|
+| `consumeCompletion_NormalizesUnknownEditorialCategory` | LLM이 알 수 없는 카테고리 반환 시 "소통"으로 정규화 |
+| `consumeCompletion_ExcludesRejectedHighlights` | LLM 거절(`isHighlight=false`) 후보 제외 → `highlightsCount=0` |
+| `consumeCompletion_LlmReviewTimeoutFallsBackToHeuristics` | LLM 타임아웃 → 휴리스틱 스코어로 최소 5개 하이라이트 발행 |
+| `consumeCompletion_ComposesSceneLabelForGachaFlex` | 가챠 키워드 + 놀람 신호 조합 → `sceneLabel="비틱"` 자동 결정 |

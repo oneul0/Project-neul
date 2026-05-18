@@ -219,3 +219,24 @@ GAK_COOKIE_SECURE=true                       # HTTPS 전용 쿠키
 
 - **네트워크 격리**: Docker Compose에서 `analyzer`, `collector`를 내부 네트워크에만 두면 `InternalAccessFilter` 없이도 물리적으로 격리 가능.
 - **`/api/v1/lives` 감정 데이터 노출**: 전체 라이브 채널 목록과 감정 점수가 공개된다. 현재는 공개 탐색 용도로 의도된 것이나, 감정 데이터 노출 범위 재검토 필요.
+
+---
+
+## 단위 테스트 검증 결과 (2026-05-18)
+
+**`OwnerIdentityResolverTest`** — 9개 전체 통과
+
+보안 강화 이전 테스트는 헤더·쿼리 폴백을 "정상 기능"으로 검증하고 있었다.
+현재 테스트는 폴백 제거 이후의 동작을 기준으로 재작성됐다.
+
+| 테스트 | 변경 이전 기대값 | 변경 이후 기대값 | 검증 내용 |
+|---|---|---|---|
+| `headerOnly_returnsNull` | 헤더 값 반환 **(IDOR)** | `null` | 헤더 단독 → 거절 |
+| `queryParamOnly_returnsNull` | 쿼리 값 반환 **(IDOR)** | `null` | 쿼리 단독 → 거절 |
+| `expiredCookie_returnsNull` | 헤더 폴백 | `null` | 만료 쿠키 + 헤더 → 폴백 없음 |
+| `tamperedCookie_returnsNull` | 헤더 폴백 | `null` | 변조 쿠키 + 헤더 → 폴백 없음 |
+| `invalidCookieAndHeaderOnly_returnsNull` | 헤더 값 반환 | `null` | 쿠키 없음 + 헤더 + 쿼리 → 거절 |
+| `validCookie_returnsOwnerId` | ownerId 반환 | ownerId 반환 | 정상 쿠키 동작 유지 |
+| `validCookieTakesPrecedenceOverHeaderAndQuery` | 쿠키 우선 | 쿠키만 (헤더·쿼리 무시) | 쿠키 단독 신뢰 확인 |
+| `noIdentity_returnsNull` | `null` | `null` | 아이덴티티 없음 |
+| `cachedOwnerIdFromFilter_returnsCachedValue` | (없음) | 캐시된 ownerId 반환 | OwnerAccessFilter 캐시 경로 신규 커버 |
