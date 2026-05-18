@@ -272,7 +272,14 @@ class OllamaAnalyzerServiceTest {
                 0.00,
                 "- '한타' (3회)",
                 "- 대표 채팅: 미쳤다",
-                "- 미쳤다 (x3)"
+                "- 미쳤다 (x3)",
+                "",       // fewShotExamples — analyzeHighlight() 내에서 주입
+                0.15,     // laughRatio
+                0.55,     // hypeRatio
+                0.20,     // surpriseRatio
+                0.10,     // tensionRatio
+                0.50,     // uniqueUserRatio
+                "hype"    // emotionDominance
         );
 
         String mockJsonResponse = "{" +
@@ -301,18 +308,20 @@ class OllamaAnalyzerServiceTest {
                 })
                 .verifyComplete();
 
-        ArgumentCaptor<OllamaRequest> captor = ArgumentCaptor.forClass(OllamaRequest.class);
-        verify(requestBodySpec).bodyValue(captor.capture());
-        OllamaRequest capturedRequest = captor.getValue();
+        // fetchFewShotExamples(1회) + doAnalyzeHighlight(1회) = 총 2회 bodyValue 호출
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(requestBodySpec, times(2)).bodyValue(captor.capture());
+        // 두 번째 호출이 Ollama LLM 요청 (첫 번째는 few-shot Map)
+        OllamaRequest capturedRequest = (OllamaRequest) captor.getAllValues().get(1);
         assertThat(capturedRequest.getMessages()).hasSize(2);
         assertThat(capturedRequest.getMessages().get(0).getContent()).contains("전문 편집자");
         assertThat(capturedRequest.getMessages().get(1).getContent())
-                .contains("video-1")
+                // videoNo는 프롬프트 템플릿에 포함되지 않음 (few-shot 요청 body에만 사용)
                 .contains("테스트 VOD")
                 .contains("게임")
                 .contains("30초 ~ 60초")
                 .contains("평소 대비 2.35배")
-                .contains("0.42")
+                .contains("hype=0.55")      // 신호 비율 기반 포맷 검증
                 .contains("한타")
                 .contains("미쳤다");
     }
@@ -323,7 +332,8 @@ class OllamaAnalyzerServiceTest {
         HighlightPromptPayload payload = new HighlightPromptPayload(
                 "video-2", "제목 없음", "카테고리 없음", 1800, 0.0,
                 0, 30, 10, 5, 1.0, 0.4, 1.2, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
-                "- 없음", "- 없음", "- 없음"
+                "- 없음", "- 없음", "- 없음",
+                "", 0.0, 0.0, 0.0, 0.0, 0.0, "neutral"
         );
 
         String mockJsonResponse = "{" +
@@ -355,7 +365,8 @@ class OllamaAnalyzerServiceTest {
         HighlightPromptPayload payload = new HighlightPromptPayload(
                 "video-3", "제목 없음", "카테고리 없음", 1800, 0.05,
                 60, 90, 15, 8, 1.4, 0.9, 2.1, 0.2, 1.8, 0.2, 0.2, 0.1, 0.0,
-                "- 없음", "- 없음", "- 없음"
+                "- 없음", "- 없음", "- 없음",
+                "", 0.3, 0.3, 0.2, 0.2, 0.5, "laugh"
         );
 
         OllamaResponse blankResponse = OllamaResponse.builder()
@@ -394,7 +405,8 @@ class OllamaAnalyzerServiceTest {
         HighlightPromptPayload payload = new HighlightPromptPayload(
                 "video-4", "제목 없음", "카테고리 없음", 1800, 0.08,
                 90, 120, 18, 11, 1.9, 1.2, 2.8, 0.05, 1.4, 0.25, 0.05, 0.08, 0.0,
-                "- 없음", "- 없음", "- 없음"
+                "- 없음", "- 없음", "- 없음",
+                "", 0.1, 0.4, 0.3, 0.2, 0.6, "hype"
         );
 
         OllamaPromptProperties brokenPromptProperties = new OllamaPromptProperties();
@@ -405,21 +417,34 @@ class OllamaAnalyzerServiceTest {
         ReflectionTestUtils.setField(brokenService, "ollamaApiUrl", "http://localhost:11434/api/chat");
         ReflectionTestUtils.setField(brokenService, "ollamaModel", "gemma:2b");
 
+        // fetchFewShotExamples()가 webClient를 사용하므로 few-shot 경로 stub 필요
+        when(webClient.post()).thenReturn(requestBodyUriSpec);
+        when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
+        doReturn(requestBodySpec).when(requestBodySpec).header(anyString(), any(String[].class));
+        doReturn(requestHeadersSpec).when(requestBodySpec).bodyValue(any());
+        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+        doReturn(Mono.just("")).when(responseSpec).bodyToMono(String.class);
+
         StepVerifier.create(brokenService.analyzeHighlight(payload))
                 .assertNext(result -> {
                     assertThat(result.isHighlight()).isFalse();
                     assertThat(result.reasoning()).contains("prompt preparation failed");
                 })
                 .verifyComplete();
-
-        verifyNoInteractions(webClient);
+        // fetchFewShotExamples()가 webClient를 먼저 호출하므로 NoInteractions 검증 제거
+        // 프롬프트 로딩 실패 시 Ollama LLM은 호출되지 않음(doAnalyzeHighlight 진입 전 예외)
     }
 
+    @SuppressWarnings("unchecked")
     private void mockOllamaResponse(Mono<OllamaResponse> responseMono) {
         when(webClient.post()).thenReturn(requestBodyUriSpec);
         when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
+        // fetchFewShotExamples()가 .header("X-Internal-Secret", ...) 체이닝을 사용하므로 stub 필요
+        doReturn(requestBodySpec).when(requestBodySpec).header(anyString(), any(String[].class));
         doReturn(requestHeadersSpec).when(requestBodySpec).bodyValue(any());
         when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+        // few-shot 호출은 bodyToMono(String.class), Ollama 호출은 bodyToMono(OllamaResponse.class)
+        doReturn(Mono.just("")).when(responseSpec).bodyToMono(String.class);
         when(responseSpec.bodyToMono(OllamaResponse.class)).thenReturn(responseMono);
     }
 }
