@@ -42,10 +42,26 @@ export interface V2AggregateFrame {
   stats: Record<string, unknown> | null;
 }
 
+export interface V2SimilarHighlightAlert {
+  roomId: string;
+  highlightId: number;
+  videoNo: string;
+  sceneLabel: string;
+  category: string;
+  reasonSummary: string;
+  similarity: number;
+  trigger: "positive_spike" | "negative_spike";
+  detectedAt: string;
+}
+
+const ALERT_AUTO_DISMISS_MS = 30_000;
+
 export function useV2Stream(channelId: string, enabled: boolean) {
   const [frame, setFrame] = useState<V2AggregateFrame | null>(null);
   const [connected, setConnected] = useState(false);
+  const [similarAlert, setSimilarAlert] = useState<V2SimilarHighlightAlert | null>(null);
   const esRef = useRef<EventSource | null>(null);
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!enabled || !channelId) return;
@@ -64,10 +80,20 @@ export function useV2Stream(channelId: string, enabled: boolean) {
 
     es.addEventListener("v2_frame", (e: MessageEvent<string>) => {
       try {
-        const parsed = JSON.parse(e.data) as V2AggregateFrame;
-        setFrame(parsed);
+        setFrame(JSON.parse(e.data) as V2AggregateFrame);
       } catch {
         // ignore malformed frames
+      }
+    });
+
+    es.addEventListener("v2_similar_highlight", (e: MessageEvent<string>) => {
+      try {
+        const alert = JSON.parse(e.data) as V2SimilarHighlightAlert;
+        setSimilarAlert(alert);
+        if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+        dismissTimerRef.current = setTimeout(() => setSimilarAlert(null), ALERT_AUTO_DISMISS_MS);
+      } catch {
+        // ignore malformed alert
       }
     });
 
@@ -77,8 +103,9 @@ export function useV2Stream(channelId: string, enabled: boolean) {
       es.close();
       esRef.current = null;
       setConnected(false);
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
     };
   }, [channelId, enabled]);
 
-  return { frame, connected };
+  return { frame, connected, similarAlert, dismissAlert: () => setSimilarAlert(null) };
 }

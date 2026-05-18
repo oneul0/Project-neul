@@ -1,17 +1,20 @@
 "use client";
 
-import { Activity, Hash, MessageSquare, Shield, Users, Wifi, WifiOff } from "lucide-react";
-import { type V2AggregateFrame } from "@/hooks/useV2Stream";
+import { Activity, Hash, MessageSquare, Shield, Sparkles, TrendingDown, TrendingUp, Users, Wifi, WifiOff, X } from "lucide-react";
+import { type V2AggregateFrame, type V2SimilarHighlightAlert } from "@/hooks/useV2Stream";
 
 interface Props {
   frame: V2AggregateFrame | null;
   connected: boolean;
+  similarAlert: V2SimilarHighlightAlert | null;
+  onDismissAlert: () => void;
 }
 
-export default function V2GuardrailCard({ frame, connected }: Props) {
+export default function V2GuardrailCard({ frame, connected, similarAlert, onDismissAlert }: Props) {
   return (
     <div className="space-y-4">
       <GuardrailHeader connected={connected} frame={frame} />
+      {similarAlert && <SimilarHighlightBanner alert={similarAlert} onDismiss={onDismissAlert} />}
       {frame ? (
         <>
           <MentalBufferSection frame={frame} />
@@ -242,6 +245,59 @@ function EmptyState({ connected }: { connected: boolean }) {
         {connected ? "첫 번째 프레임을 기다리는 중..." : "라이브 스트리밍이 시작되면 분석이 시작됩니다."}
       </p>
       <p className="mt-1 text-xs text-white/25">v2-raw-chat 토픽에 데이터가 유입되면 자동으로 표시됩니다.</p>
+    </div>
+  );
+}
+
+function SimilarHighlightBanner({ alert, onDismiss }: { alert: V2SimilarHighlightAlert; onDismiss: () => void }) {
+  const isPositive = alert.trigger === "positive_spike";
+  const accentColor = isPositive ? "#00FFA3" : "#FF6B6B";
+  const borderClass = isPositive ? "border-[#00FFA3]/25 bg-[#00FFA3]/[0.06]" : "border-[#FF6B6B]/25 bg-[#FF6B6B]/[0.06]";
+
+  return (
+    <div className={`rounded-[28px] border ${borderClass} p-5`}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div
+            className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+            style={{ backgroundColor: `${accentColor}18` }}
+          >
+            {isPositive
+              ? <TrendingUp className="h-4 w-4" style={{ color: accentColor }} />
+              : <TrendingDown className="h-4 w-4" style={{ color: accentColor }} />}
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-3 w-3" style={{ color: accentColor }} />
+              <span className="text-[11px] font-black uppercase tracking-[0.2em]" style={{ color: accentColor }}>
+                {isPositive ? "유사 하이라이트 패턴 감지" : "유사 반응 패턴 감지"}
+              </span>
+            </div>
+            <p className="text-sm font-bold text-white/90">
+              <span
+                className="mr-2 rounded-lg px-2 py-0.5 text-xs font-black"
+                style={{ backgroundColor: `${accentColor}22`, color: accentColor }}
+              >
+                {alert.sceneLabel ?? alert.category}
+              </span>
+              {alert.reasonSummary
+                ? alert.reasonSummary.length > 60
+                  ? alert.reasonSummary.slice(0, 60) + "…"
+                  : alert.reasonSummary
+                : "과거 하이라이트와 유사한 채팅 반응이 감지됐습니다."}
+            </p>
+            <p className="text-xs text-white/35">
+              유사도 {Math.round(alert.similarity * 100)}% · {alert.category}
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={onDismiss}
+          className="shrink-0 rounded-full p-1.5 text-white/30 transition hover:bg-white/[0.06] hover:text-white/60"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   );
 }
