@@ -306,3 +306,59 @@ common/dto/AnalyzedChatMessage.java
 ```
 
 **트레이드오프**: common 변경이 모든 서비스 재빌드를 요구한다. 서비스 간 결합을 줄이려면 향후 별도 schema registry(Avro 등)를 고려할 수 있다.
+
+---
+
+## ADR-010. LLM 클라이언트 추상화 계층 도입
+
+**날짜**: 2026-05-18
+
+### 배경
+
+`OllamaAnalyzerService`는 감정 분석 LLM 호출 시 Ollama HTTP API(`/api/chat`)를 WebClient로 직접 호출했다. `ollamaApiUrl`, `ollamaModel`, `buildOllamaRequest()` 등 Ollama 전용 코드가 서비스 로직과 결합되어 있었다.
+
+### 문제
+
+- 프로바이더(Ollama → OpenAI → Claude 등) 교체 시 `OllamaAnalyzerService` 비즈니스 로직 수정 필요
+- 입력 가드레일·출력 검증·Semaphore 등 핵심 로직이 HTTP 호출 코드와 섞여 있어 테스트 및 교체 범위가 불명확
+- `ChatOptimizer`는 ADR-005에서 Port & Adapter로 추상화했으나, LLM 클라이언트는 동일 패턴을 적용하지 않은 상태
+
+### 고려한 선택지
+
+| 선택지 | 장점 | 단점 |
+|--------|------|------|
+| 현행 유지 | 변경 없음 | 프로바이더 교체 = 서비스 코드 수정 |
+| Spring AI `ChatClient` 도입 | 표준 추상화 | 외부 라이브러리 의존, 현재 WebFlux 구조와 맞지 않음 |
+| **`ChatLlmClient` 인터페이스 직접 정의** | 최소 변경, 기존 Reactor 체인 유지 | 직접 유지보수 필요 |
+
+### 결정 및 근거
+
+**`ChatLlmClient` 인터페이스 도입**. `chat(system, user, temperature, numPredict) → Mono<String>` 시그니처로 HTTP 세부 사항을 캡슐화한다. `OllamaChatClient`가 유일한 구현체로 Ollama 전용 코드를 담당하고, `OllamaAnalyzerService`는 인터페이스에만 의존한다.
+
+```java
+// ChatLlmClient.java (Port)
+public interface ChatLlmClient {
+    Mono<String> chat(String systemPrompt, String userPrompt, double temperature, int numPredict);
+}
+
+// OllamaChatClient.java (Adapter)
+@Component
+public class OllamaChatClient implements ChatLlmClient { ... }
+
+// OpenAI 추가 시 — 서비스 코드 무변경
+@Component
+@ConditionalOnProperty(name = "app.llm.provider", havingValue = "openai")
+public class OpenAiChatClient implements ChatLlmClient { ... }
+```
+
+### 영향 범위
+
+```
+analyzer/llm/ChatLlmClient.java            ← 신규 (Port 인터페이스)
+analyzer/llm/OllamaChatClient.java         ← 신규 (Ollama Adapter)
+analyzer/service/OllamaAnalyzerService.java ← 수정 (chatClient 주입, HTTP 코드 제거)
+```
+
+가드레일(입력 정제·출력 검증·Semaphore·동적 타임아웃)은 `OllamaAnalyzerService`에 그대로 유지된다. 인터페이스 교체 시에도 가드레일은 재사용된다.
+
+**트레이드오프**: 프로바이더별 추가 옵션(JSON mode 강제, tool use 등)이 필요하면 `chat()` 시그니처를 확장하거나 별도 메서드를 추가해야 한다.

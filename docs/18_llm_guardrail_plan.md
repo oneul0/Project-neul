@@ -203,6 +203,53 @@ Redis 없이 분석이 막히는 것보다 분석이 진행되는 편이 낫다�
 
 ---
 
+## 9. LLM 클라이언트 추상화 (2026-05-18)
+
+> 관련 ADR: `01_ADR.md` ADR-010
+
+### 배경
+
+가드레일·파싱 로직이 완성된 이후에도 `OllamaAnalyzerService`는 Ollama HTTP API를 직접 호출하고 있었다. `ChatOptimizer`가 ADR-005에서 Port & Adapter로 추상화된 것과 달리, LLM 클라이언트 계층은 동일 패턴이 적용되지 않았다.
+
+### 변경 내용
+
+**신규 파일**
+
+| 파일 | 역할 |
+|---|---|
+| `analyzer/llm/ChatLlmClient.java` | Port 인터페이스 — `chat(system, user, temp, tokens) → Mono<String>` |
+| `analyzer/llm/OllamaChatClient.java` | Ollama Adapter — HTTP 호출, `OllamaRequest` 구성, raw content 반환 |
+
+**`OllamaAnalyzerService` 변경**
+
+| 제거 | 추가 |
+|---|---|
+| `ollamaApiUrl`, `ollamaModel` (`@Value`) | `ChatLlmClient chatClient` 생성자 주입 |
+| `buildOllamaRequest()` | — |
+| WebClient LLM 호출 2곳 | `chatClient.chat(...)` 위임 |
+| `parseOllamaResponse(OllamaResponse, ...)` | `parseResponse(String content, ...)` |
+| `parseHighlightDecision(OllamaResponse)` | `parseHighlightContent(String content)` |
+
+가드레일(입력 정제·출력 검증·Semaphore·동적 타임아웃)은 서비스에 그대로 유지된다.
+
+### 프로바이더 교체 방법
+
+```java
+// 새 구현체 추가
+@Component
+@ConditionalOnProperty(name = "app.llm.provider", havingValue = "openai")
+public class OpenAiChatClient implements ChatLlmClient {
+    @Override
+    public Mono<String> chat(String system, String user, double temp, int maxTokens) {
+        // POST /v1/chat/completions
+    }
+}
+```
+
+`application.yaml`에 `app.llm.provider: openai` 설정 추가 후 재시작. `OllamaAnalyzerService` 변경 없음.
+
+---
+
 ## 8. 단위 테스트 검증 결과 (2026-05-18)
 
 ### OllamaAnalyzerServiceTest — 9개 전체 통과
