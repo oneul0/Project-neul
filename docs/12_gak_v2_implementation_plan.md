@@ -703,7 +703,7 @@ emaPositive = alpha * currentPositive + (1 - alpha) * previousEmaPositive
 
 - `v2-aggregate` 프레임이 생성됨
 
-## Phase 4. Dashboard 연동
+## Phase 4. Dashboard 연동 ✅ 완료 (2026-05-18)
 
 작업:
 
@@ -714,6 +714,8 @@ emaPositive = alpha * currentPositive + (1 - alpha) * previousEmaPositive
 완료 기준:
 
 - 실제 대시보드에서 v2 카드가 동작함
+
+> 구현 상세는 [섹션 20](#20-phase-4-구현-기록) 참고.
 
 ## Phase 5. Briefing / 안정화
 
@@ -826,6 +828,77 @@ emaPositive = alpha * currentPositive + (1 - alpha) * previousEmaPositive
 - `GAK-V2-22` 통합 테스트 추가
 - `GAK-V2-23` latency/perf 테스트 추가
 - `GAK-V2-24` v1/v2 분리 회귀 검증
+
+---
+
+## 20. Phase 4 구현 기록
+
+> 작업일: 2026-05-18 / 브랜치: `feature/v2-guardrail-ui`
+
+### 구현 파일
+
+| 파일 | 유형 | 역할 |
+|---|---|---|
+| `frontend/src/hooks/useV2Stream.ts` | 신규 | SSE 구독 + 초기 스냅샷 로드 훅 |
+| `frontend/src/components/v2/V2GuardrailCard.tsx` | 신규 | v2 통합 대시보드 카드 |
+| `frontend/src/app/channels/[channelId]/page.tsx` | 수정 | "가드레일" 탭 추가, 훅 연결 |
+
+### `useV2Stream` 동작 방식
+
+```
+탭 진입 (enabled=true)
+    └─ GET /api/channels/{channelId}/v2/state  ← 초기 스냅샷 (Redis)
+    └─ EventSource /api/channels/{channelId}/v2/stream
+           └─ v2_frame 이벤트 수신 시 frame 상태 갱신
+탭 이탈 (enabled=false)
+    └─ EventSource.close()  ← 불필요한 SSE 연결 즉시 종료
+```
+
+탭 진입 시에만 SSE를 연결하는 방식(`enabled` 플래그)으로 서버 커넥션 낭비를 방지한다.
+
+### `V2GuardrailCard` 구성
+
+| 섹션 | 표시 데이터 |
+|---|---|
+| 헤더 | SSE 연결 상태, `topicLabel` |
+| 심리 완충 지표 | `emaPositive/emaNegative` 프로그레스 바, `balance` 점수 (색상 코딩: ≥0.6 초록 / ≥0.4 노랑 / 미만 빨강) |
+| AI 브리핑 | `briefing.summary` 자연어 + 신뢰도 |
+| 앵커 채팅 | `anchors[]` 상위 3개, 가중치 표시 |
+| 키워드 | `keywords[]` 최대 8개 칩 |
+| 신뢰 등급 분포 | `trustSummary`의 FAN / NORMAL / TROLL_CANDIDATE 수 + 비율 바 |
+
+### 계획 대비 변경 사항
+
+계획 문서(섹션 14)는 5개 독립 컴포넌트를 제안했으나, 실제 구현에서는 `V2GuardrailCard` 단일 파일로 통합했다.
+
+| 계획 컴포넌트 | 실제 구현 위치 |
+|---|---|
+| `AudienceBalanceCard` | `V2GuardrailCard` > `MentalBufferSection` |
+| `MentalBufferBar` | `V2GuardrailCard` > `BarRow` |
+| `AnchorChatPanel` | `V2GuardrailCard` > `AnchorSection` |
+| `NarrativeBriefingCard` | `V2GuardrailCard` > `BriefingSection` |
+| `TrustFilterWidget` | `V2GuardrailCard` > `KeywordsAndTrustSection` |
+
+단일 카드로 통합한 이유: 각 섹션이 동일한 `V2AggregateFrame` 프레임을 공유하므로 props 분리가 불필요하고, 섹션별 독립 분리가 요구될 경우 추후 추출할 수 있다.
+
+### SSE 이벤트 계약
+
+`V2StreamService`가 emit하는 이벤트 이름은 `v2_frame`이고, 데이터는 `V2AggregateFrame` 직렬화 JSON이다. 프론트 훅은 `v2_frame` 이벤트만 구독한다.
+
+```
+// SSE 응답 예시
+event: v2_frame
+data: {"roomId":"abc","balance":0.62,"mentalBuffer":{...},"briefing":{...},...}
+
+event: ping
+data: keep-alive
+```
+
+### 향후 잔여 작업
+
+- **Phase 5**: `V2BriefingService` circuit breaker 적용, end-to-end 1초 미만 검증
+- **Phase 6**: RSocket 전환 여부 결정 (현재 SSE로 운영)
+- **신뢰 등급 분포**: `trustSummary` 필드 키 정규화 — `V2Aggregator`가 camelCase (`fanCount`, `trollCount`, `normalCount`)로 일관되게 직렬화되면 프론트 fallback 분기(`trust_count`) 제거 가능
 
 ---
 
