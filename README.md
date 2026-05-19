@@ -41,6 +41,8 @@ VOD 채팅 데이터를 분석해 편집 후보 구간을 자동으로 추출하
 - `intensityScore`, `transitionScore`, `editabilityScore` 기반 편집 후보 선별
 - 시간대 버킷 분산으로 앞쪽 쏠림 방지
 - 분석 상태 adaptive polling (`REQUESTED → CRAWLING → ANALYZING → COMPLETED`)
+- **감정 분류 7 레이블** — `JOY` · `HOPE` · `WONDER` · `HYPE` · `SADNESS` · `ANGER` · `DISGUST`  
+  `NEUTRAL`은 두 가지 의미로 쓰입니다. ① 어느 레이블도 우세하지 않은 채팅의 결과값, ② LLM 장애·검증 실패 시 시스템이 강제 할당하는 안전 기본값 — "감정 없음"이 아니라 "판단 불가 또는 복구 상태"입니다.
 
 ### 🎯 투표 & 룰렛
 - 실시간 투표 — 시작·중지 분리, 채팅 기록 모달 제공
@@ -79,9 +81,9 @@ LLM이 반환하는 감정 분석 JSON은 필드 누락·범위 초과·zero-sco
 | 출력 검증 | 감정 키 7개 완결성 확인 → 점수 `[0.0, 1.0]` 클램핑 → 전 필드 0.0이면 `NEUTRAL` 강제 치환 |
 | 동시성 제어 | `Semaphore(1)` + 동적 타임아웃 `min(90, 20 + batchSize × 1.5)초` — 과잉 요청은 skip 카운터로 추적 |
 
-**프롬프트 레벨 — 출력 형식과 판단 기준 강제**
+**프롬프트 제약 — `resources/prompts/` 템플릿 파일에 직접 명시**
 
-코드 가드는 잘못된 출력을 사후 교정하지만, 애초에 LLM이 잘못된 형식을 만들지 않도록 프롬프트에서도 제약을 걸었습니다.
+코드 가드는 잘못된 출력을 사후 교정합니다. 애초에 LLM이 잘못된 형식을 반환하지 않도록, Ollama 호출 시 주입하는 프롬프트 템플릿 파일(`ollama-batch-system.txt`, `ollama-highlight-user.txt` 등)에 다음 규칙을 직접 작성했습니다.
 
 - **JSON 출력 강제**: Ollama API의 `format: "json"` 옵션과 시스템 프롬프트의 "출력은 반드시 JSON만 반환할 것" 규칙을 이중으로 적용
 - **점수 합계 1.0 명시**: 시스템 프롬프트에 "각 messageId의 scores 합계는 반드시 1.0이어야 한다" 규칙 추가 — 코드 클램핑 이전에 LLM 스스로 비율로 분배하도록 유도
@@ -216,10 +218,10 @@ curl -X POST "http://localhost:8083/dev/seed/{channelId}"
 
 | 문서 | 설명 |
 |------|------|
-| [프로젝트 개요](docs/00_project_overview.md) | VOD 하이라이트 추출 목적·AI 통합 방식·POC 검증·기술 스택 선택 근거 |
-| [아키텍처 결정 기록 (ADR)](docs/01_ADR.md) | Kafka·WebFlux·pgvector 등 주요 기술 결정과 트레이드오프 |
-| [LLM 가드레일 설계](docs/18_llm_guardrail_plan.md) | 입출력 가드레일·동시성 제어·VOD 슬롯 제한 구현 기록 |
-| [VOD 하이라이트 흐름도](docs/26_vod_highlight_sequence_diagrams.md) | 분석 요청부터 결과 저장까지 6단계 Mermaid 시퀀스 다이어그램 |
-| [ERD](docs/27_erd.md) | 전체 테이블 구조 및 pgvector 임베딩 컬럼 설명 |
-| [시스템 신뢰성 설계](docs/30_system_reliability.md) | 재시도·Circuit Breaker·fail-open/secure 전략 |
-| [온보딩 가이드](docs/29_onboarding_guide.md) | 로컬 실행·인증 흐름·코드 탐색 가이드 |
+| [프로젝트 개요](docs/design/00_project_overview.md) | VOD 하이라이트 추출 목적·AI 통합 방식·POC 검증·기술 스택 선택 근거 |
+| [아키텍처 결정 기록 (ADR)](docs/design/01_ADR.md) | Kafka·WebFlux·pgvector 등 주요 기술 결정과 트레이드오프 |
+| [LLM 가드레일 설계](docs/design/18_llm_guardrail_plan.md) | 입출력 가드레일·동시성 제어·VOD 슬롯 제한 구현 기록 |
+| [VOD 하이라이트 흐름도](docs/design/26_vod_highlight_sequence_diagrams.md) | 분석 요청부터 결과 저장까지 6단계 Mermaid 시퀀스 다이어그램 |
+| [ERD](docs/design/27_erd.md) | 전체 테이블 구조 및 pgvector 임베딩 컬럼 설명 |
+| [시스템 신뢰성 설계](docs/design/30_system_reliability.md) | 재시도·Circuit Breaker·fail-open/secure 전략 |
+| [온보딩 가이드](docs/design/29_onboarding_guide.md) | 로컬 실행·인증 흐름·코드 탐색 가이드 |
