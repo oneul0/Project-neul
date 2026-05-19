@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "code-review-graph": {
+      "command": "/Users/hoon/miniconda3/bin/python3.13",
+      "args": [
+        "-m",
+        "code_review_graph",
+        "serve"
+      ],
+      "cwd": "/Users/hoon/Desktop/Projects/project-neul",
+      "type": "stdio"
+    }
+  }
+}
