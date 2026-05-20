@@ -1,7 +1,7 @@
 # 27. ERD (Entity Relationship Diagram)
 
 > 구현 기준: 2026-05-20  
-> 스키마 소스: `backend/core-api/src/main/resources/db/migration/V1~V8__*.sql`
+> 스키마 소스: `backend/core-api/src/main/resources/db/migration/V1~V9__*.sql`
 
 ---
 
@@ -93,13 +93,15 @@ erDiagram
     }
 
     user_vod_activity }o--|| vod_highlights : "highlight_id → id (FK, ON DELETE SET NULL)"
-    user_vod_activity }o--|| user_vod_library : "owner_id+video_no 복합 참조"
+    user_vod_activity }o--|| user_vod_library : "owner_id+video_no FK (ON DELETE CASCADE)"
     user_vod_library ||--o{ vod_highlights : "video_no 기준 연결"
     user_vod_library ||--o{ vod_timeline_points : "video_no 기준 연결"
 ```
 
-> **참고**: R2DBC 환경에서 대부분의 FK 제약은 애플리케이션 레이어에서 관리한다.  
-> 단, `user_vod_activity.highlight_id → vod_highlights.id`는 V8 마이그레이션에서 `ON DELETE SET NULL` FK로 선언해 DB 레벨에서 무결성을 보장한다.
+> **참고**: `video_no`, `room_id`, `owner_id`는 치지직 외부 ID라 DB FK 불가 — 애플리케이션 레이어에서 관리한다.  
+> 내부 참조 두 곳은 DB FK로 선언했다.  
+> - `user_vod_activity.highlight_id → vod_highlights.id` (V8, ON DELETE SET NULL)  
+> - `user_vod_activity(owner_id, video_no) → user_vod_library(owner_id, video_no)` (V9, ON DELETE CASCADE)
 
 ---
 
