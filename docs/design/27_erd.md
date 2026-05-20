@@ -1,7 +1,7 @@
 # 27. ERD (Entity Relationship Diagram)
 
 > 구현 기준: 2026-05-20  
-> 스키마 소스: `backend/core-api/src/main/resources/db/migration/V1~V7__*.sql`
+> 스키마 소스: `backend/core-api/src/main/resources/db/migration/V1~V8__*.sql`
 
 ---
 
@@ -92,13 +92,14 @@ erDiagram
         timestamp    created_at       "DEFAULT now()"
     }
 
-    user_vod_activity }o--|| vod_highlights : "highlight_id → id (논리적 참조)"
+    user_vod_activity }o--|| vod_highlights : "highlight_id → id (FK, ON DELETE SET NULL)"
     user_vod_activity }o--|| user_vod_library : "owner_id+video_no 복합 참조"
     user_vod_library ||--o{ vod_highlights : "video_no 기준 연결"
     user_vod_library ||--o{ vod_timeline_points : "video_no 기준 연결"
 ```
 
-> **참고**: R2DBC 환경에서 FK 제약은 DB 레벨에서 선언하지 않았다. 참조 무결성은 애플리케이션 레이어에서 관리한다.
+> **참고**: R2DBC 환경에서 대부분의 FK 제약은 애플리케이션 레이어에서 관리한다.  
+> 단, `user_vod_activity.highlight_id → vod_highlights.id`는 V8 마이그레이션에서 `ON DELETE SET NULL` FK로 선언해 DB 레벨에서 무결성을 보장한다.
 
 ---
 
