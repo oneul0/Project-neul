@@ -1,6 +1,6 @@
 # 27. ERD (Entity Relationship Diagram)
 
-> 구현 기준: 2026-05-17  
+> 구현 기준: 2026-05-20  
 > 스키마 소스: `backend/core-api/src/main/resources/db/migration/V1~V7__*.sql`
 
 ---
@@ -18,17 +18,17 @@ erDiagram
         varchar      sender_id
         varchar      emotion_type
         double       emotion_score
-        timestamp    analyzed_at      "DEFAULT now()"
+        timestamp    analyzed_at      "NOT NULL"
     }
 
     highlight_records {
-        bigserial    id               PK
+        serial       id               PK
         varchar      room_id          "NOT NULL"
-        varchar      emotion_type
-        double       peak_score
+        varchar      emotion_type     "NOT NULL"
+        double       peak_score       "NOT NULL"
         text         top_message
         text         live_image_url
-        timestamp    timestamp        "DEFAULT now()"
+        timestamp    timestamp        "NOT NULL"
     }
 
     vod_highlights {
@@ -192,8 +192,13 @@ VOD 분석으로 선별된 편집 후보 구간. V3~V7 마이그레이션을 통
 | 테이블 | 인덱스 | 목적 |
 |--------|--------|------|
 | `analyzed_chats` | UNIQUE(`message_id`) | 중복 채팅 방지 |
-| `user_vod_library` | UNIQUE(`owner_id`, `video_no`) | 1사용자 1VOD 제한 |
+| `analyzed_chats` | `idx_analyzed_chats_room_id (room_id)` | 채널별 채팅 조회 |
+| `vod_highlights` | `idx_vod_highlights_video_no (video_no)` | VOD별 하이라이트 조회 |
 | `vod_highlights` | `ivfflat(embedding vector_cosine_ops, lists=100)` | 벡터 근사 검색 |
+| `vod_timeline_points` | `idx_vod_timeline_points_video_no (video_no)` | VOD별 타임라인 조회 |
+| `user_vod_library` | UNIQUE(`owner_id`, `video_no`) | 1사용자 1VOD 제한 |
+| `user_vod_library` | `idx_user_vod_library_owner_id (owner_id, updated_at DESC)` | 라이브러리 목록 최신순 조회 |
+| `user_vod_activity` | `idx_user_vod_activity_owner_id (owner_id, created_at DESC)` | 행동 로그 최신순 조회 |
 
 ---
 
