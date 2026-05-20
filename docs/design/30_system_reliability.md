@@ -224,16 +224,16 @@ sequenceDiagram
 classDiagram
     class GAK_OWNER_ASSERTION {
         <<Cookie HttpOnly Secure>>
-        +header: base64url(channelId.sessionId.expiresAt)
-        +signature: HMAC-SHA256(header, GAK_COOKIE_SECRET)
-        +format: header + "." + signature
+        +header base64url(channelId.sessionId.expiresAt)
+        +signature HMAC-SHA256(header, GAK_COOKIE_SECRET)
+        +format header.signature
     }
 
     class RedisSession {
         <<Redis>>
-        +key: gak:owner-session:{channelId}
-        +value: sessionId
-        +TTL: 세션 만료 시까지
+        +key gak~owner-session~channelId
+        +value sessionId
+        +TTL 세션 만료 시까지
     }
 
     class OwnerAccessFilter {
@@ -246,6 +246,8 @@ classDiagram
     RedisSession --> OwnerAccessFilter : ② 세션 바인딩 확인
     OwnerAccessFilter --> OwnerAccessFilter : ③ channelId 소유권 확인
 ```
+
+> Redis 실제 키 형식: `gak:owner-session:{channelId}` — 다이어그램에서 `~`는 `:`를 대체한다.
 
 ### 2-2. 3중 검증 흐름
 
