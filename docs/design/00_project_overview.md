@@ -291,10 +291,15 @@ sequenceDiagram
     Ollama-->>AZ: 승인 여부 + 카테고리 + 요약
     Note over AZ: 승인 → score 상승 / 거절 → × 0.38\n버킷 분산 선택 → 최종 5~24개
 
-    AZ->>Kafka: 하이라이트 후보 + 타임라인 포인트
+    AZ->>Kafka: 하이라이트 후보 (vod-analyzed-topic)
+    AZ->>Kafka: 타임라인 포인트 (vod-window-summary-topic)
+    AZ->>Kafka: 분석 완료 신호 (vod-analysis-complete-topic)
 
-    Kafka-->>CA: 하이라이트 수신
+    Kafka-->>CA: 하이라이트 + 타임라인 수신
     CA->>OllamaE: 반응 비율 설명 텍스트 → 768차원 벡터
     OllamaE-->>CA: float[768]
     CA->>DB: 하이라이트 + embedding 저장 (IVFFlat 인덱스)
+
+    Kafka-->>CO: 분석 완료 신호 수신
+    Note over CO: ANALYZING → COMPLETED 상태 전이
 ```

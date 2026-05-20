@@ -55,15 +55,17 @@ VOD 채팅 데이터를 분석해 편집 후보 구간을 자동으로 추출하
 
 ```
 Browser
-  └─ Next.js (3000)          ← UI + API Proxy
+  └─ Next.js (3000)              ← UI + API Proxy
        ├─ /api/chzzk/*  →  collector (8081)   ← 로그인, 채팅 수집, VOD 크롤링
        └─ /api/v1/*     →  core-api  (8083)   ← 분석 결과, SSE, 접근 제어
 
-collector ─(Kafka)─► analyzer (8082)  ← 투표·도네이션 처리, VOD 편집 후보 계산
-                          │
-                     core-api ─► PostgreSQL (pgvector)
-                          │
-                        Redis  ← 세션, 실시간 집계
+  collector (8081)                  analyzer (8082)                core-api (8083)
+  채팅 수집 · VOD 크롤링  ─Kafka─►  감정 분석 · 편집 후보 계산  ─Kafka─►  저장 · SSE · 접근 제어
+        │                                                                  │
+        │◄──────── vod-analysis-complete/failed-topic ──────────────────────┤
+        │                                                                  │
+        │                                                             PostgreSQL (pgvector)
+        │                                                             Redis  ← 세션, 실시간 집계
 ```
 
 ---
