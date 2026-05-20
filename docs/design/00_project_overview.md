@@ -258,7 +258,83 @@ ChatLlmClient (인터페이스, Port)
 
 ---
 
-## 6. 전체 데이터 흐름
+## 6. 전체 아키텍처
+
+```mermaid
+graph TB
+    Browser(["브라우저"])
+
+    subgraph FE ["프론트엔드 — Next.js :3000"]
+        direction TB
+        UI["페이지\n/ 홈·로그인\n/channels/[channelId] 대시보드"]
+        PROXY["BFF 프록시 (Next.js API Routes)\n쿠키 포워딩 · SSE 터널링"]
+    end
+
+    subgraph CO ["Collector :8081"]
+        CO1["CHZZK OAuth\n로그인 · 콜백 · 세션 발급"]
+        CO2["WebSocket 수집\n실시간 채팅 구독"]
+        CO3["VOD 크롤러\n채팅 페이지 cursor 순회"]
+    end
+
+    subgraph CA ["Core-API :8083"]
+        CA1["SSE 스트림\n실시간 감정 분석 결과"]
+        CA2["VOD API\n하이라이트 · 타임라인"]
+        CA3["투표 · 도네이션 · 룰렛"]
+        CA4["사용자 VOD 라이브러리"]
+    end
+
+    subgraph AZ ["Analyzer :8082  (REST 없음 — Kafka 전용)"]
+        AZ1["채팅 감정 분류\n휴리스틱 + Ollama gemma3"]
+        AZ2["하이라이트 추출\n3축 채점 → LLM 리뷰 → 버킷 분산"]
+        AZ3["임베딩 생성\nnomic-embed-text → 768차원"]
+    end
+
+    subgraph INFRA ["인프라"]
+        KAFKA[["Kafka\nchat-topic\nvod-crawl-complete-topic\nvod-analyzed-topic\nvod-window-summary-topic\nvod-analysis-complete-topic"]]
+        REDIS[("Redis\n세션 · OAuth state · 슬롯 카운터 · 큐")]
+        DB[("PostgreSQL + pgvector\nanalyzed_chats · vod_highlights\nvod_timeline_points · user_vod_*")]
+        OLLAMA["Ollama\ngemma3 — 감정 분석 · 하이라이트 판정\nnomic-embed-text — 768차원 임베딩"]
+    end
+
+    EXT(["치지직 API  (외부)"])
+
+    Browser -- "HTTP / SSE" --> UI
+    UI --> PROXY
+    PROXY -- "REST" --> CO1
+    PROXY -- "REST" --> CO2
+    PROXY -- "REST" --> CO3
+    PROXY -- "SSE" --> CA1
+    PROXY -- "REST" --> CA2
+    PROXY -- "REST" --> CA3
+    PROXY -- "REST" --> CA4
+
+    CO1 -- "OAuth 리다이렉트" --> EXT
+    CO1 --- REDIS
+    CO2 -- "WebSocket" --> EXT
+    CO2 --> KAFKA
+    CO3 -- "HTTP" --> EXT
+    CO3 --> KAFKA
+
+    KAFKA -- "채팅 청크 · 완료 신호" --> AZ1
+    KAFKA -- "채팅 청크 · 완료 신호" --> AZ2
+    AZ1 --- OLLAMA
+    AZ2 --- OLLAMA
+    AZ1 --> KAFKA
+    AZ2 --> KAFKA
+    AZ2 --> AZ3
+    AZ3 --- OLLAMA
+
+    KAFKA -- "분석 완료 신호" --> CO3
+    KAFKA -- "하이라이트 · 타임라인" --> CA2
+    CA2 --> DB
+    CA1 --- DB
+    CA3 --- REDIS
+    CA4 --- DB
+```
+
+---
+
+## 7. 전체 데이터 흐름
 
 ```mermaid
 sequenceDiagram
