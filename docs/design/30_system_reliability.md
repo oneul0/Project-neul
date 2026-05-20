@@ -2,7 +2,7 @@
 
 > 재시도·보안·DB 정합성·운영 관측성 관점에서 이 시스템이 어떻게 안정성을 확보했는지를 기술한다.  
 > 흐름은 시퀀스 다이어그램, 구조는 클래스·상태 다이어그램으로 표현한다.  
-> 구현 기준: 2026-05-17
+> 구현 기준: 2026-05-20
 
 ---
 
@@ -124,15 +124,23 @@ public Mono<List<AnalyzedChatMessage>> analyzeBatch(...) { ... }
 stateDiagram-v2
     [*] --> CLOSED : 정상 상태
     CLOSED --> OPEN : 실패율 임계치 초과
-    OPEN --> HALF_OPEN : 대기 시간 경과 후 자동 전환
+    OPEN --> HALF_OPEN : 대기 시간 경과
     HALF_OPEN --> CLOSED : 테스트 호출 성공
     HALF_OPEN --> OPEN : 테스트 호출 실패
 
-    CLOSED --> fallback : analyzeBatch() 호출
-    OPEN --> fallback : 즉시 fallback 호출
-    HALF_OPEN --> fallback : analyzeBatch() 호출
+    note right of CLOSED
+        analyzeBatch() 정상 호출
+    end note
 
-    fallback : fallbackAnalyzeBatch()\n전체 배치를 NEUTRAL로 반환\n라이브 분석 파이프라인 유지
+    note right of OPEN
+        fallbackAnalyzeBatch() 즉시 실행
+        전체 배치 NEUTRAL 반환
+        라이브 분석 파이프라인 유지
+    end note
+
+    note right of HALF_OPEN
+        단건 테스트 호출 후 성공·실패 판정
+    end note
 ```
 
 ---
@@ -316,7 +324,7 @@ classDiagram
     InternalAccessFilter --> Request : 헤더 검사
     InternalAccessFilter --> Response : 불일치 시 404 반환
 
-    note for InternalAccessFilter "403이 아닌 404:\n경로의 존재 자체를 외부에 노출하지 않음"
+    note for InternalAccessFilter "403 아닌 404 반환 — 경로 존재 자체를 외부에 숨김"
 ```
 
 ---
@@ -356,7 +364,7 @@ classDiagram
         +highlight_records
     }
 
-    gak_admin ..> PostgreSQL : 스키마 변경 (Flyway V1~V7)
+    gak_admin ..> PostgreSQL : 스키마 변경 (Flyway V1~V9)
     gak_app ..> PostgreSQL : 데이터 읽기·쓰기 (런타임)
 ```
 
@@ -406,6 +414,8 @@ classDiagram
     class V5 { +add_scene_label }
     class V6 { +add_signal_ratios }
     class V7 { +add_pgvector_embedding }
+    class V8 { +add_fk_activity_highlight }
+    class V9 { +add_fk_activity_library }
 
     Flyway --> V1
     Flyway --> V2
@@ -414,8 +424,10 @@ classDiagram
     Flyway --> V5
     Flyway --> V6
     Flyway --> V7
+    Flyway --> V8
+    Flyway --> V9
 
-    note for Flyway "gak_admin 계정으로 실행\nschema.sql 수동 반영 없음"
+    note for Flyway "gak_admin 계정으로 실행 — schema.sql 수동 반영 없음"
 ```
 
 ---
@@ -525,7 +537,6 @@ stateDiagram-v2
     REQUESTED --> CRAWLING : 크롤링 루프 시작
     CRAWLING --> ANALYZING : vod-crawl-complete-topic 수신
     ANALYZING --> COMPLETED : vod-analysis-complete-topic 수신
-    ANALYZING --> FAILED : vod-analysis-failed-topic 수신
     ANALYZING --> COMPLETED : 30분 경과 + DB에 highlights 존재
     ANALYZING --> FAILED : 30분 경과 + DB에 highlights 없음
 
@@ -561,7 +572,7 @@ classDiagram
     MeterRegistry --> LLMMetrics : increment()
     MeterRegistry --> LLMLatency : sample.stop()
 
-    note for LLMMetrics "Prometheus / Grafana 연동 가능"
+    note for LLMMetrics "Prometheus 수집 · Grafana 연동 가능"
 ```
 
 ### 5-3. fail-open vs fail-secure — Redis 장애 시
@@ -695,7 +706,7 @@ flowchart TD
     end
 
     subgraph After [현재: 버킷 분산 선택]
-        A1[전체 윈도우 점수 산정] --> A2[시간대 버킷 분할\nbucketCount = min N, min 8, max 4]
+        A1[전체 윈도우 점수 산정] --> A2[시간대 버킷 분할\nbucketCount = max4 ~ min8]
         A2 --> A3[버킷별 대표 1개 먼저 확보]
         A3 --> A4[남은 쿼터를 전역 상위로 채움]
         A4 --> A5[결과: 전체 구간에 걸쳐 분산\nMIN=5, MAX=24]
