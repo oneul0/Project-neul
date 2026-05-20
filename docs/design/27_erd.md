@@ -1,52 +1,52 @@
-# 27. ERD (Entity Relationship Diagram)
+# ERD
 
-> 구현 기준: 2026-05-20  
+> 구현 기준: 2026-05-20
 > 스키마 소스: `backend/core-api/src/main/resources/db/migration/V1~V9__*.sql`
 
 ---
 
-## ERD (Mermaid)
+## 관계도
 
 ```mermaid
 erDiagram
     analyzed_chats {
-        bigserial    id               PK
-        varchar      message_id       UK "NOT NULL"
-        varchar      room_id          "NOT NULL"
+        bigserial    id           PK
+        varchar      message_id   UK "NOT NULL"
+        varchar      room_id      "NOT NULL"
         text         content
         varchar      sender
         varchar      sender_id
         varchar      emotion_type
         double       emotion_score
-        timestamp    analyzed_at      "NOT NULL"
+        timestamp    analyzed_at  "NOT NULL"
     }
 
     highlight_records {
-        serial       id               PK
-        varchar      room_id          "NOT NULL"
-        varchar      emotion_type     "NOT NULL"
-        double       peak_score       "NOT NULL"
+        serial       id           PK
+        varchar      room_id      "NOT NULL"
+        varchar      emotion_type "NOT NULL"
+        double       peak_score   "NOT NULL"
         text         top_message
         text         live_image_url
-        timestamp    timestamp        "NOT NULL"
+        timestamp    timestamp    "NOT NULL"
     }
 
     vod_highlights {
-        bigserial    id               PK
-        varchar      video_no         "NOT NULL"
+        bigserial    id                PK
+        varchar      video_no          "NOT NULL"
         int          start_seconds
         int          end_seconds
         double       highlight_score
         varchar      category
+        varchar      scene_label
+        varchar      reaction_label
         text         description
+        text         reason_summary
         text         top_message
-        timestamp    created_at       "DEFAULT now()"
+        text         keyword_summary
         double       intensity_score
         double       transition_score
         double       editability_score
-        varchar      reaction_label
-        text         reason_summary
-        varchar      scene_label
         double       laugh_ratio
         double       hype_ratio
         double       surprise_ratio
@@ -54,14 +54,14 @@ erDiagram
         double       density_ratio
         double       unique_user_ratio
         varchar      emotion_dominance
-        text         keyword_summary
         text         embedding_text
-        vector_768   embedding        "nomic-embed-text 768차원"
+        vector       embedding         "768차원"
+        timestamp    created_at        "DEFAULT now()"
     }
 
     vod_timeline_points {
-        bigserial    id               PK
-        varchar      video_no         "NOT NULL"
+        bigserial    id                PK
+        varchar      video_no          "NOT NULL"
         int          start_seconds
         int          end_seconds
         int          message_count
@@ -69,7 +69,7 @@ erDiagram
         double       activity_score
         varchar      category
         text         top_message
-        timestamp    created_at       "DEFAULT now()"
+        timestamp    created_at        "DEFAULT now()"
     }
 
     user_vod_library {
@@ -84,109 +84,119 @@ erDiagram
     }
 
     user_vod_activity {
-        bigserial    id               PK
-        varchar      owner_id         "NOT NULL"
-        varchar      video_no         "NOT NULL"
-        bigint       highlight_id     FK
-        varchar      action_type      "OPEN/GOOD/BAD/PIN/SAVE/SKIP"
-        timestamp    created_at       "DEFAULT now()"
+        bigserial    id           PK
+        varchar      owner_id     "NOT NULL"
+        varchar      video_no     "NOT NULL"
+        bigint       highlight_id FK
+        varchar      action_type  "NOT NULL"
+        timestamp    created_at   "DEFAULT now()"
     }
 
-    user_vod_activity }o--|| vod_highlights : "highlight_id → id (FK, ON DELETE SET NULL)"
-    user_vod_activity }o--|| user_vod_library : "owner_id+video_no FK (ON DELETE CASCADE)"
-    user_vod_library ||--o{ vod_highlights : "video_no 기준 연결"
-    user_vod_library ||--o{ vod_timeline_points : "video_no 기준 연결"
+    user_vod_activity }o--o| vod_highlights : "highlight_id → id  ON DELETE SET NULL"
+    user_vod_activity }o--|| user_vod_library : "owner_id+video_no  ON DELETE CASCADE"
 ```
-
-> **참고**: `video_no`, `room_id`, `owner_id`는 치지직 외부 ID라 DB FK 불가 — 애플리케이션 레이어에서 관리한다.  
-> 내부 참조 두 곳은 DB FK로 선언했다.  
-> - `user_vod_activity.highlight_id → vod_highlights.id` (V8, ON DELETE SET NULL)  
-> - `user_vod_activity(owner_id, video_no) → user_vod_library(owner_id, video_no)` (V9, ON DELETE CASCADE)
 
 ---
 
-## 테이블별 설명
+## FK 설계
+
+| 제약 | 전략 | 의미 |
+|------|------|------|
+| `user_vod_activity.highlight_id → vod_highlights.id` | ON DELETE SET NULL | 하이라이트 삭제 시 activity 로그는 보존, 참조만 끊김 |
+| `user_vod_activity(owner_id, video_no) → user_vod_library(owner_id, video_no)` | ON DELETE CASCADE | 라이브러리 항목 삭제 시 activity 로그 함께 삭제 |
+
+`video_no`, `room_id`, `owner_id`는 치지직 외부 ID이므로 DB FK 불가 — 애플리케이션 레이어에서 관리한다.
+
+---
+
+## 테이블 설명
 
 ### `analyzed_chats`
 
-실시간 라이브 채팅 감정 분석 결과. Kafka `analyzed-chat-topic`에서 소비한 데이터를 저장한다. `message_id`가 중복 저장을 막는 UNIQUE 키.
+실시간 라이브 채팅 감정 분석 결과를 저장한다. Kafka `analyzed-chat-topic`에서 소비한 데이터가 여기에 쌓인다.
 
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| `message_id` | VARCHAR | 치지직 채팅 메시지 고유 ID |
-| `room_id` | VARCHAR | 방송 채널 ID |
-| `emotion_type` | VARCHAR | 7가지 감정 중 하나 (기쁨/슬픔/분노/공포/혐오/놀람/중립) |
-| `emotion_score` | DOUBLE | 감정 신뢰도 점수 [0.0, 1.0] |
+| 컬럼 | 설명 |
+|------|------|
+| `message_id` | 치지직 채팅 메시지 고유 ID. UNIQUE 키로 중복 저장을 방지한다. |
+| `room_id` | 방송 채널 ID |
+| `emotion_type` | `JOY` · `HOPE` · `WONDER` · `HYPE` · `SADNESS` · `ANGER` · `DISGUST` · `NEUTRAL` 중 하나 |
+| `emotion_score` | 해당 감정의 신뢰도 점수 [0.0, 1.0] |
 
 ---
 
 ### `highlight_records`
 
-라이브 방송 중 실시간으로 감지된 하이라이트 순간. `room_id` 기준으로 가장 높은 감정 피크를 기록.
+라이브 방송 중 실시간으로 감지된 감정 피크 순간을 기록한다. `room_id` 기준으로 구간별 최고 반응을 저장한다.
 
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| `room_id` | VARCHAR | 방송 채널 ID |
-| `emotion_type` | VARCHAR | 피크 감정 유형 |
-| `peak_score` | DOUBLE | 해당 시점 최고 감정 점수 |
-| `live_image_url` | TEXT | 캡처 이미지 URL (선택) |
+| 컬럼 | 설명 |
+|------|------|
+| `room_id` | 방송 채널 ID |
+| `emotion_type` | 피크 감정 유형 |
+| `peak_score` | 해당 시점 최고 감정 점수 |
+| `live_image_url` | 캡처 이미지 URL (선택) |
 
 ---
 
 ### `vod_highlights`
 
-VOD 분석으로 선별된 편집 후보 구간. V3~V7 마이그레이션을 통해 점수 체계와 RAG 임베딩이 추가됐다.
+VOD 분석으로 선별된 편집 후보 구간. V3~V7 마이그레이션을 거쳐 점수 체계와 RAG 임베딩이 순차적으로 추가됐다.
 
-| 컬럼 그룹 | 설명 |
+| 컬럼 그룹 | 컬럼 |
 |-----------|------|
-| 기본 위치 | `video_no`, `start_seconds`, `end_seconds` |
-| 점수 체계 | `highlight_score`, `intensity_score`, `transition_score`, `editability_score` |
-| 레이블 | `category`, `reaction_label`, `scene_label` |
+| 위치 | `video_no`, `start_seconds`, `end_seconds` |
+| 점수 | `highlight_score`, `intensity_score`, `transition_score`, `editability_score` |
+| 레이블 | `category`, `scene_label`, `reaction_label` |
 | 설명 | `description`, `reason_summary`, `top_message`, `keyword_summary` |
 | 신호 비율 | `laugh/hype/surprise/tension_ratio`, `density_ratio`, `unique_user_ratio`, `emotion_dominance` |
-| RAG 임베딩 | `embedding_text` (비율 기반 텍스트), `embedding` (vector 768) |
+| RAG | `embedding_text` (비율 기반 텍스트), `embedding` (vector 768) |
 
-**`editability_score`** = 메시지 다양성×2.2 + 발화자 균형×1.8 + 대표 채팅×max4 + 전환점수×0.65 + 키워드 집중도×1.2 + 키워드 변화×1.4
+**점수 산식**
 
-**`totalScore`** = (intensity×0.55 + transition×0.20 + editability×0.25) × edgePenalty × negativePenalty
+```
+editability_score = 메시지 다양성×2.2 + 발화자 균형×1.8 + 대표 채팅×max4
+                  + 전환점수×0.65 + 키워드 집중도×1.2 + 키워드 변화×1.4
+
+highlight_score   = (intensity×0.55 + transition×0.20 + editability×0.25)
+                  × edgePenalty × negativePenalty
+```
 
 ---
 
 ### `vod_timeline_points`
 
-30초 윈도우 단위 채팅 활동 집계. 타임라인 시각화용. analyzer의 모든 WindowStats를 저장하므로 하이라이트보다 훨씬 많은 레코드.
+30초 윈도우 단위 채팅 활동 집계. 타임라인 시각화용으로 사용하며, 모든 윈도우를 저장하므로 `vod_highlights`보다 레코드 수가 훨씬 많다.
 
 | 컬럼 | 설명 |
 |------|------|
 | `message_count` | 해당 30초 구간 채팅 수 |
 | `participant_count` | 고유 발화자 수 |
 | `activity_score` | `messages×1.2 + users×2.1 + burstSignal + variety×8 + coverage×6` |
-| `category` | LAUGH/WONDER/HYPE/TENSION/HOT_MOMENT |
+| `category` | `LAUGH` / `WONDER` / `HYPE` / `TENSION` / `HOT_MOMENT` |
 
 ---
 
 ### `user_vod_library`
 
-스트리머가 조회하거나 분석한 VOD 목록. `UNIQUE(owner_id, video_no)`로 중복 방지. 상태 머신은 애플리케이션에서 관리.
+스트리머가 조회하거나 분석을 요청한 VOD 목록. `UNIQUE(owner_id, video_no)`로 1사용자 1VOD 제한.
 
-| status 값 | 의미 |
-|-----------|------|
+| `status` | 의미 |
+|----------|------|
 | `ANALYZING` | 분석 요청 중 |
 | `READY` | 분석 완료, 하이라이트 조회 가능 |
-| `VIEWED` | 조회만 함 |
+| `VIEWED` | 조회만 한 상태 |
 
 ---
 
 ### `user_vod_activity`
 
-하이라이트에 대한 사용자 행동 로그. 개인화 추천의 학습 데이터.
+하이라이트에 대한 사용자 행동 로그. 개인화 추천 모델의 학습 데이터로 사용한다.
 
-| action_type | 가중치 | 설명 |
-|-------------|--------|------|
+| `action_type` | 가중치 | 설명 |
+|---------------|--------|------|
 | `PIN` | +4.0 | 즐겨찾기 |
-| `GOOD` / `SAVE` | +3.0 | 좋음 평가 |
+| `GOOD` / `SAVE` | +3.0 | 긍정 평가 |
 | `OPEN` | +1.0 | 클릭해서 봄 |
-| `BAD` / `SKIP` | -3.0 | 건너뜀 |
+| `BAD` / `SKIP` | −3.0 | 부정 평가 |
 
 ---
 
@@ -195,22 +205,22 @@ VOD 분석으로 선별된 편집 후보 구간. V3~V7 마이그레이션을 통
 | 테이블 | 인덱스 | 목적 |
 |--------|--------|------|
 | `analyzed_chats` | UNIQUE(`message_id`) | 중복 채팅 방지 |
-| `analyzed_chats` | `idx_analyzed_chats_room_id (room_id)` | 채널별 채팅 조회 |
-| `vod_highlights` | `idx_vod_highlights_video_no (video_no)` | VOD별 하이라이트 조회 |
+| `analyzed_chats` | `(room_id)` | 채널별 채팅 조회 |
+| `vod_highlights` | `(video_no)` | VOD별 하이라이트 조회 |
 | `vod_highlights` | `ivfflat(embedding vector_cosine_ops, lists=100)` | 벡터 근사 검색 |
-| `vod_timeline_points` | `idx_vod_timeline_points_video_no (video_no)` | VOD별 타임라인 조회 |
+| `vod_timeline_points` | `(video_no)` | VOD별 타임라인 조회 |
 | `user_vod_library` | UNIQUE(`owner_id`, `video_no`) | 1사용자 1VOD 제한 |
-| `user_vod_library` | `idx_user_vod_library_owner_id (owner_id, updated_at DESC)` | 라이브러리 목록 최신순 조회 |
-| `user_vod_activity` | `idx_user_vod_activity_owner_id (owner_id, created_at DESC)` | 행동 로그 최신순 조회 |
+| `user_vod_library` | `(owner_id, updated_at DESC)` | 라이브러리 목록 최신순 조회 |
+| `user_vod_activity` | `(owner_id, created_at DESC)` | 행동 로그 최신순 조회 |
 
 ---
 
-## 외부 의존 (DB 스키마 외)
+## 외부 의존
 
 | 데이터 | 저장 위치 | 설명 |
 |--------|-----------|------|
 | 세션 토큰 | Redis `gak:owner-session:{ownerId}` | HMAC 검증된 세션 |
 | OAuth state | Redis `gak:auth:state:{state}` TTL=10m | CSRF 방지 |
-| VOD 분석 상태 | collector 메모리 (`ConcurrentHashMap`) | 재기동 시 초기화됨 |
-| 동시 슬롯 카운터 | Redis `vod:active:user:{id}`, `vod:active:global` | TTL=30m fail-open |
+| VOD 분석 상태 | collector 인메모리 (`ConcurrentHashMap`) | 재기동 시 초기화됨 |
+| 동시 슬롯 카운터 | Redis `vod:active:user:{id}`, `vod:active:global` | TTL=30m, fail-open |
 | VOD 메타데이터 | Chzzk API (외부) | title, duration, category |
