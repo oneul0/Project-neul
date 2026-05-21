@@ -614,7 +614,60 @@ classDiagram
 > **해석 기준**: `gak.llm.api.calls.total` 대비 서비스 적합성 메트릭의 비율로 LLM 신뢰도를 판단한다.  
 > `parse_failed / calls.total` 이 1% 이상이면 프롬프트 또는 모델 출력 형식 점검이 필요하다.
 
-### 5-4. fail-open vs fail-secure — Redis 장애 시
+### 5-4. 메트릭 조회 엔드포인트
+
+analyzer `:8082/actuator/metrics` 를 통해 HTTP로 직접 조회할 수 있다.
+
+**전체 메트릭 목록 확인**
+
+```bash
+GET http://localhost:8082/actuator/metrics
+```
+
+**개별 메트릭 조회**
+
+```bash
+# LLM 총 호출 수 (분모 기준값)
+GET http://localhost:8082/actuator/metrics/gak.llm.api.calls.total
+
+# 감정 분석 — 오류가 있었는지
+GET http://localhost:8082/actuator/metrics/gak.llm.output.parse_failed
+
+# 감정 분석 — 질문에 직접 답했는지
+GET http://localhost:8082/actuator/metrics/gak.llm.output.empty
+
+# 감정 분석 — 핵심 내용 빠뜨리지 않았는지
+GET http://localhost:8082/actuator/metrics/gak.llm.output.message_missing
+
+# 하이라이트 판정 — 오류가 있었는지
+GET http://localhost:8082/actuator/metrics/gak.llm.highlight.parse_failed
+
+# 하이라이트 판정 — 질문에 직접 답했는지
+GET http://localhost:8082/actuator/metrics/gak.llm.highlight.empty
+
+# 하이라이트 판정 — 핵심 내용 빠뜨리지 않았는지
+GET http://localhost:8082/actuator/metrics/gak.llm.highlight.field_missing
+
+# 배치 스킵·가드레일 발동 횟수
+GET http://localhost:8082/actuator/metrics/gak.llm.batch.skipped
+GET http://localhost:8082/actuator/metrics/gak.llm.batch.capped
+GET http://localhost:8082/actuator/metrics/gak.llm.output.zeroed
+```
+
+**응답 형식**
+
+```json
+{
+  "name": "gak.llm.output.parse_failed",
+  "measurements": [
+    { "statistic": "COUNT", "value": 3.0 }
+  ]
+}
+```
+
+> **주의**: 카운터는 앱 재시작 시 0으로 초기화된다. 누적 추이를 보려면 Prometheus + Grafana 연동이 필요하다.
+
+### 5-5. fail-open vs fail-secure — Redis 장애 시
 
 ```mermaid
 flowchart LR

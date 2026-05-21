@@ -29,5 +29,14 @@ app:
   core-api:
     base-url: ${CORE_API_BASE_URL:http://127.0.0.1:8083}
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics
+  endpoint:
+    metrics:
+      enabled: true
+
 gak:
   internal-api-secret: ${GAK_INTERNAL_API_SECRET:dev-gak-internal-secret}
