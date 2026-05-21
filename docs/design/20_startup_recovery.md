@@ -148,6 +148,11 @@ docker compose ps
 # core-api 헬스
 curl -s http://localhost:8083/actuator/health | jq .status
 
+# analyzer LLM 메트릭 — LLM 서비스 적합성 확인
+curl -s http://localhost:8082/actuator/metrics/gak.llm.api.calls.total
+curl -s http://localhost:8082/actuator/metrics/gak.llm.output.parse_failed
+curl -s http://localhost:8082/actuator/metrics/gak.llm.highlight.parse_failed
+
 # collector VOD 상태 확인
 curl -s http://localhost:8081/api/v1/vod/{videoNo}/status
 

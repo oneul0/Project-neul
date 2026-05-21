@@ -141,7 +141,7 @@ triggerAnalysis() 요청
            ├─ REJECTED_GLOBAL → HTTP 503 반환
            └─ ACQUIRED
                   └─ 분석 파이프라인 시작 (collector → analyzer → core-api)
-                         └─ Kafka: vod-analysis-complete-topic 또는 vod-analysis-failed-topic
+                         └─ Kafka: vod-analysis-complete-topic
                                 └─ VodAnalysisEventConsumer
                                        └─ slotService.releaseByVideoNo(videoNo)
 ```
@@ -163,11 +163,26 @@ Redis 없이 분석이 막히는 것보다 분석이 진행되는 편이 낫다�
 
 ## 4. 신규 메트릭
 
+**안정성 메트릭** — 시스템이 정상 작동하는지
+
 | 메트릭 이름 | 발생 조건 |
 |---|---|
 | `gak.llm.batch.skipped` | Semaphore 슬롯이 사용 중이어서 배치를 스킵 |
 | `gak.llm.batch.capped` | 입력 가드레일이 배치 크기 또는 문자 수를 줄임 |
 | `gak.llm.output.zeroed` | 감정 점수 합계가 0이어서 NEUTRAL로 교정 |
+
+**서비스 적합성 메트릭** — LLM이 요구한 형식으로 답했는지
+
+| 메트릭 이름 | 발생 조건 | 해당 항목 |
+|---|---|---|
+| `gak.llm.output.empty` | 감정 분석 응답이 빈 문자열 | 질문에 직접 답했는지 |
+| `gak.llm.output.parse_failed` | 감정 분석 JSON 파싱 실패 | 오류가 있었는지 |
+| `gak.llm.output.message_missing` | 요청한 messageId 결과 누락 | 핵심 내용 빠뜨리지 않았는지 |
+| `gak.llm.highlight.empty` | 하이라이트 판정 응답이 빈 문자열 | 질문에 직접 답했는지 |
+| `gak.llm.highlight.parse_failed` | 하이라이트 JSON 파싱 실패 | 오류가 있었는지 |
+| `gak.llm.highlight.field_missing` | `is_highlight` · `reasoning` 키 누락 | 핵심 내용 빠뜨리지 않았는지 |
+
+조회 엔드포인트: `GET http://localhost:8082/actuator/metrics/{메트릭명}`
 
 ---
 
