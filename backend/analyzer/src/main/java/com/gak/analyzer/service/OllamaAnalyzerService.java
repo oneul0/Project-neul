@@ -362,6 +362,7 @@ public class OllamaAnalyzerService {
                 Map<String, Double> rawScores = emotionMapByLogicalId.get(logicalId);
 
                 if (rawScores == null) {
+                    log.warn("[Ollama] LLM did not return scores for messageId={}. Falling back to NEUTRAL.", logicalId);
                     recordCount("gak.llm.output.message_missing");
                 }
 
@@ -415,6 +416,7 @@ public class OllamaAnalyzerService {
 
     private HighlightDecision parseHighlightContent(String content) {
         if (content == null || content.isBlank()) {
+            log.warn("[Ollama] Empty highlight decision received from LLM.");
             recordCount("gak.llm.highlight.empty");
             return HighlightDecision.fallback("LLM returned empty highlight decision.");
         }
@@ -424,6 +426,8 @@ public class OllamaAnalyzerService {
             Map<String, Object> root = objectMapper.readValue(jsonStr, new TypeReference<Map<String, Object>>() {});
             boolean isHighlight = Boolean.TRUE.equals(root.get("is_highlight"));
             if (!root.containsKey("is_highlight") || !root.containsKey("reasoning")) {
+                log.warn("[Ollama] Highlight response missing required fields. is_highlight={}, reasoning={}",
+                        root.containsKey("is_highlight"), root.containsKey("reasoning"));
                 recordCount("gak.llm.highlight.field_missing");
             }
             String category = String.valueOf(root.getOrDefault("category", isHighlight ? "소통" : "판단보류")).trim();
