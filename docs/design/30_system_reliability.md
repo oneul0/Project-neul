@@ -558,12 +558,22 @@ classDiagram
         +timer(name)
     }
 
-    class LLMMetrics {
-        <<Counter>>
+    class LLMReliability {
+        <<Counter — 안정성>>
         +gak.llm.api.calls.total
         +gak.llm.batch.skipped
         +gak.llm.batch.capped
         +gak.llm.output.zeroed
+    }
+
+    class LLMQuality {
+        <<Counter — 서비스 적합성>>
+        +gak.llm.output.empty
+        +gak.llm.output.parse_failed
+        +gak.llm.output.message_missing
+        +gak.llm.highlight.empty
+        +gak.llm.highlight.parse_failed
+        +gak.llm.highlight.field_missing
     }
 
     class LLMLatency {
@@ -571,13 +581,40 @@ classDiagram
         +gak.llm.api.latency
     }
 
-    MeterRegistry --> LLMMetrics : increment()
+    MeterRegistry --> LLMReliability : increment()
+    MeterRegistry --> LLMQuality : increment()
     MeterRegistry --> LLMLatency : sample.stop()
 
-    note for LLMMetrics "Prometheus 수집 · Grafana 연동 가능"
+    note for LLMQuality "Prometheus 수집 · Grafana 연동 가능"
 ```
 
-### 5-3. fail-open vs fail-secure — Redis 장애 시
+### 5-3. 메트릭 분류 및 해석 기준
+
+**안정성 메트릭** — 시스템이 정상 작동하는지 확인
+
+| 메트릭 | 발생 조건 | 높을 때 의미 |
+|--------|-----------|-------------|
+| `gak.llm.api.calls.total` | LLM 호출마다 | 참조 기준값 |
+| `gak.llm.api.latency` | LLM 응답 시간 | Ollama 과부하 |
+| `gak.llm.batch.skipped` | Semaphore 경합으로 배치 스킵 | 처리량 부족 |
+| `gak.llm.batch.capped` | 입력 가드레일이 배치 잘라냄 | 채팅 밀도 과도 |
+| `gak.llm.output.zeroed` | 감정 점수 합계 0 → NEUTRAL 교정 | LLM 무응답 반복 |
+
+**서비스 적합성 메트릭** — LLM이 요구한 형식으로 답했는지 확인
+
+| 메트릭 | 발생 조건 | 해당 항목 |
+|--------|-----------|-----------|
+| `gak.llm.output.empty` | 감정 분석 응답이 빈 문자열 | 질문에 직접 답했는지 |
+| `gak.llm.output.parse_failed` | 감정 분석 JSON 파싱 실패 | 오류가 있었는지 |
+| `gak.llm.output.message_missing` | 요청한 messageId 결과 누락 | 핵심 내용 빠뜨리지 않았는지 |
+| `gak.llm.highlight.empty` | 하이라이트 판정 응답이 빈 문자열 | 질문에 직접 답했는지 |
+| `gak.llm.highlight.parse_failed` | 하이라이트 JSON 파싱 실패 | 오류가 있었는지 |
+| `gak.llm.highlight.field_missing` | `is_highlight` · `reasoning` 키 누락 | 핵심 내용 빠뜨리지 않았는지 |
+
+> **해석 기준**: `gak.llm.api.calls.total` 대비 서비스 적합성 메트릭의 비율로 LLM 신뢰도를 판단한다.  
+> `parse_failed / calls.total` 이 1% 이상이면 프롬프트 또는 모델 출력 형식 점검이 필요하다.
+
+### 5-4. fail-open vs fail-secure — Redis 장애 시
 
 ```mermaid
 flowchart LR
