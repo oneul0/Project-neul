@@ -291,6 +291,7 @@ public class OllamaAnalyzerService {
     private List<AnalyzedChatMessage> parseResponse(String content, List<CompressedChat> originalChats, Map<String, String> originalIdToLogicalId) {
         if (content == null || content.isBlank()) {
             log.warn("[Ollama] Empty content received from LLM.");
+            recordCount("gak.llm.output.empty");
             return createFallbackList(originalChats);
         }
 
@@ -360,6 +361,10 @@ public class OllamaAnalyzerService {
                 String logicalId = originalIdToLogicalId.getOrDefault(chat.getRepresentativeId(), "-1");
                 Map<String, Double> rawScores = emotionMapByLogicalId.get(logicalId);
 
+                if (rawScores == null) {
+                    recordCount("gak.llm.output.message_missing");
+                }
+
                 // [가드레일 출력] 점수 범위 및 감정 키 완결성 검증
                 Map<String, Double> scores = validateScores(rawScores);
 
@@ -378,6 +383,7 @@ public class OllamaAnalyzerService {
 
         } catch (Exception e) {
             log.error("[Ollama] Failed to parse LLM response: {}. Error: {}", content, e.getMessage());
+            recordCount("gak.llm.output.parse_failed");
             return createFallbackList(originalChats);
         }
     }
@@ -409,6 +415,7 @@ public class OllamaAnalyzerService {
 
     private HighlightDecision parseHighlightContent(String content) {
         if (content == null || content.isBlank()) {
+            recordCount("gak.llm.highlight.empty");
             return HighlightDecision.fallback("LLM returned empty highlight decision.");
         }
 
@@ -416,6 +423,9 @@ public class OllamaAnalyzerService {
             String jsonStr = extractJsonText(content);
             Map<String, Object> root = objectMapper.readValue(jsonStr, new TypeReference<Map<String, Object>>() {});
             boolean isHighlight = Boolean.TRUE.equals(root.get("is_highlight"));
+            if (!root.containsKey("is_highlight") || !root.containsKey("reasoning")) {
+                recordCount("gak.llm.highlight.field_missing");
+            }
             String category = String.valueOf(root.getOrDefault("category", isHighlight ? "소통" : "판단보류")).trim();
             String sceneLabel = String.valueOf(root.getOrDefault("scene_label", category)).trim();
             String summary = String.valueOf(root.getOrDefault("summary", isHighlight ? "하이라이트 후보 구간입니다." : "하이라이트 근거가 약한 구간입니다.")).trim();
@@ -428,6 +438,7 @@ public class OllamaAnalyzerService {
             return new HighlightDecision(isHighlight, category, sceneLabel, summary, intensity, reasoning);
         } catch (Exception e) {
             log.warn("[Ollama] Failed to parse highlight decision: {}", e.getMessage());
+            recordCount("gak.llm.highlight.parse_failed");
             return HighlightDecision.fallback("Failed to parse structured highlight decision.");
         }
     }
