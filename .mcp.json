@@ -1,5 +1,16 @@
 {
   "mcpServers": {
+    "agent-workflow": {
+      "command": "/Users/hoon/miniconda3/bin/python3.13",
+      "args": [
+        "/Users/hoon/Desktop/Projects/project-neul/scripts/agent_workflow/mcp_server.py"
+      ],
+      "cwd": "/Users/hoon/Desktop/Projects/project-neul",
+      "type": "stdio",
+      "env": {
+        "AGENT_WORKFLOW_PROJECT_DIR": "/Users/hoon/Desktop/Projects/project-neul"
+      }
+    },
     "code-review-graph": {
       "command": "/Users/hoon/miniconda3/bin/python3.13",
       "args": [
