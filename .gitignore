@@ -20,3 +20,8 @@ backend/full_test_results.txt
 backend/test_log_final.txt
 backend/test_output.txt
 03_prev.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
