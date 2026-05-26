@@ -1,3 +1,30 @@
+## 개발 워크플로우 규칙
+
+### Plan-First 원칙
+
+새 기능 구현이나 기존 코드 수정 전에 반드시 Plan Mode를 사용한다.
+
+1. `EnterPlanMode` → 변경 범위·영향 파일·대안을 정리한 구현 계획 작성
+2. 사용자 승인(`ExitPlanMode`) 전까지 파일을 수정하지 않는다
+3. 관련 설계 문서(`docs/design/`)가 있으면 구현 전에 반드시 확인한다
+
+> 목적: AI가 작업 범위를 벗어나거나 의도치 않은 파일을 수정하는 것을 방지하고,
+> 사람이 변경 내용을 검토·승인한 뒤에만 구현이 진행되도록 한다.
+
+### 구현 순서
+
+```
+[Researcher] 탐색 (읽기 전용)
+      ↓
+[Planner]   설계 문서 작성 + 사용자 승인 (EnterPlanMode → ExitPlanMode)
+      ↓
+[Implementer] 코드 구현
+      ↓
+[Reviewer]  변경 리스크 검토 (detect_changes + code-review skill)
+```
+
+---
+
 <!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph
 
