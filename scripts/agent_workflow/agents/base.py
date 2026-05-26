@@ -3,15 +3,22 @@ BaseAgent — 모든 에이전트의 기반 클래스.
 
 tool_use 루프를 내장해 에이전트가 툴을 여러 번 호출한 뒤
 최종 텍스트 응답을 반환하는 패턴을 처리한다.
+
+로깅 훅이 통합돼 있어 WorkflowLogger를 주입하면
+모든 프롬프트·API 호출·툴 호출·에러가 자동으로 기록된다.
 """
 
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import anthropic
+
+if TYPE_CHECKING:
+    from ..logging import WorkflowLogger
 
 
 @dataclass
@@ -36,10 +43,19 @@ class BaseAgent:
     run(task, context) 를 호출하면 최종 텍스트 응답을 반환받는다.
     """
 
-    def __init__(self, config: AgentConfig, base_dir: str = ".") -> None:
+    def __init__(
+        self,
+        config: AgentConfig,
+        base_dir: str = ".",
+        logger: "WorkflowLogger | None" = None,
+    ) -> None:
         self.config = config
         self.base_dir = base_dir
         self.client = anthropic.Anthropic()
+        self._logger = logger
+        # 에이전트 실행 중 토큰 누적
+        self._input_tokens: int = 0
+        self._output_tokens: int = 0
 
     # ─────────────────────────────────────────
     #  Public API
@@ -58,14 +74,96 @@ class BaseAgent:
         """
         user_message = self._build_user_message(task, context)
         messages: list[dict[str, Any]] = [{"role": "user", "content": user_message}]
+        self._input_tokens = 0
+        self._output_tokens = 0
+        agent_start = time.time()
 
         print(f"\n{'='*60}")
         print(f"  {self.config.name.upper()} 에이전트 실행 중...")
         print(f"{'='*60}")
 
+        # ── 로깅 훅: 에이전트 시작 ──────────────────
+        if self._logger:
+            self._logger.on_agent_start(
+                agent_name=self.config.name,
+                agent_role=self.config.role,
+                model=self.config.model,
+                system_prompt=self.config.system_prompt,
+                user_message=user_message,
+            )
+
+        try:
+            result = self._run_loop(messages)
+            status = "success"
+        except Exception as e:
+            status = "error"
+            error_msg = f"{type(e).__name__}: {e}"
+            print(f"  [ERROR] {self.config.name}: {error_msg}")
+            if self._logger:
+                self._logger.on_error(
+                    agent_name=self.config.name,
+                    iteration=0,
+                    error_type=type(e).__name__,
+                    error_message=str(e),
+                )
+            result = f"[ERROR] {error_msg}"
+
+        duration = time.time() - agent_start
+
+        # ── 로깅 훅: 에이전트 종료 ──────────────────
+        if self._logger:
+            self._logger.on_agent_end(
+                agent_name=self.config.name,
+                status=status,
+                iterations=getattr(self, "_last_iterations", 0),
+                input_tokens=self._input_tokens,
+                output_tokens=self._output_tokens,
+                duration_seconds=duration,
+                final_output=result,
+                error="" if status == "success" else result,
+            )
+
+        return result
+
+    # ─────────────────────────────────────────
+    #  Tool 실행 — 하위 클래스가 오버라이드 가능
+    # ─────────────────────────────────────────
+
+    def _execute_tool(self, tool_name: str, tool_input: dict[str, Any]) -> str:
+        """툴을 실행하고 결과 문자열을 반환한다. 하위 클래스에서 오버라이드."""
+        return f"[ERROR] 툴 '{tool_name}' 미지원 — 하위 클래스에서 구현하세요"
+
+    # ─────────────────────────────────────────
+    #  Private: 루프
+    # ─────────────────────────────────────────
+
+    def _run_loop(self, messages: list[dict[str, Any]]) -> str:
+        """tool_use 루프를 실행하고 최종 텍스트를 반환한다."""
         for iteration in range(self.config.max_tool_iterations):
+            self._last_iterations = iteration
+
+            api_start = time.time()
             response = self._call_api(messages)
+            api_duration = time.time() - api_start
+
             assistant_content = response.content
+            usage = response.usage
+
+            # 토큰 누적
+            self._input_tokens += getattr(usage, "input_tokens", 0)
+            self._output_tokens += getattr(usage, "output_tokens", 0)
+
+            # ── 로깅 훅: API 호출 ──────────────────
+            if self._logger:
+                self._logger.on_api_call(
+                    agent_name=self.config.name,
+                    iteration=iteration,
+                    messages_snapshot=messages,
+                    stop_reason=response.stop_reason,
+                    input_tokens=getattr(usage, "input_tokens", 0),
+                    output_tokens=getattr(usage, "output_tokens", 0),
+                    duration_seconds=api_duration,
+                )
 
             # 어시스턴트 메시지를 대화 히스토리에 추가
             messages.append({"role": "assistant", "content": assistant_content})
@@ -74,11 +172,12 @@ class BaseAgent:
             if response.stop_reason == "end_turn":
                 text = self._extract_text(assistant_content)
                 print(f"  → {self.config.name} 완료 (툴 호출 {iteration}회)")
+                self._last_iterations = iteration
                 return text
 
             # 툴 사용 요청 처리
             if response.stop_reason == "tool_use":
-                tool_results = self._process_tool_calls(assistant_content)
+                tool_results = self._process_tool_calls(assistant_content, iteration)
                 messages.append({"role": "user", "content": tool_results})
                 continue
 
@@ -89,15 +188,61 @@ class BaseAgent:
         # 최대 반복 초과
         text = self._extract_text(messages[-1].get("content", []))
         print(f"  [WARN] {self.config.name}: 최대 반복({self.config.max_tool_iterations}) 도달")
+        self._last_iterations = self.config.max_tool_iterations
         return text or "(응답 없음)"
 
-    # ─────────────────────────────────────────
-    #  Tool 실행 — 하위 클래스가 오버라이드 가능
-    # ─────────────────────────────────────────
+    def _process_tool_calls(
+        self, content: list[Any], iteration: int
+    ) -> list[dict[str, Any]]:
+        """tool_use 블록들을 처리해 tool_result 목록을 반환한다."""
+        tool_results: list[dict[str, Any]] = []
 
-    def _execute_tool(self, tool_name: str, tool_input: dict[str, Any]) -> str:
-        """툴을 실행하고 결과 문자열을 반환한다. 하위 클래스에서 오버라이드."""
-        return f"[ERROR] 툴 '{tool_name}' 미지원 — 하위 클래스에서 구현하세요"
+        for block in content:
+            if block.type != "tool_use":
+                continue
+
+            print(f"  → 툴 호출: {block.name}({json.dumps(block.input, ensure_ascii=False)[:80]})")
+
+            tool_start = time.time()
+            error_msg = ""
+            try:
+                result = self._execute_tool(block.name, block.input)
+            except Exception as e:
+                error_msg = str(e)
+                result = f"[ERROR] {e}"
+                if self._logger:
+                    self._logger.on_error(
+                        agent_name=self.config.name,
+                        iteration=iteration,
+                        error_type=type(e).__name__,
+                        error_message=str(e),
+                    )
+            tool_duration = time.time() - tool_start
+
+            # 결과가 너무 길면 잘라냄
+            if len(result) > 8000:
+                result = result[:8000] + "\n… (이하 생략)"
+
+            # ── 로깅 훅: 툴 호출 ──────────────────
+            if self._logger:
+                self._logger.on_tool_call(
+                    agent_name=self.config.name,
+                    iteration=iteration,
+                    tool_use_id=block.id,
+                    tool_name=block.name,
+                    tool_input=block.input,
+                    tool_result=result,
+                    duration_seconds=tool_duration,
+                    error=error_msg,
+                )
+
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": block.id,
+                "content": result,
+            })
+
+        return tool_results
 
     # ─────────────────────────────────────────
     #  Private helpers
@@ -124,28 +269,6 @@ class BaseAgent:
             kwargs["thinking"] = self.config.thinking
 
         return self.client.messages.create(**kwargs)
-
-    def _process_tool_calls(self, content: list[Any]) -> list[dict[str, Any]]:
-        """tool_use 블록들을 처리해 tool_result 목록을 반환한다."""
-        tool_results: list[dict[str, Any]] = []
-
-        for block in content:
-            if block.type != "tool_use":
-                continue
-
-            print(f"  → 툴 호출: {block.name}({json.dumps(block.input, ensure_ascii=False)[:80]})")
-            result = self._execute_tool(block.name, block.input)
-            # 결과가 너무 길면 잘라냄
-            if len(result) > 8000:
-                result = result[:8000] + "\n… (이하 생략)"
-
-            tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": block.id,
-                "content": result,
-            })
-
-        return tool_results
 
     @staticmethod
     def _extract_text(content: Any) -> str:
