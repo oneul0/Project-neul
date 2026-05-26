@@ -69,7 +69,7 @@ Researcher의 탐색 결과를 바탕으로 **상세 구현 계획**을 작성�
 class PlannerAgent(BaseAgent):
     """Researcher 출력을 기반으로 구현 계획을 수립하는 에이전트."""
 
-    def __init__(self, base_dir: str = ".") -> None:
+    def __init__(self, base_dir: str = ".", logger=None) -> None:
         config = AgentConfig(
             name="Planner",
             role="planner",
@@ -80,4 +80,4 @@ class PlannerAgent(BaseAgent):
             tools=[],  # 툴 없음 — 계획만 작성
             max_tool_iterations=1,  # 툴 없으므로 1회
         )
-        super().__init__(config, base_dir=base_dir)
+        super().__init__(config, base_dir=base_dir, logger=logger)

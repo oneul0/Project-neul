@@ -56,7 +56,7 @@ RESEARCHER_SYSTEM_PROMPT = """\
 class ResearcherAgent(BaseAgent):
     """코드베이스를 읽기 전용으로 탐색하는 에이전트."""
 
-    def __init__(self, base_dir: str = ".") -> None:
+    def __init__(self, base_dir: str = ".", logger=None) -> None:
         config = AgentConfig(
             name="Researcher",
             role="researcher",
@@ -67,7 +67,7 @@ class ResearcherAgent(BaseAgent):
             tools=READONLY_TOOL_SCHEMAS,
             max_tool_iterations=30,
         )
-        super().__init__(config, base_dir=base_dir)
+        super().__init__(config, base_dir=base_dir, logger=logger)
 
     def _execute_tool(self, tool_name: str, tool_input: dict) -> str:
         return execute_tool(tool_name, tool_input, base_dir=self.base_dir)

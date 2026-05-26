@@ -64,6 +64,16 @@ def parse_args() -> argparse.Namespace:
         default="./workflow_output",
         help="결과 저장 디렉터리 (기본: ./workflow_output)",
     )
+    parser.add_argument(
+        "--log-dir", "-l",
+        default="./workflow_logs",
+        help="로그 저장 디렉터리 (기본: ./workflow_logs)",
+    )
+    parser.add_argument(
+        "--no-log",
+        action="store_true",
+        help="로깅 비활성화",
+    )
     return parser.parse_args()
 
 
@@ -105,7 +115,8 @@ def main() -> None:
         sys.exit(1)
 
     # 워크플로우 실행
-    orchestrator = WorkflowOrchestrator(base_dir=str(project_dir))
+    log_dir = None if args.no_log else args.log_dir
+    orchestrator = WorkflowOrchestrator(base_dir=str(project_dir), log_dir=log_dir)
 
     try:
         result = orchestrator.run(task)
