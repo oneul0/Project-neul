@@ -1,25 +1,20 @@
-Run the 3-agent AI workflow (Researcher → Planner → Reviewer) for the given task.
+---
+description: "3-에이전트 AI 워크플로우 실행 (Researcher → Planner → Reviewer). 새 기능 구현 또는 영향 범위가 불명확한 작업 전에 사용."
+allowed-tools: ["Bash", "Read"]
+---
 
-## What this does
-1. **Researcher**: Explores the codebase with read-only tools and produces a findings report
-2. **Planner**: Creates a step-by-step implementation plan based on the research
-3. **Reviewer**: Re-reads the code, checks the plan against reality, and gives a risk-scored verdict (✅/⚠️/❌)
+Run the following command and present the results to the user:
 
-## Usage
-```
-/workflow <task description>
-```
-
-## Steps to execute
-1. Run the workflow script:
 ```bash
 cd $CLAUDE_PROJECT_ROOT && python scripts/run_workflow.py --save "$ARGUMENTS"
 ```
-2. Read the output carefully — especially the Reviewer's verdict
-3. If the Reviewer gives ✅ or ⚠️ (with conditions), proceed with implementation following the Planner's steps
-4. If ❌, surface the Reviewer's concerns to the user before proceeding
 
-## Notes
-- Requires `ANTHROPIC_API_KEY` environment variable
-- Results are also saved to `./workflow_output/` for reference
-- Typical runtime: 2–5 minutes depending on codebase size
+After running:
+1. Show the full output (Researcher report → Planner plan → Reviewer verdict)
+2. Highlight the Reviewer's final verdict (✅ / ⚠️ / ❌)
+3. If ✅ or ⚠️: summarize what to implement and in which files
+4. If ❌: explain why the plan needs revision before proceeding
+
+Requirements:
+- ANTHROPIC_API_KEY must be set in the environment
+- Results are saved to ./workflow_output/ automatically
