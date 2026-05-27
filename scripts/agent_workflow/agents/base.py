@@ -11,6 +11,9 @@ tool_use 루프를 내장해 에이전트가 툴을 여러 번 호출한 뒤
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
 import time
 from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
@@ -51,11 +54,18 @@ class BaseAgent:
     ) -> None:
         self.config = config
         self.base_dir = base_dir
-        self.client = anthropic.Anthropic()
         self._logger = logger
+        self._api_client: anthropic.Anthropic | None = None  # lazy init
         # 에이전트 실행 중 토큰 누적
         self._input_tokens: int = 0
         self._output_tokens: int = 0
+
+    @property
+    def client(self) -> anthropic.Anthropic:
+        """API 클라이언트 — API 키가 있을 때만 초기화."""
+        if self._api_client is None:
+            self._api_client = anthropic.Anthropic()
+        return self._api_client
 
     # ─────────────────────────────────────────
     #  Public API
@@ -78,8 +88,11 @@ class BaseAgent:
         self._output_tokens = 0
         agent_start = time.time()
 
+        use_cli = not os.environ.get("ANTHROPIC_API_KEY")
+        mode_label = "CLI" if use_cli else "API"
+
         print(f"\n{'='*60}")
-        print(f"  {self.config.name.upper()} 에이전트 실행 중...")
+        print(f"  {self.config.name.upper()} 에이전트 실행 중... ({mode_label})")
         print(f"{'='*60}")
 
         # ── 로깅 훅: 에이전트 시작 ──────────────────
@@ -93,7 +106,10 @@ class BaseAgent:
             )
 
         try:
-            result = self._run_loop(messages)
+            if use_cli:
+                result = self._run_cli(user_message)
+            else:
+                result = self._run_loop(messages)
             status = "success"
         except Exception as e:
             status = "error"
@@ -124,6 +140,56 @@ class BaseAgent:
             )
 
         return result
+
+    # ─────────────────────────────────────────
+    #  CLI 모드 (ANTHROPIC_API_KEY 없을 때)
+    # ─────────────────────────────────────────
+
+    def _run_cli(self, user_message: str) -> str:
+        """
+        claude CLI를 subprocess로 호출한다.
+        ANTHROPIC_API_KEY가 없을 때 Pro 구독 OAuth로 동작하는 폴백.
+        """
+        if not shutil.which("claude"):
+            raise RuntimeError(
+                "claude CLI를 찾을 수 없습니다.\n"
+                "Claude Code가 설치돼 있는지 확인하거나,\n"
+                "ANTHROPIC_API_KEY 환경 변수를 설정하세요."
+            )
+
+        # 에이전트에 파일시스템 툴이 있으면 Read + Bash(읽기 전용) 허용
+        if self.config.tools:
+            tool_args = [
+                "--tools", "Read,Bash",
+                "--allowedTools",
+                "Read Bash(find *) Bash(grep *) Bash(ls *) Bash(cat *) Bash(head *) Bash(tail *)",
+            ]
+        else:
+            tool_args = ["--tools", ""]
+
+        cmd = [
+            "claude", "-p", user_message,
+            "--system-prompt", self.config.system_prompt,
+            "--model", "opus",
+            "--permission-mode", "auto",
+            "--no-session-persistence",
+        ] + tool_args
+
+        print(f"  → claude CLI 호출 중...")
+
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=self.base_dir,
+        )
+
+        if proc.returncode != 0:
+            err = proc.stderr.strip()[:500] if proc.stderr else "(stderr 없음)"
+            raise RuntimeError(f"claude CLI 오류 (exit {proc.returncode}): {err}")
+
+        self._last_iterations = 0  # CLI는 iteration 추적 불가
+        return proc.stdout.strip()
 
     # ─────────────────────────────────────────
     #  Tool 실행 — 하위 클래스가 오버라이드 가능

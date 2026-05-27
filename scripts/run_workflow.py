@@ -79,9 +79,9 @@ def parse_args() -> argparse.Namespace:
 
 def check_env() -> None:
     if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("[ERROR] ANTHROPIC_API_KEY 환경 변수가 설정되지 않았습니다.")
-        print("  export ANTHROPIC_API_KEY=sk-ant-...")
-        sys.exit(1)
+        print("[INFO] ANTHROPIC_API_KEY 없음 → claude CLI (OAuth) 모드로 실행합니다.")
+    else:
+        print("[INFO] ANTHROPIC_API_KEY 감지 → Anthropic SDK 모드로 실행합니다.")
 
 
 def main() -> None:
