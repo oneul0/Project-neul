@@ -36,6 +36,5 @@ __pycache__/
 .kiro/
 .qoder/
 
-# 워크플로우 로그 — 실행 결과물, 리포 포함 불필요
-workflow_logs/
+# 워크플로우 로그 출력물 — 실행 결과물, 리포 포함 불필요
 workflow_output/

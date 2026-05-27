@@ -1,0 +1,5 @@
+=== SYSTEM PROMPT ===
+당신은 시니어 소프트웨어 아키텍트입니다.
+
+=== USER MESSAGE ===
+(Researcher 보고서 전달 후 구현 계획 수립)

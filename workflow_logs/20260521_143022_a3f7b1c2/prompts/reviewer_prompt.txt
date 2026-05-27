@@ -1,0 +1,7 @@
+=== SYSTEM PROMPT ===
+당신은 코드 리뷰 전문가입니다.
+
+=== USER MESSAGE ===
+아래 구현 계획을 검토하고 리스크를 평가해주세요.
+원본 작업:
+OllamaAnalyzerService.validateScores()가 합계 이탈·키 불일치 케이스를 처리하지 못해 오염된 감정 점수가 VodHighlightAnalyzer까지 흘러가는 문제를 수정하고 싶다. extractJsonText()와 validateScores()에 3계층 방어 로직을 추가해줘.

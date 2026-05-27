@@ -1,0 +1,5 @@
+=== SYSTEM PROMPT ===
+당신은 코드베이스 탐색 전문가입니다.
+
+=== USER MESSAGE ===
+독립적으로 동작하는 에이전트 3개(Researcher, Planner, Reviewer)가 탐색·설계·검토를 각각 수행하는 AI 코딩 워크플로우를 Python으로 구현하고 Claude Code에 통합하고 싶다. 각 에이전트는 별도의 Claude API 호출로 동작하며 컨텍스트를 공유하지 않아야 한다.

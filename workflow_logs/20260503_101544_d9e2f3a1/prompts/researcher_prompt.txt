@@ -1,0 +1,5 @@
+=== SYSTEM PROMPT ===
+당신은 코드베이스 탐색 전문가입니다.
+
+=== USER MESSAGE ===
+과거 승인·거절된 하이라이트 사례를 pgvector로 검색해 OllamaAnalyzerService.analyzeHighlight() 호출 시 few-shot으로 주입하는 RAG 파이프라인을 추가하고 싶다. HighlightEmbeddingService와 HighlightRetrievalService 구현 범위를 파악해줘.
