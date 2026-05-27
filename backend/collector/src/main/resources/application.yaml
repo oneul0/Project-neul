@@ -31,6 +31,10 @@ chzzk:
     client-secret: ${CHZZK_CLIENT_SECRET}
     redirect-uri: ${CHZZK_REDIRECT_URI:http://localhost:8081/api/v1/chzzk/callback}
 
+app:
+  core-api:
+    base-url: http://localhost:8083
+
 gak:
   owner-token-secret: ${GAK_OWNER_TOKEN_SECRET:dev-gak-token-secret}
   frontend-url: ${GAK_FRONTEND_URL:http://localhost:3000}
