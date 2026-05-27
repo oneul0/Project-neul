@@ -317,4 +317,27 @@ public class UserVodLibraryService {
             default -> 0.0d;
         };
     }
+
+    /**
+     * ownerId가 있을 때 라이브러리 항목을 동기화한다.
+     * analyzed=true → markAnalyzed, false → touchVideo.
+     * ownerId가 null/blank이면 즉시 empty 반환.
+     * 에러는 warn 로그 후 조용히 무시한다.
+     */
+    public Mono<Void> syncStatus(String ownerId, String videoNo, String status, boolean analyzed) {
+        if (ownerId == null || ownerId.isBlank()) {
+            return Mono.empty();
+        }
+
+        Mono<?> update = analyzed
+                ? markAnalyzed(ownerId, videoNo, status)
+                : touchVideo(ownerId, videoNo, status);
+
+        return update
+                .doOnError(error -> log.warn(
+                        "[UserVodLibraryService] Failed to sync status ownerId={}, videoNo={}, status={}",
+                        ownerId, videoNo, status, error))
+                .onErrorResume(error -> Mono.empty())
+                .then();
+    }
 }
