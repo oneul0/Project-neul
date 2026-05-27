@@ -149,6 +149,41 @@ Redis 장애 상황에서 **인증은 차단(fail-secure)**, **VOD 슬롯 카운
 
 ---
 
+## 🤖 AI 개발 워크플로우
+
+### Plan-First + Human Approval Gate
+AI가 코드를 수정하기 전에 반드시 변경 범위·영향 파일·대안을 정리한 계획을 먼저 제출하고 사람의 승인을 받도록 강제합니다.
+
+- `EnterPlanMode` → 구현 계획 작성 → `ExitPlanMode`(사람 승인) 순서를 `CLAUDE.md` 규칙으로 고정
+- 승인 전 파일 수정 불가 — AI가 의도치 않은 파일을 건드리거나 작업 범위를 벗어나는 상황을 사전 차단
+- 주요 변경은 `docs/design/` 에 번호 붙은 설계 문서로 남겨 결정 맥락을 보존
+
+### Researcher / Planner / Reviewer 독립 에이전트
+탐색·설계·검토 세 단계를 **별개의 Claude API 호출**로 분리해 각 에이전트가 독립된 컨텍스트와 제한된 툴셋으로 동작합니다.
+
+```
+Researcher  ─(보고서)→  Planner  ─(계획서)→  Reviewer  ─(판정)→  구현
+읽기 전용               툴 없음              읽기 전용
+```
+
+- **Researcher** — `read_file` / `list_directory` / `grep_code` 만 사용, 파일 수정 불가
+- **Planner** — 탐색 결과를 받아 단계별 구현 계획·위험 요소·롤백 전략 작성
+- **Reviewer** — 계획서와 실제 코드를 대조해 🔴🟡🟢 리스크 평가 후 ✅/⚠️/❌ 판정
+- Claude Code에서 `/workflow "작업 설명"` 으로 즉시 실행 (`scripts/run_workflow.py`)
+
+### Prompt & Logging Hook
+에이전트 실행 전 과정을 파일로 기록해 재현성을 확보하고 오류 원인 추적을 가능하게 합니다.
+
+실행마다 `workflow_logs/<timestamp>_<run_id>/` 에 저장:
+
+| 파일 | 내용 |
+|------|------|
+| `events.jsonl` | 전체 이벤트 스트림 — API 호출·툴 호출·에러·토큰 수 (기계 파싱용) |
+| `prompts/*.txt` | 각 에이전트에 전달된 **정확한 시스템 프롬프트 + 유저 메시지** (재현용) |
+| `summary.md` | 에이전트별 반복 횟수·소요 시간·토큰 합계·툴 호출 내역 요약 |
+
+---
+
 ## 🛠️ 기술 스택
 
 | 영역 | 기술 |

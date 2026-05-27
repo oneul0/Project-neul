@@ -25,3 +25,17 @@ backend/test_output.txt
 __pycache__/
 *.py[cod]
 *.pyo
+
+# AI 도구 로컬 설정 — 개인 설정이므로 공유 불필요
+.playwright-mcp/
+.cursorrules
+.opencode.json
+.windsurfrules
+.vscode/mcp.json
+.gemini/
+.kiro/
+.qoder/
+
+# 워크플로우 로그 — 실행 결과물, 리포 포함 불필요
+workflow_logs/
+workflow_output/
