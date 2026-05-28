@@ -9,7 +9,7 @@ export async function POST(
   const cookieStore = await cookies();
 
   try {
-    const response = await fetch(`http://localhost:8083/api/v1/vod/${videoNo}/analyze`, {
+    const response = await fetch(`${process.env.CORE_API_URL ?? "http://localhost:8083"}/api/v1/vod/${videoNo}/analyze`, {
       method: "POST",
       headers: {
         cookie: cookieStore.toString(),

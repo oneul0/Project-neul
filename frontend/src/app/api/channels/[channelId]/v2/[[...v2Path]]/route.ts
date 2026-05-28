@@ -11,7 +11,7 @@ type RouteContext = {
 export async function GET(request: NextRequest, context: RouteContext) {
   const { channelId, v2Path } = await context.params;
   const suffix = v2Path && v2Path.length > 0 ? `/${v2Path.join("/")}` : "";
-  const targetUrl = `http://localhost:8083/api/v2/${suffix ? `${suffix.slice(1)}/` : ""}${channelId}${request.nextUrl.search}`;
+  const targetUrl = `${process.env.CORE_API_URL ?? "http://localhost:8083"}/api/v2/${suffix ? `${suffix.slice(1)}/` : ""}${channelId}${request.nextUrl.search}`;
   const isStreamRequest = v2Path?.[0] === "stream";
 
   return proxyUpstreamRequest({

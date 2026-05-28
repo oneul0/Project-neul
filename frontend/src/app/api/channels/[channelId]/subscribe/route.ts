@@ -12,7 +12,7 @@ async function proxySubscribe(request: NextRequest, context: RouteContext, metho
   const cookieStore = await cookies();
 
   try {
-    const upstream = await fetch(`http://localhost:8081/api/v1/channels/${channelId}/subscribe`, {
+    const upstream = await fetch(`${process.env.COLLECTOR_URL ?? "http://localhost:8081"}/api/v1/channels/${channelId}/subscribe`, {
       method,
       headers: {
         cookie: cookieStore.toString(),

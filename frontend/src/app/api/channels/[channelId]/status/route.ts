@@ -12,7 +12,7 @@ export async function GET(_: Request, context: RouteContext) {
   const cookieStore = await cookies();
 
   try {
-    const upstream = await fetch(`http://localhost:8081/api/v1/channels/${channelId}/status`, {
+    const upstream = await fetch(`${process.env.COLLECTOR_URL ?? "http://localhost:8081"}/api/v1/channels/${channelId}/status`, {
       headers: {
         cookie: cookieStore.toString(),
       },

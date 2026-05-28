@@ -5,7 +5,7 @@ export async function GET() {
   const cookieStore = await cookies();
 
   try {
-    const response = await fetch("http://localhost:8083/api/v1/me/vod-preferences", {
+    const response = await fetch(`${process.env.CORE_API_URL ?? "http://localhost:8083"}/api/v1/me/vod-preferences`, {
       headers: {
         cookie: cookieStore.toString(),
       },

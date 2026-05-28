@@ -15,7 +15,7 @@ async function proxyRoulette(
 ) {
   const { channelId, roulettePath } = await context.params;
   const suffix = roulettePath && roulettePath.length > 0 ? `/${roulettePath.join("/")}` : "";
-  const targetUrl = `http://localhost:8083/api/v1/roulette/${channelId}${suffix}${request.nextUrl.search}`;
+  const targetUrl = `${process.env.CORE_API_URL ?? "http://localhost:8083"}/api/v1/roulette/${channelId}${suffix}${request.nextUrl.search}`;
 
   return proxyUpstreamRequest({
     request,

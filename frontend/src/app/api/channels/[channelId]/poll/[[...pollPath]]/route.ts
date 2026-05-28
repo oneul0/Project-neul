@@ -11,7 +11,7 @@ type RouteContext = {
 async function proxyPoll(request: NextRequest, context: RouteContext, method: "GET" | "POST" | "DELETE") {
   const { channelId, pollPath } = await context.params;
   const suffix = pollPath && pollPath.length > 0 ? `/${pollPath.join("/")}` : "";
-  const targetUrl = `http://localhost:8083/api/v1/poll/${channelId}${suffix}${request.nextUrl.search}`;
+  const targetUrl = `${process.env.CORE_API_URL ?? "http://localhost:8083"}/api/v1/poll/${channelId}${suffix}${request.nextUrl.search}`;
 
   return proxyUpstreamRequest({
     request,

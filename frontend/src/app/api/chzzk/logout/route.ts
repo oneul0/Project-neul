@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 export async function DELETE() {
   const cookieStore = await cookies();
-  const upstream = await fetch("http://localhost:8081/api/v1/chzzk/logout", {
+  const upstream = await fetch(`${process.env.COLLECTOR_URL ?? "http://localhost:8081"}/api/v1/chzzk/logout`, {
     method: "DELETE",
     headers: {
       cookie: cookieStore.toString(),

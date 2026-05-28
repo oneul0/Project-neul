@@ -5,7 +5,7 @@ export async function GET() {
   const cookieStore = await cookies();
   let upstream: Response;
   try {
-    upstream = await fetch("http://localhost:8081/api/v1/chzzk/me", {
+    upstream = await fetch(`${process.env.COLLECTOR_URL ?? "http://localhost:8081"}/api/v1/chzzk/me`, {
       headers: {
         cookie: cookieStore.toString(),
       },

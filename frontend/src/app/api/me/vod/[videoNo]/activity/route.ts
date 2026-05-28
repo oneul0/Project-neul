@@ -9,7 +9,7 @@ export async function GET(
   const cookieStore = await cookies();
 
   try {
-    const response = await fetch(`http://localhost:8083/api/v1/me/vod/${videoNo}/activity`, {
+    const response = await fetch(`${process.env.CORE_API_URL ?? "http://localhost:8083"}/api/v1/me/vod/${videoNo}/activity`, {
       headers: {
         cookie: cookieStore.toString(),
       },
@@ -38,7 +38,7 @@ export async function POST(
   const body = await request.text();
 
   try {
-    const response = await fetch(`http://localhost:8083/api/v1/me/vod/${videoNo}/activity`, {
+    const response = await fetch(`${process.env.CORE_API_URL ?? "http://localhost:8083"}/api/v1/me/vod/${videoNo}/activity`, {
       method: "POST",
       headers: {
         cookie: cookieStore.toString(),

@@ -7,7 +7,7 @@ export async function GET(
   const { videoNo } = await params;
 
   try {
-    const response = await fetch(`http://localhost:8081/api/v1/vod/${videoNo}/status`, {
+    const response = await fetch(`${process.env.COLLECTOR_URL ?? "http://localhost:8081"}/api/v1/vod/${videoNo}/status`, {
       cache: "no-store",
     });
     const text = await response.text();

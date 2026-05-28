@@ -15,7 +15,7 @@ async function proxyDonations(
 ) {
   const { channelId, donationPath } = await context.params;
   const suffix = donationPath && donationPath.length > 0 ? `/${donationPath.join("/")}` : "";
-  const targetUrl = `http://localhost:8083/api/v1/donations/${channelId}${suffix}${request.nextUrl.search}`;
+  const targetUrl = `${process.env.CORE_API_URL ?? "http://localhost:8083"}/api/v1/donations/${channelId}${suffix}${request.nextUrl.search}`;
 
   return proxyUpstreamRequest({
     request,
