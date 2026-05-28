@@ -20,6 +20,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
@@ -105,10 +107,18 @@ public class ChzzkAuthController {
                             .flatMap(session -> sessionRegistry
                                     .register(session.getChannelId(), session.getSessionId(), session.getExpiresIn())
                                     .thenReturn(session))
-                            .map(session -> redirect(frontendUrl + "/channels/" + session.getChannelId() + "?auth=success",
-                                    clearStateCookie(),
-                                    sessionCookie(session),
-                                    ownerAssertionCookie(session)));
+                            .map(session -> {
+                                String ownerToken = OwnerTokenCodec.createToken(
+                                        session.getChannelId(), session.getSessionId(),
+                                        session.getExpiresAt(), ownerTokenSecret);
+                                long maxAge = Math.min(Math.max(session.getExpiresIn(), 60), tokenMaxAgeSeconds);
+                                String handoffUrl = frontendUrl + "/api/chzzk/session" +
+                                        "?channelId=" + URLEncoder.encode(session.getChannelId(), StandardCharsets.UTF_8) +
+                                        "&sessionId=" + URLEncoder.encode(session.getSessionId(), StandardCharsets.UTF_8) +
+                                        "&ownerToken=" + URLEncoder.encode(ownerToken, StandardCharsets.UTF_8) +
+                                        "&expiresIn=" + maxAge;
+                                return redirect(handoffUrl, clearStateCookie());
+                            });
                 })
                 .onErrorResume(error -> {
                     log.error("[ChzzkAuth] Callback failed: {}", error.getMessage(), error);
