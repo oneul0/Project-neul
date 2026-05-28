@@ -9,14 +9,14 @@ spring:
       - optional:file:../.env[.properties]
       - optional:file:../../.env[.properties]
   kafka:
-    bootstrap-servers: 127.0.0.1:9092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:127.0.0.1:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
   data:
     redis:
-      host: 127.0.0.1
-      port: 6379
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
 
 server:
   port: 8081
@@ -33,7 +33,7 @@ chzzk:
 
 app:
   core-api:
-    base-url: http://localhost:8083
+    base-url: ${CORE_API_BASE_URL:http://localhost:8083}
 
 gak:
   owner-token-secret: ${GAK_OWNER_TOKEN_SECRET:dev-gak-token-secret}

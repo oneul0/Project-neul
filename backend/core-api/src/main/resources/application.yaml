@@ -23,11 +23,11 @@ spring:
 
   data:
     redis:
-      host: 127.0.0.1
-      port: 6379
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
 
   kafka:
-    bootstrap-servers: 127.0.0.1:9092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:127.0.0.1:9092}
     consumer:
       auto-offset-reset: earliest
 
