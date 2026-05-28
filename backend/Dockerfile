@@ -26,6 +26,9 @@ COPY analyzer/build.gradle analyzer/build.gradle
 
 RUN chmod +x gradlew
 
+# Gradle JVM 메모리 제한 (t2.micro 1GB OOM 방지)
+ENV GRADLE_OPTS="-Xmx400m -Xms128m -XX:MaxMetaspaceSize=200m"
+
 # Warm up Gradle dependency cache
 RUN ./gradlew dependencies --no-daemon -q 2>/dev/null || true
 
