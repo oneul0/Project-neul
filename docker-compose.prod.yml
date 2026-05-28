@@ -126,6 +126,7 @@ services:
       # Redis
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       # Kafka
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       # Chzzk API
@@ -162,6 +163,7 @@ services:
       # Redis
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       # Kafka
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       # Chzzk API
@@ -196,6 +198,7 @@ services:
       # Redis
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       # Ollama
       OLLAMA_API_URL: http://ollama:11434/api/chat
       # core-api
