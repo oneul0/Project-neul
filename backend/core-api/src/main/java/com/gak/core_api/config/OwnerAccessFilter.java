@@ -69,9 +69,21 @@ public class OwnerAccessFilter implements WebFilter {
         final OwnerClaims finalClaims = claims;
 
         // Redis에서 현재 유효한 sessionId 조회 — 로그아웃/탈취 시 즉시 차단
+        // defaultIfEmpty("")를 사용해 Mono<Void>를 반환하는 flatMap 이후 switchIfEmpty가
+        // 잘못 발동되는 버그를 방지한다.
         return redisTemplate.opsForValue()
                 .get(SESSION_KEY_PREFIX + finalClaims.ownerId())
+                .onErrorResume(e -> {
+                    log.error("[OwnerAccess] Redis error for ownerId={}: {}. Accepting based on JWT.", finalClaims.ownerId(), e.getMessage());
+                    return Mono.just(finalClaims.sessionId()); // Redis 장애 시 JWT만으로 검증
+                })
+                .defaultIfEmpty("")
                 .flatMap(storedSessionId -> {
+                    if (storedSessionId.isEmpty()) {
+                        log.warn("[OwnerAccess] No active session found for ownerId={}.", finalClaims.ownerId());
+                        return respondWithError(exchange, HttpStatus.UNAUTHORIZED, "session_expired", "Session expired. Please log in again.");
+                    }
+
                     if (!finalClaims.sessionId().equals(storedSessionId)) {
                         log.warn("[OwnerAccess] Session mismatch for ownerId={}. Possible theft or stale token.", finalClaims.ownerId());
                         return respondWithError(exchange, HttpStatus.UNAUTHORIZED, "session_invalid", "Session is no longer valid. Please log in again.");
@@ -86,11 +98,7 @@ public class OwnerAccessFilter implements WebFilter {
                     // 검증 통과 — 이후 핸들러가 재검증 없이 ownerId를 읽을 수 있도록 주입
                     exchange.getAttributes().put(ATTR_OWNER_ID, finalClaims.ownerId());
                     return chain.filter(exchange);
-                })
-                .switchIfEmpty(Mono.defer(() -> {
-                    log.warn("[OwnerAccess] No active session found for ownerId={}.", finalClaims.ownerId());
-                    return respondWithError(exchange, HttpStatus.UNAUTHORIZED, "session_expired", "Session expired. Please log in again.");
-                }));
+                });
     }
 
     private boolean isProtectedPath(String path, HttpMethod method) {
