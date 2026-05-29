@@ -9,10 +9,21 @@
 
 ## 미리보기
 
-<!-- 메인 기능 이미지 -->
+### VOD 하이라이트 추출
+<!-- vod 하이라이트 추천 기능 이미지 -->
 <br/>
 <p align="center">
-  <img width="1470" height="802" alt="Image" src="https://github.com/user-attachments/assets/0aba945c-7fb4-4454-a050-f1166f1e1051" />
+  <img width="1446" height="734" alt="Image" src="https://github.com/user-attachments/assets/90e4d25c-f3db-416c-9e52-3df511acee84" />
+</p>
+<br/>
+
+### 민심 체크
+<!-- 민심 체크 기능 이미지 -->
+<br/>
+<p align="center">
+  <img width="1452" height="528" alt="Image" src="https://github.com/user-attachments/assets/0273d4a9-d447-4aa7-85bb-8700339e0639" />
+  </br>
+  <img width="1456" height="743" alt="Image" src="https://github.com/user-attachments/assets/ac1a5a9a-f5a1-46e2-bf48-67ebfcaa512b" />
 </p>
 <br/>
 
