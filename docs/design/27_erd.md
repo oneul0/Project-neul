@@ -1,6 +1,6 @@
 # ERD
 
-> 구현 기준: 2026-05-20
+> 구현 기준: 2026-05-29
 > 스키마 소스: `backend/core-api/src/main/resources/db/migration/V1~V9__*.sql`
 
 ---
@@ -148,7 +148,7 @@ VOD 분석으로 선별된 편집 후보 구간. V3~V9 마이그레이션을 거
 | 레이블 | `category`, `scene_label`, `reaction_label` |
 | 설명 | `description`, `reason_summary`, `top_message`, `keyword_summary` |
 | 신호 비율 | `laugh/hype/surprise/tension_ratio`, `density_ratio`, `unique_user_ratio`, `emotion_dominance` |
-| RAG | `embedding_text` (비율 기반 텍스트), `embedding` (vector 768) |
+| RAG | `embedding_text` (비율 기반 텍스트), `embedding` (vector 768) — VOD 분석 few-shot 검색 및 라이브 유사 하이라이트 감지 양쪽에서 사용 |
 
 **점수 산식**
 
@@ -224,3 +224,5 @@ highlight_score   = (intensity×0.55 + transition×0.20 + editability×0.25)
 | VOD 분석 상태 | collector 인메모리 (`ConcurrentHashMap`) | 재기동 시 초기화됨 |
 | 동시 슬롯 카운터 | Redis `vod:active:user:{id}`, `vod:active:global` | TTL=30m, fail-open |
 | VOD 메타데이터 | Chzzk API (외부) | title, duration, category |
+| V2 최신 프레임 | Redis `gak:v2:state:{roomId}` | 민심 탭 초기 로드용 최신 집계 프레임 |
+| V2 스파이크 쿨다운 | 인메모리 `ConcurrentHashMap` | roomId별 마지막 알림 시각 (재기동 시 초기화) |

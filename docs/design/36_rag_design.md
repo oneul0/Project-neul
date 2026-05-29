@@ -188,28 +188,28 @@ LLM은 하이라이트 후보를 볼 때마다 **처음 보는 것처럼 판단�
 
 <!-- 8. 컴포넌트 관계도 -->
 
-## 컴포넌트 관계도
+## 컴포넌트 관계도 — RAG 두 가지 경로
 
 ```
-  [analyzer 서비스]                      [core-api 서비스]
-  ─────────────────                      ──────────────────────────────────
-  OllamaAnalyzerService                  RagController
-  analyzeHighlight()                     getFewShot()
-       │                                      │
-       │  POST /internal/rag/few-shot         │  uses
-       └─────────────────────────────────────▶│
-                                              ▼
-  VodHighlightConsumer           HighlightRetrievalService
-  consumeAnalyzed()              retrieve()  /  findMostSimilarLive()
-       │                         queryStrategyA/B/C()  /  merge()
-       │ flatMap                      │ uses
-       ▼                             ▼
-  HighlightEmbeddingService  ◀────────
-  embedAndStore()
-  requestEmbeddingPublic()
-  buildEmbeddingText()  ← package-private
-  storeEmbedding()      ← private
-       │
+  [analyzer 서비스]           [core-api 서비스]           [kafka → core-api]
+  ─────────────────           ─────────────────────────  ─────────────────────
+  OllamaAnalyzerService       RagController              V2StreamService
+  analyzeHighlight()          getFewShot()               handleSpikeDetection()
+       │                           │                           │
+       │  POST /rag/few-shot        │  uses                    │  buildLiveEmbeddingText()
+       └──────────────────────────▶│                           │         ↓
+                                   ▼                           │  requestEmbeddingPublic()
+  VodHighlightConsumer   HighlightRetrievalService ◀──────────┘
+  consumeAnalyzed()      retrieve()  findMostSimilarLive()          │
+       │                 queryStrategyA/B/C()                       │ kNN k=1
+       │ flatMap              │ uses                                 ▼
+       ▼                     ▼                            PostgreSQL vod_highlights
+  HighlightEmbeddingService ←─────────                   .embedding  vector(768)
+  embedAndStore()                                                    │
+  requestEmbeddingPublic()                                           │ 유사 사례 발견
+  buildEmbeddingText()  ← VOD 저장/검색 공통                         ▼
+  generateInsight()     ← gemma:2b 인사이트                V2SimilarHighlightAlert
+       │                                                   .insight = "시청자들이 ..."
        ▼
   PostgreSQL  vod_highlights.embedding  vector(768)
 ```
@@ -244,3 +244,108 @@ LLM은 하이라이트 후보를 볼 때마다 **처음 보는 것처럼 판단�
                       ▼
                Ollama LLM → { is_highlight, scene_label, scores }
 ```
+
+---
+
+<!-- 10. 두 번째 RAG 사용처: 라이브 유사도 감지 -->
+
+## RAG 사용처 ② — 실시간 유사 하이라이트 감지
+
+```
+  [Kafka] v2-aggregate topic
+         │  V2AggregateFrame { topicLabel, emaPositive, emaNegative, ... }
+         ▼
+  V2StreamService.handleSpikeDetection()
+         │
+         ├── 스파이크 감지?  emaPositive > 0.55  또는  emaNegative > 0.45
+         │   ┌─────────────────────────────────────────────────────┐
+         │   │  buildLiveEmbeddingText(frame)                      │
+         │   │  → 실시간 채팅 상태를 VOD 임베딩 포맷으로 변환      │
+         │   │  → requestEmbeddingPublic()  → Ollama nomic-embed   │
+         │   │  → float[768]                                       │
+         │   └─────────────────────────────────────────────────────┘
+         │
+         ├── HighlightRetrievalService.findMostSimilarLive(vector, threshold=0.72)
+         │   → kNN k=1, cosine similarity, vod_highlights.embedding
+         │   → 유사도 ≥ threshold 이면 VodHighlight 반환
+         │
+         ├── 유사 사례 발견 시
+         │   → generateInsight(prompt)  → Ollama gemma:2b
+         │   → "시청자들이 ~하고 있어요" 1문장
+         │
+         └── SSE emit → 브라우저 민심 탭 하이라이트 감지 피드
+```
+
+> VOD 분석으로 쌓인 임베딩 DB가 라이브 감지의 **기준점** 역할을 한다.  
+> VOD 데이터가 없으면 유사도 검색 자체가 동작하지 않는다.
+
+---
+
+<!-- 11. 임베딩 포맷 정렬 — 같은 벡터 공간 -->
+
+## 임베딩 포맷 정렬 — 같은 텍스트 구조 = 같은 벡터 공간
+
+```
+  buildEmbeddingText(VodHighlight)           buildLiveEmbeddingText(V2AggregateFrame)
+  ──────────────────────────────             ──────────────────────────────────────────
+  "[PEAK] FPS"                               "[감동 장면] live"
+  "dominant=HYPE density=3.5x unique=0.42"  "dominant=positive density=1.8x unique=0.85"
+  "signal: hype=0.80 laugh=0.10 ..."        "signal: hype=0.82 laugh=0.37 ..."
+  "keywords: 킬 연속 클러치"                "keywords: 감동 울었다 역대급"
+  "시청자들이 클러치라고 반응"               "시청자들이 역대급이라고 반응"
+        │                                          │
+        ▼                                          ▼
+   float[768]                               float[768]
+        └──────────── cosine similarity ──────────┘
+```
+
+```
+  포맷이 다르면 →  벡터 공간이 달라져  →  유사도 0.1 이하  →  매칭 실패
+
+  포맷을 맞추면 →  같은 축으로 정렬  →  유사도 0.7~0.9  →  매칭 성공
+```
+
+> 같은 필드 순서, 같은 키워드, 같은 레이블 포맷을 사용해야  
+> 두 벡터가 **같은 의미 공간**에서 비교 가능해진다.
+
+---
+
+<!-- 12. LLM 인사이트 생성 — gemma:2b -->
+
+## LLM 인사이트 생성 — gemma:2b
+
+```
+  유사 사례 발견 직후 (threshold 통과 시에만 실행)
+
+  buildInsightPrompt(frame, alert)
+  ┌──────────────────────────────────────────────────────────────┐
+  │  다음 채팅 상황을 보고 지금 시청자들이 어떻게 반응하는지     │
+  │  구어체 한 문장으로만 출력해.                                │
+  │                                                              │
+  │  입력:                                                       │
+  │  주제=감동 장면  키워드=감동,울었다,역대급                   │
+  │  채팅="진짜 울었다 ㅠㅠ"  패턴=positive_spike               │
+  │                                                              │
+  │  출력 예시:                                                  │
+  │  - 시청자들이 폭소하고 있어요                               │
+  │  - 시청자들이 감동받고 있어요                               │
+  │  - 시청자들이 긴장하고 있어요                               │
+  │                                                              │
+  │  규칙: "시청자들이 ~하고 있어요" 형태, 15자 이내, 딱 한 줄. │
+  └──────────────────────────────────────────────────────────────┘
+         │
+         ▼  Ollama /api/generate (gemma:2b, stream=false)
+         │
+  sanitizeInsight(raw)
+  ├── "출력:" 이후 텍스트 추출
+  ├── 첫 번째 줄만
+  ├── 격식체 → 구어체 변환  ("있습니다" → "있어요")
+  └── 30자 초과 시 잘라냄
+         │
+         ▼
+  "시청자들이 감동받고 있어요"  →  V2SimilarHighlightAlert.insight
+```
+
+> `nomic-embed-text` = 벡터 검색용 (768차원).  
+> `gemma:2b` = 자연어 해설 생성용.  
+> 두 모델이 같은 Ollama 인스턴스에서 서로 다른 역할을 담당한다.
