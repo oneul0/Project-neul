@@ -1,10 +1,9 @@
-# 각(Gak) — 치지직 스트리머 분석 대시보드
+# 각(Gak) — 치지직 스트리머용 VOD 하이라이트 추출 및 방송 도구
   
 기간 : 2026.02.25 ~ 2026.05.18
   
 
-VOD 채팅 데이터를 분석해 편집 후보 구간을 자동으로 추출하는 치지직 스트리머용 분석 도구입니다.
-투표·룰렛 등 라이브 방송 보조 기능도 함께 제공합니다.
+치지직 스트리머용 VOD 편집 후보 구간을 자동으로 추출 기능과 투표·룰렛 등 라이브 방송 보조 기능을 제공합니다.
 
 ---
 
@@ -23,7 +22,7 @@ VOD 채팅 데이터를 분석해 편집 후보 구간을 자동으로 추출하
 
 |  🔐 로그인  |  🎬 VOD 하이라이트  |  🎯 투표  | 🎯 룰렛 |
 |:---:|:---:|:---:| :---:|
-| <img width="1470" height="782" alt="Image" src="https://github.com/user-attachments/assets/9c8f9877-4725-4195-86ed-f324efa04134" /> | <img width="1470" height="802" alt="Image" src="https://github.com/user-attachments/assets/0aba945c-7fb4-4454-a050-f1166f1e1051" /> | <img width="1446" height="733" alt="Image" src="https://github.com/user-attachments/assets/83602286-293b-468a-b6a3-c4e63facb7a2" /> | <img width="1453" height="727" alt="Image" src="https://github.com/user-attachments/assets/661f9143-13f9-452b-ad56-458377303ff9" /> |
+| <img width="1470" height="799" alt="Image" src="https://github.com/user-attachments/assets/93436775-bca9-44ca-8dd3-f86d2bc91450" /> | <img width="1470" height="802" alt="Image" src="https://github.com/user-attachments/assets/0aba945c-7fb4-4454-a050-f1166f1e1051" /> | <img width="1446" height="733" alt="Image" src="https://github.com/user-attachments/assets/83602286-293b-468a-b6a3-c4e63facb7a2" /> | <img width="1453" height="727" alt="Image" src="https://github.com/user-attachments/assets/661f9143-13f9-452b-ad56-458377303ff9" /> |
 | CHZZK OAuth 로그인 | 편집 후보 구간 자동 선별 | 채팅 기반 투표 | 도네이션 룰렛 |
 
 ---
@@ -31,26 +30,21 @@ VOD 채팅 데이터를 분석해 편집 후보 구간을 자동으로 추출하
 ## 🚀 핵심 기능
 
 ### 🔒 인증 & 보안
-- CHZZK OAuth 로그인 — 본인 채널에만 접근 허용
+- CHZZK OAuth 로그인
 - HMAC-SHA256 서명 + Redis 세션 바인딩으로 즉시 토큰 revocation
-- `OwnerAccessFilter` / `InternalAccessFilter` 이중 보호
 
-### 💬 채팅 수집 & 이벤트 처리
-- NID WebSocket 직접 연동으로 실시간 채팅 수집 (2초 배치)
-- 투표 명령(`!투표 N`) → Redis 집계 / 도네이션·구독 → SSE로 룰렛 트리거
-- SSE `Sinks.replay(100)` — 구독 이전 메시지 유실 방지
+### 💬 채팅 관련 기능
+- 투표 명령(`!투표 N`)을 통해 투표 및 룰렛 기능을 제공합니다.
 
 ### 🎬 VOD 분석 & 하이라이트
-- `intensityScore`, `transitionScore`, `editabilityScore` 기반 편집 후보 선별
-- 시간대 버킷 분산으로 앞쪽 쏠림 방지
-- 분석 상태 adaptive polling (`REQUESTED → CRAWLING → ANALYZING → COMPLETED`)
+- `채팅 빈도`, `분위기 변환` 기반 편집 후보 선별
+- 시간대 버킷 분산을 이용한 앞쪽 쏠림 방지
 - **감정 분류 7 레이블** — `JOY` · `HOPE` · `WONDER` · `HYPE` · `SADNESS` · `ANGER` · `DISGUST`  
   `NEUTRAL`은 두 가지 의미로 쓰입니다. ① 어느 레이블도 우세하지 않은 채팅의 결과값, ② LLM 장애·검증 실패 시 시스템이 강제 할당하는 안전 기본값 — "감정 없음"이 아니라 "판단 불가 또는 복구 상태"입니다.
 
 ### 🎯 투표 & 룰렛
 - 실시간 투표 — 시작·중지 분리, 채팅 기록 모달 제공
 - 도네이션 금액 비례 가중 룰렛
-- 성인 방송 자동 감지 및 분기 처리
 
 ---
 
@@ -83,12 +77,13 @@ LLM이 반환하는 감정 분석 JSON은 필드 누락·범위 초과·zero-sco
 | 단계 | 처리 |
 |------|------|
 | 입력 정제 | 빈 채팅 제거 → 배치 크기 상한(30개) → 총 문자 상한(3,000자) |
-| 출력 검증 | 감정 키 7개 완결성 확인 → 점수 `[0.0, 1.0]` 클램핑 → 전 필드 0.0이면 `NEUTRAL` 강제 치환 |
-| 동시성 제어 | `Semaphore(1)` + 동적 타임아웃 `min(90, 20 + batchSize × 1.5)초` — 과잉 요청은 skip 카운터로 추적 |
+| 출력 검증 | 감정 키 7개 전부 분석 완료됐는지 확인 → 미분석 점수 클램핑 → 전 필드 0.0이면 `NEUTRAL` 강제 치환 |
+| 동시성 제어 | `Semaphore` + 채팅 배치에 따라 동적 타임아웃 적용 |
 
 **프롬프트 제약 — `resources/prompts/` 템플릿 파일에 직접 명시**
 
-코드 가드는 잘못된 출력을 사후 교정합니다. 애초에 LLM이 잘못된 형식을 반환하지 않도록, Ollama 호출 시 주입하는 프롬프트 템플릿 파일(`ollama-batch-system.txt`, `ollama-highlight-user.txt` 등)에 다음 규칙을 직접 작성했습니다.
+코드 레벨의 가드레일은 잘못된 출력을 사후 교정합니다. 
+LLM이 잘못된 형식을 반환하지 않도록 Ollama 호출 시 주입하는 프롬프트 템플릿 파일에 다음 규칙을 직접 작성했습니다.
 
 - **JSON 출력 강제**: Ollama API의 `format: "json"` 옵션과 시스템 프롬프트의 "출력은 반드시 JSON만 반환할 것" 규칙을 이중으로 적용
 - **점수 합계 1.0 명시**: 시스템 프롬프트에 "각 messageId의 scores 합계는 반드시 1.0이어야 한다" 규칙 추가 — 코드 클램핑 이전에 LLM 스스로 비율로 분배하도록 유도
@@ -97,7 +92,7 @@ LLM이 반환하는 감정 분석 JSON은 필드 누락·범위 초과·zero-sco
 - **하이라이트 판정 페르소나**: "10만 구독자를 보유한 게임 하이라이트 채널의 전문 편집자" 역할 부여 — 편집 기준에서 판단하도록 유도
 - **카테고리 허용 목록**: `슈퍼플레이/대참사/운/소통` 4가지로 제한해 임의 카테고리 생성 방지
 - **수치 근거 강제**: 유저 프롬프트에 Z-Score·densityRatio·laughRatio 등 정량 지표를 포함시켜 LLM이 텍스트 인상이 아닌 수치 기반으로 판정하도록 구성
-- **RAG few-shot 주입**: 과거 승인·거절된 하이라이트 사례를 검색해 프롬프트에 삽입 — 일관된 판단 기준 확보
+- **RAG few-shot 주입**: 과거 승인·거절된 하이라이트 사례를 검색해 프롬프트에 삽입
 
 ```mermaid
 flowchart TD
@@ -134,15 +129,16 @@ flowchart TD
     CB --> Result
 ```
 
-가드 적용 전에는 응답 JSON 파싱 실패 시 전체 배치가 드롭되었고, zero-score 뭉침으로 모든 채팅이 NEUTRAL로 집계되는 문제가 있었습니다.
+가드레일 적용 전에는 응답 JSON 파싱 실패 시 전체 배치가 드롭되거나 zero-score 뭉침으로 모든 채팅의 감정이 NEUTRAL(중립)로 집계되는 문제가 있었습니다.
 
 ### 채팅 패턴 기반 하이라이트 추출
 pgvector는 VOD 하이라이트 RAG(few-shot 유사 구간 검색)용으로 먼저 도입했습니다. 초기에는 SQL 레벨 점수 정렬로도 대체할 수 있는 수준이었으나, **실시간 유사 하이라이트 알림** 기능을 추가하면서 벡터 검색이 필수가 되었습니다.
 
-라이브 채팅 패턴(EMA 스파이크 + 키워드 + 앵커 채팅)을 임베딩해 과거 하이라이트와 cosine 유사도를 비교하는 작업은 SQL 집계로 표현할 수 없었습니다. 스파이크 감지 → 임베딩 생성 → pgvector 검색 → SSE push 전 경로를 비동기 reactive chain으로 구성해, 유사 하이라이트 알림 실패가 메인 `v2_frame` 전송 경로에 영향을 주지 않도록 격리했습니다.
+라이브 채팅 패턴(EMA 스파이크 + 키워드 + 앵커 채팅)을 임베딩해 과거 하이라이트와 cosine 유사도를 비교하는 작업은 SQL 집계로 표현할 수 없었습니다.  
+스파이크 감지 → 임베딩 생성 → pgvector 검색 → SSE push 전 경로를 비동기 reactive chain으로 구성해, 유사 하이라이트 알림 실패가 메인 `v2_frame` 전송 경로에 영향을 주지 않도록 격리했습니다.
 
 ### 분산 시스템 설계
-VOD 동시성 제한을 in-memory가 아닌 **Redis 카운터 + TTL**로 설계해 수평 확장 가능성을 확보했습니다. Kafka 파티션 키를 `roomId`로 설정해 방별 메시지 순서를 보장했습니다.
+VOD 동시성 제한을 in-memory가 아닌 **Redis 카운터 + TTL**로 설계해 수평 확장 가능성을 확보했습니다. Kafka 파티션 키를 스트리머 방송별 id로 설정해 방별 메시지 순서를 보장했습니다.
 
 ### fail-open vs fail-secure
 Redis 장애 상황에서 **인증은 차단(fail-secure)**, **VOD 슬롯 카운팅은 허용(fail-open)**으로 보호 대상에 따라 장애 전략을 다르게 설계했습니다.
