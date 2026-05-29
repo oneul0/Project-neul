@@ -20,10 +20,12 @@
 
 ## ✨ 앱 플로우 소개
 
-|  🔐 로그인  |  🎬 VOD 하이라이트  |  🎯 투표  | 🎯 룰렛 |
-|:---:|:---:|:---:| :---:|
-| <img width="1470" height="799" alt="Image" src="https://github.com/user-attachments/assets/93436775-bca9-44ca-8dd3-f86d2bc91450" /> | <img width="1470" height="802" alt="Image" src="https://github.com/user-attachments/assets/0aba945c-7fb4-4454-a050-f1166f1e1051" /> | <img width="1442" height="737" alt="Image" src="https://github.com/user-attachments/assets/e1e7917a-281b-454e-a1e5-69bc3c2754aa" /> | <img width="1416" height="736" alt="Image" src="https://github.com/user-attachments/assets/4703d625-544d-4d58-a49c-737725ae4a20" /> |
-| CHZZK OAuth 로그인 | 편집 후보 구간 자동 선별 | 채팅 기반 투표 | 도네이션 룰렛 |
+|  🔐 로그인  |  🎬 VOD 하이라이트  |  🎯 투표  | 🎯 룰렛 | 💬 민심 |
+|:---:|:---:|:---:| :---:| :---:|
+| <img width="1470" height="799" alt="Image" src="https://github.com/user-attachments/assets/93436775-bca9-44ca-8dd3-f86d2bc91450" /> | <img width="1470" height="802" alt="Image" src="https://github.com/user-attachments/assets/0aba945c-7fb4-4454-a050-f1166f1e1051" /> | <img width="1442" height="737" alt="Image" src="https://github.com/user-attachments/assets/e1e7917a-281b-454e-a1e5-69bc3c2754aa" /> | <img width="1460" height="694" alt="Image" src="https://github.com/user-attachments/assets/c0802769-938b-4d54-a249-4f835ef4735f" /> | <img width="1456" height="743" alt="Image" src="https://github.com/user-attachments/assets/02f732a1-c703-4f9c-bf80-6c69330c1d65" />
+</br>
+<img width="1452" height="528" alt="Image" src="https://github.com/user-attachments/assets/f18702db-f49c-4ab3-813e-2ff2741b7995" /> |
+| CHZZK OAuth 로그인 | 편집 후보 구간 자동 선별 | 채팅 기반 투표 | 도네이션 룰렛 | 실시간 민심 체크 |
 
 ---
 
