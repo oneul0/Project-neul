@@ -21,9 +21,9 @@
 <!-- 민심 체크 기능 이미지 -->
 <br/>
 <p align="center">
-  <img width="1452" height="528" alt="Image" src="https://github.com/user-attachments/assets/0273d4a9-d447-4aa7-85bb-8700339e0639" />
+  <img width="1454" height="738" alt="Image" src="https://github.com/user-attachments/assets/b181dac3-b44d-4521-8f26-6ee8aa9832d5" />
   </br>
-  <img width="1456" height="743" alt="Image" src="https://github.com/user-attachments/assets/ac1a5a9a-f5a1-46e2-bf48-67ebfcaa512b" />
+  <img width="1462" height="668" alt="Image" src="https://github.com/user-attachments/assets/335c4bc0-c9ac-48b0-88a8-d4f4832efacd" />
 </p>
 <br/>
 
@@ -33,7 +33,7 @@
 
 |  🔐 로그인  |  🎬 VOD 하이라이트  |  🎯 투표  | 🎯 룰렛 | 💬 민심 |
 |:---:|:---:|:---:| :---:| :---:|
-| <img width="1470" height="799" alt="Image" src="https://github.com/user-attachments/assets/93436775-bca9-44ca-8dd3-f86d2bc91450" /> | <img width="1446" height="734" alt="Image" src="https://github.com/user-attachments/assets/90e4d25c-f3db-416c-9e52-3df511acee84" /> | <img width="1442" height="737" alt="Image" src="https://github.com/user-attachments/assets/e1e7917a-281b-454e-a1e5-69bc3c2754aa" /> | <img width="1460" height="694" alt="Image" src="https://github.com/user-attachments/assets/c0802769-938b-4d54-a249-4f835ef4735f" /> | <img width="1456" height="743" alt="Image" src="https://github.com/user-attachments/assets/02f732a1-c703-4f9c-bf80-6c69330c1d65" /> |
+| <img width="1470" height="799" alt="Image" src="https://github.com/user-attachments/assets/93436775-bca9-44ca-8dd3-f86d2bc91450" /> | <img width="1446" height="734" alt="Image" src="https://github.com/user-attachments/assets/90e4d25c-f3db-416c-9e52-3df511acee84" /> | <img width="1442" height="737" alt="Image" src="https://github.com/user-attachments/assets/e1e7917a-281b-454e-a1e5-69bc3c2754aa" /> | <img width="1460" height="694" alt="Image" src="https://github.com/user-attachments/assets/c0802769-938b-4d54-a249-4f835ef4735f" /> | <img width="1450" height="726" alt="Image" src="https://github.com/user-attachments/assets/bfcde85e-2224-4d78-8c4f-b9886fc67e6d" /> |
 | CHZZK OAuth 로그인 | 편집 후보 구간 자동 선별 | 채팅 기반 투표 | 도네이션 룰렛 | 실시간 민심 체크 |
 
 ---
