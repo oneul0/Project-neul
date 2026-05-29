@@ -68,20 +68,54 @@ public class V2StreamService {
 
     private void handleSpikeDetection(V2AggregateFrame frame) {
         String trigger = detectSpikeTrigger(frame);
+        log.info("[V2Stream][DEBUG] spike check roomId={} emaPos={} emaNeg={} trigger={}",
+                frame.getRoomId(),
+                frame.getMentalBuffer() != null ? frame.getMentalBuffer().getEmaPositive() : "null",
+                frame.getMentalBuffer() != null ? frame.getMentalBuffer().getEmaNegative() : "null",
+                trigger);
         if (trigger == null) return;
 
         Instant last = lastAlertAt.get(frame.getRoomId());
-        if (last != null && Duration.between(last, Instant.now()).compareTo(Duration.ofMinutes(alertCooldownMinutes)) < 0) return;
+        if (last != null && Duration.between(last, Instant.now()).compareTo(Duration.ofMinutes(alertCooldownMinutes)) < 0) {
+            log.info("[V2Stream][DEBUG] cooldown active, skipping. cooldownMinutes={}", alertCooldownMinutes);
+            return;
+        }
 
         lastAlertAt.put(frame.getRoomId(), Instant.now());
         String embeddingText = buildLiveEmbeddingText(frame);
+        log.info("[V2Stream][DEBUG] requesting embedding. threshold={} sinkExists={}", similarityThreshold, roomSinks.containsKey(frame.getRoomId()));
 
         highlightEmbeddingService.requestEmbeddingPublic(embeddingText)
-                .flatMap(vector -> highlightRetrievalService.findMostSimilarLive(
-                        frame.getRoomId(), vector, similarityThreshold, trigger))
+                .flatMap(vector -> {
+                    log.info("[V2Stream][DEBUG] embedding received, querying pgvector...");
+                    return highlightRetrievalService.findMostSimilarLive(
+                            frame.getRoomId(), vector, similarityThreshold, trigger);
+                })
+                .doOnSuccess(alert -> {
+                    if (alert == null) log.info("[V2Stream][DEBUG] pgvector returned no match above threshold={}", similarityThreshold);
+                })
+                .flatMap(alert -> {
+                    String insightPrompt = buildInsightPrompt(frame, alert);
+                    return highlightEmbeddingService.generateInsight(insightPrompt)
+                            .map(insight -> V2SimilarHighlightAlert.builder()
+                                    .roomId(alert.getRoomId())
+                                    .highlightId(alert.getHighlightId())
+                                    .videoNo(alert.getVideoNo())
+                                    .sceneLabel(alert.getSceneLabel())
+                                    .category(alert.getCategory())
+                                    .reasonSummary(alert.getReasonSummary())
+                                    .similarity(alert.getSimilarity())
+                                    .trigger(alert.getTrigger())
+                                    .detectedAt(alert.getDetectedAt())
+                                    .insight(insight)
+                                    .build())
+                            .defaultIfEmpty(alert); // insight 생성 실패 시 원본 alert 반환
+                })
                 .subscribe(
                         alert -> {
                             Sinks.Many<Object> sink = roomSinks.get(frame.getRoomId());
+                            log.info("[V2Stream][DEBUG] alert found scene={} similarity={} insight={} sinkExists={}",
+                                    alert.getSceneLabel(), alert.getSimilarity(), alert.getInsight(), sink != null);
                             if (sink != null) {
                                 sink.tryEmitNext(Map.of("event", "v2_similar_highlight", "data", alert));
                                 log.info("[V2Stream] Similar highlight alert emitted. roomId={} scene={} similarity={}",
@@ -104,6 +138,12 @@ public class V2StreamService {
         MentalBufferState mb = frame.getMentalBuffer();
         double emaPos = mb != null ? mb.getEmaPositive() : 0;
         double emaNeg = mb != null ? mb.getEmaNegative() : 0;
+        double balance = frame.getBalance();
+
+        // dominant 감정 — VOD 임베딩의 emotionDominance 필드와 같은 공간으로 맞춤
+        String dominant = emaPos >= 0.6 ? "positive"
+                : emaNeg >= 0.5 ? "negative"
+                : "neutral";
 
         String keywords = frame.getKeywords() != null
                 ? String.join(" ", frame.getKeywords()) : "";
@@ -112,11 +152,47 @@ public class V2StreamService {
         String topAnchor = (anchors != null && !anchors.isEmpty())
                 ? anchors.get(0).getContent() : "";
 
+        // VOD buildEmbeddingText 와 동일한 필드 구조로 포맷 — 벡터 공간 정렬
         return String.format(
-                "[LIVE] %s\nbalance=%.2f positive=%.2f negative=%.2f\nkeywords: %s\n%s",
+                "[%s] live\ndominant=%s density=%.1fx unique=%.2f\n" +
+                "signal: hype=%.2f laugh=%.2f surprise=%.2f tension=%.2f\n" +
+                "keywords: %s\n%s",
                 safe(frame.getTopicLabel(), "unknown"),
-                frame.getBalance(), emaPos, emaNeg,
-                keywords, topAnchor
+                dominant,
+                1.0 + emaPos,          // density 대응: 반응 밀도
+                balance,               // unique 대응: 균형 지수
+                emaPos,                // hype — 긍정 에너지
+                Math.max(0, emaPos - emaNeg) * 0.5, // laugh — 여유로운 긍정
+                Math.abs(emaPos - emaNeg),           // surprise — 감정 격차
+                emaNeg,                              // tension — 부정 긴장
+                keywords,
+                topAnchor
+        );
+    }
+
+    private String buildInsightPrompt(V2AggregateFrame frame, V2SimilarHighlightAlert alert) {
+        List<AnchorChat> anchors = frame.getAnchors();
+        String topAnchor = (anchors != null && !anchors.isEmpty()) ? anchors.get(0).getContent() : "";
+        String keywords = frame.getKeywords() != null ? String.join(" ", frame.getKeywords()) : "";
+        String reasonFirst = alert.getReasonSummary() != null
+                ? alert.getReasonSummary().split("\\|")[0].strip()
+                : "";
+
+        return String.format(
+                "다음 채팅 상황을 보고 지금 시청자들이 어떻게 반응하는지 구어체 한 문장으로만 출력해.\n\n" +
+                "입력:\n" +
+                "주제=%s 키워드=%s 채팅=\"%s\" 패턴=%s\n\n" +
+                "출력 예시:\n" +
+                "- 시청자들이 폭소하고 있어요\n" +
+                "- 시청자들이 감동받고 있어요\n" +
+                "- 시청자들이 비틱에 열받고 있어요\n" +
+                "- 시청자들이 반전에 놀라고 있어요\n\n" +
+                "규칙: 위 예시처럼 \"시청자들이 ~하고 있어요\" 형태, 15자 이내, 딱 그 한 줄만.\n\n" +
+                "출력:",
+                safe(frame.getTopicLabel(), ""),
+                keywords,
+                topAnchor,
+                reasonFirst
         );
     }
 

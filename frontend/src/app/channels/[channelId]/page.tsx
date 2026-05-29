@@ -67,7 +67,7 @@ export default function ChannelDashboard({
     fetchOwned,
   });
 
-  const { frame: v2Frame, connected: v2Connected, similarAlert, dismissAlert } = useV2Stream(channelId, activeTab === "guardrail");
+  const { frame: v2Frame, connected: v2Connected, alertFeed, dismissAlertById, clearAllAlerts } = useV2Stream(channelId, activeTab === "guardrail");
 
   const handleLogin = () => {
     window.location.href = "/api/chzzk/login";
@@ -332,7 +332,7 @@ export default function ChannelDashboard({
           isOwner={isAuthorizedChannel}
         />
       ) : activeTab === "guardrail" ? (
-        <V2GuardrailCard frame={v2Frame} connected={v2Connected} similarAlert={similarAlert} onDismissAlert={dismissAlert} />
+        <V2GuardrailCard frame={v2Frame} connected={v2Connected} alertFeed={alertFeed} onDismissAlert={dismissAlertById} onClearAllAlerts={clearAllAlerts} />
       ) : (
         <PollCard session={pollSession} />
       )}
