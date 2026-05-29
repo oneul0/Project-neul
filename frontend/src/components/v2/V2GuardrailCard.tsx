@@ -1,20 +1,21 @@
 "use client";
 
-import { Activity, Hash, MessageSquare, Shield, Sparkles, TrendingDown, TrendingUp, Users, Wifi, WifiOff, X } from "lucide-react";
-import { type V2AggregateFrame, type V2SimilarHighlightAlert } from "@/hooks/useV2Stream";
+import { Activity, Bell, Hash, MessageSquare, Shield, Sparkles, TrendingDown, TrendingUp, Users, Wifi, WifiOff, X } from "lucide-react";
+import { type AlertFeedItem, type V2AggregateFrame } from "@/hooks/useV2Stream";
 
 interface Props {
   frame: V2AggregateFrame | null;
   connected: boolean;
-  similarAlert: V2SimilarHighlightAlert | null;
-  onDismissAlert: () => void;
+  alertFeed: AlertFeedItem[];
+  onDismissAlert: (id: string) => void;
+  onClearAllAlerts: () => void;
 }
 
-export default function V2GuardrailCard({ frame, connected, similarAlert, onDismissAlert }: Props) {
+export default function V2GuardrailCard({ frame, connected, alertFeed, onDismissAlert, onClearAllAlerts }: Props) {
   return (
     <div className="space-y-4">
       <GuardrailHeader connected={connected} frame={frame} />
-      {similarAlert && <SimilarHighlightBanner alert={similarAlert} onDismiss={onDismissAlert} />}
+      <AlertFeedSection feed={alertFeed} onDismiss={onDismissAlert} onClearAll={onClearAllAlerts} />
       {frame ? (
         <>
           <MentalBufferSection frame={frame} />
@@ -37,7 +38,7 @@ function GuardrailHeader({ connected, frame }: { connected: boolean; frame: V2Ag
       <div className="space-y-1">
         <div className="flex items-center gap-2">
           <Shield className="h-4 w-4 text-[#00FFA3]" />
-          <span className="text-[11px] font-black uppercase tracking-[0.28em] text-white/55">심리 가드레일 v2</span>
+          <span className="text-[11px] font-black uppercase tracking-[0.28em] text-white/55">민심</span>
         </div>
         <h2 className="text-xl font-black tracking-tight text-white">실시간 채팅 심리 분석</h2>
         <p className="text-sm text-white/55">
@@ -59,6 +60,108 @@ function GuardrailHeader({ connected, frame }: { connected: boolean; frame: V2Ag
       </div>
     </div>
   );
+}
+
+function AlertFeedSection({
+  feed,
+  onDismiss,
+  onClearAll,
+}: {
+  feed: AlertFeedItem[];
+  onDismiss: (id: string) => void;
+  onClearAll: () => void;
+}) {
+  return (
+    <div className="rounded-[28px] border border-white/[0.08] bg-[#111111] p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Bell className="h-4 w-4 text-white/40" />
+          <span className="text-sm font-bold text-white/70">하이라이트 감지 피드</span>
+          {feed.length > 0 && (
+            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#00FFA3]/20 px-1.5 text-[10px] font-black text-[#00FFA3]">
+              {feed.length}
+            </span>
+          )}
+        </div>
+        {feed.length > 0 && (
+          <button
+            onClick={onClearAll}
+            className="text-[11px] text-white/30 transition hover:text-white/60"
+          >
+            전체 지우기
+          </button>
+        )}
+      </div>
+
+      {feed.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-8 text-center">
+          <Sparkles className="h-8 w-8 text-white/10" />
+          <p className="mt-3 text-xs text-white/30">과거 하이라이트와 유사한 채팅 패턴이 감지되면 여기에 표시됩니다.</p>
+        </div>
+      ) : (
+        <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+          {feed.map((item) => (
+            <AlertFeedCard key={item._id} item={item} onDismiss={onDismiss} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AlertFeedCard({ item, onDismiss }: { item: AlertFeedItem; onDismiss: (id: string) => void }) {
+  const isPositive = item.trigger === "positive_spike";
+  const accentColor = isPositive ? "#00FFA3" : "#FF6B6B";
+  const borderStyle = isPositive
+    ? "border-[#00FFA3]/20 bg-[#00FFA3]/[0.04]"
+    : "border-[#FF6B6B]/20 bg-[#FF6B6B]/[0.04]";
+
+  // reasonSummary에서 첫 문장만 추출 ("|" 또는 "." 기준)
+  const headline = extractHeadline(item.reasonSummary);
+  const sceneLabel = item.sceneLabel ?? item.category ?? "알 수 없는 장면";
+
+  return (
+    <div className={`rounded-2xl border ${borderStyle} p-4`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0">
+          <div
+            className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+            style={{ backgroundColor: `${accentColor}18` }}
+          >
+            {isPositive
+              ? <TrendingUp className="h-3.5 w-3.5" style={{ color: accentColor }} />
+              : <TrendingDown className="h-3.5 w-3.5" style={{ color: accentColor }} />}
+          </div>
+          <div className="min-w-0 space-y-1.5">
+            <p className="text-xs font-bold leading-5 text-white/85">
+              {item.insight
+                ? item.insight
+                : `과거 '${sceneLabel}' 장면처럼 지금 시청자들이 반응하고 있어요.`}
+            </p>
+            {headline && (
+              <p className="text-xs leading-5 text-white/50">{headline}</p>
+            )}
+            <span className="text-[10px] text-white/25">{timeAgo(item.detectedAt)}</span>
+          </div>
+        </div>
+        <button
+          onClick={() => onDismiss(item._id)}
+          className="shrink-0 rounded-full p-1 text-white/20 transition hover:bg-white/[0.06] hover:text-white/50"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function extractHeadline(reasonSummary: string | null | undefined): string {
+  if (!reasonSummary) return "";
+  // "|" 구분자가 있으면 첫 세그먼트, 없으면 첫 문장
+  const byPipe = reasonSummary.split("|")[0].trim();
+  if (byPipe && byPipe.length < 60) return byPipe;
+  const byDot = reasonSummary.split(/[.。]/)[0].trim();
+  return byDot.length > 60 ? byDot.slice(0, 60) + "…" : byDot;
 }
 
 function MentalBufferSection({ frame }: { frame: V2AggregateFrame }) {
@@ -91,12 +194,6 @@ function MentalBufferSection({ frame }: { frame: V2AggregateFrame }) {
         </div>
       </div>
 
-      {mb && (
-        <div className="flex gap-4 border-t border-white/[0.06] pt-4 text-xs text-white/35">
-          <span>원시 긍정 {pct(mb.rawPositive)}</span>
-          <span>원시 부정 {pct(mb.rawNegative)}</span>
-        </div>
-      )}
     </div>
   );
 }
@@ -145,7 +242,7 @@ function AnchorSection({ frame }: { frame: V2AggregateFrame }) {
     <div className="rounded-[28px] border border-white/[0.08] bg-[#111111] p-6 space-y-4">
       <div className="flex items-center gap-2">
         <MessageSquare className="h-4 w-4 text-white/40" />
-        <span className="text-sm font-bold text-white/70">대표 채팅 (앵커)</span>
+        <span className="text-sm font-bold text-white/70">대표 채팅</span>
       </div>
       {anchors.length === 0 ? (
         <p className="text-xs text-white/30">아직 대표 채팅이 없습니다.</p>
@@ -156,7 +253,7 @@ function AnchorSection({ frame }: { frame: V2AggregateFrame }) {
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-white/50">{a.sender ?? a.senderId}</span>
                 <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] text-white/30">
-                  가중치 {a.weight.toFixed(2)}
+                  비슷한 채팅 {Math.round(a.weight)}개
                 </span>
               </div>
               <p className="text-sm text-white/85 leading-5">{a.content}</p>
@@ -244,62 +341,17 @@ function EmptyState({ connected }: { connected: boolean }) {
       <p className="mt-4 text-sm font-bold text-white/40">
         {connected ? "첫 번째 프레임을 기다리는 중..." : "라이브 스트리밍이 시작되면 분석이 시작됩니다."}
       </p>
-      <p className="mt-1 text-xs text-white/25">v2-raw-chat 토픽에 데이터가 유입되면 자동으로 표시됩니다.</p>
+      <p className="mt-1 text-xs text-white/25">채팅이 수집되면 분석 결과가 출력됩니다.</p>
     </div>
   );
 }
 
-function SimilarHighlightBanner({ alert, onDismiss }: { alert: V2SimilarHighlightAlert; onDismiss: () => void }) {
-  const isPositive = alert.trigger === "positive_spike";
-  const accentColor = isPositive ? "#00FFA3" : "#FF6B6B";
-  const borderClass = isPositive ? "border-[#00FFA3]/25 bg-[#00FFA3]/[0.06]" : "border-[#FF6B6B]/25 bg-[#FF6B6B]/[0.06]";
-
-  return (
-    <div className={`rounded-[28px] border ${borderClass} p-5`}>
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <div
-            className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
-            style={{ backgroundColor: `${accentColor}18` }}
-          >
-            {isPositive
-              ? <TrendingUp className="h-4 w-4" style={{ color: accentColor }} />
-              : <TrendingDown className="h-4 w-4" style={{ color: accentColor }} />}
-          </div>
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-3 w-3" style={{ color: accentColor }} />
-              <span className="text-[11px] font-black uppercase tracking-[0.2em]" style={{ color: accentColor }}>
-                {isPositive ? "유사 하이라이트 패턴 감지" : "유사 반응 패턴 감지"}
-              </span>
-            </div>
-            <p className="text-sm font-bold text-white/90">
-              <span
-                className="mr-2 rounded-lg px-2 py-0.5 text-xs font-black"
-                style={{ backgroundColor: `${accentColor}22`, color: accentColor }}
-              >
-                {alert.sceneLabel ?? alert.category}
-              </span>
-              {alert.reasonSummary
-                ? alert.reasonSummary.length > 60
-                  ? alert.reasonSummary.slice(0, 60) + "…"
-                  : alert.reasonSummary
-                : "과거 하이라이트와 유사한 채팅 반응이 감지됐습니다."}
-            </p>
-            <p className="text-xs text-white/35">
-              유사도 {Math.round(alert.similarity * 100)}% · {alert.category}
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={onDismiss}
-          className="shrink-0 rounded-full p-1.5 text-white/30 transition hover:bg-white/[0.06] hover:text-white/60"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-    </div>
-  );
+function timeAgo(detectedAt: string): string {
+  const diff = Date.now() - new Date(detectedAt).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "방금";
+  if (mins < 60) return `${mins}분 전`;
+  return `${Math.floor(mins / 60)}시간 전`;
 }
 
 function pct(value: number) {

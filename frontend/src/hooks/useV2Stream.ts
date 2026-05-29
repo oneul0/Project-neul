@@ -52,16 +52,20 @@ export interface V2SimilarHighlightAlert {
   similarity: number;
   trigger: "positive_spike" | "negative_spike";
   detectedAt: string;
+  insight?: string;  // LLM 생성 자연어 해석 문장
 }
 
-const ALERT_AUTO_DISMISS_MS = 30_000;
+export interface AlertFeedItem extends V2SimilarHighlightAlert {
+  _id: string;
+}
+
+const MAX_FEED_SIZE = 20;
 
 export function useV2Stream(channelId: string, enabled: boolean) {
   const [frame, setFrame] = useState<V2AggregateFrame | null>(null);
   const [connected, setConnected] = useState(false);
-  const [similarAlert, setSimilarAlert] = useState<V2SimilarHighlightAlert | null>(null);
+  const [alertFeed, setAlertFeed] = useState<AlertFeedItem[]>([]);
   const esRef = useRef<EventSource | null>(null);
-  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!enabled || !channelId) return;
@@ -89,9 +93,11 @@ export function useV2Stream(channelId: string, enabled: boolean) {
     es.addEventListener("v2_similar_highlight", (e: MessageEvent<string>) => {
       try {
         const alert = JSON.parse(e.data) as V2SimilarHighlightAlert;
-        setSimilarAlert(alert);
-        if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-        dismissTimerRef.current = setTimeout(() => setSimilarAlert(null), ALERT_AUTO_DISMISS_MS);
+        const item: AlertFeedItem = {
+          ...alert,
+          _id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        };
+        setAlertFeed((prev) => [item, ...prev].slice(0, MAX_FEED_SIZE));
       } catch {
         // ignore malformed alert
       }
@@ -103,9 +109,14 @@ export function useV2Stream(channelId: string, enabled: boolean) {
       es.close();
       esRef.current = null;
       setConnected(false);
-      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
     };
   }, [channelId, enabled]);
 
-  return { frame, connected, similarAlert, dismissAlert: () => setSimilarAlert(null) };
+  const dismissAlertById = (id: string) => {
+    setAlertFeed((prev) => prev.filter((a) => a._id !== id));
+  };
+
+  const clearAllAlerts = () => setAlertFeed([]);
+
+  return { frame, connected, alertFeed, dismissAlertById, clearAllAlerts };
 }
