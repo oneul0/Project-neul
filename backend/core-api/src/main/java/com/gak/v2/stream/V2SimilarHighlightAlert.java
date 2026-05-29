@@ -23,4 +23,5 @@ public class V2SimilarHighlightAlert {
     private double similarity;
     private String trigger;       // "positive_spike" | "negative_spike"
     private LocalDateTime detectedAt;
+    private String insight;       // LLM이 생성한 자연어 해석 문장
 }

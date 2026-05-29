@@ -1,6 +1,6 @@
 # API 명세
 
-> 기준: 2026-05-20
+> 기준: 2026-05-29
 > 서비스: collector (8081) · core-api (8083) · analyzer (8082, REST 없음)
 
 ---
@@ -92,6 +92,74 @@
 ---
 
 ## Core-API (8083)
+
+### V2 민심 스트림 — `/api/v2`
+
+> 라이브 채팅 심리 분석 결과와 유사 하이라이트 알림을 SSE로 전달하는 V2 전용 엔드포인트.
+
+| 메서드 | 경로 | 인증 | 설명 |
+|--------|------|------|------|
+| GET | `/api/v2/stream/{roomId}` | Public | V2 실시간 SSE 스트림. 15초마다 keep-alive ping |
+| GET | `/api/v2/state/{roomId}` | Public | Redis에 저장된 최신 V2 프레임 조회 (SSE 연결 전 초기 상태 로드용) |
+
+**SSE 이벤트 타입**
+
+| 이벤트 | 발생 시점 | 설명 |
+|--------|-----------|------|
+| `ping` | 15초마다 | 연결 유지용 keep-alive |
+| `v2_frame` | Kafka `v2-aggregate` 토픽 소비 시 | EMA 감정 집계, 대표 채팅, 키워드, AI 브리핑, 신뢰 등급 분포 |
+| `v2_similar_highlight` | 스파이크 감지 + pgvector 유사도 임계값 초과 시 | 과거 VOD 하이라이트 유사 패턴 알림 |
+
+**`v2_frame` 이벤트 데이터**
+```json
+{
+  "roomId": "string",
+  "emittedAt": "ISO8601",
+  "balance": 0.85,
+  "mentalBuffer": {
+    "emaPositive": 0.82,
+    "emaNegative": 0.08
+  },
+  "anchors": [
+    { "messageId": "string", "sender": "string", "content": "string", "weight": 24 }
+  ],
+  "keywords": ["string"],
+  "topicLabel": "string",
+  "briefing": {
+    "summary": "string",
+    "confidence": 0.88
+  },
+  "trustSummary": {
+    "fanCount": 18,
+    "normalCount": 30,
+    "trollCount": 2,
+    "total": 50
+  }
+}
+```
+
+**`v2_similar_highlight` 이벤트 데이터**
+```json
+{
+  "roomId": "string",
+  "highlightId": 0,
+  "videoNo": "string",
+  "sceneLabel": "string",
+  "category": "string",
+  "reasonSummary": "string",
+  "similarity": 0.85,
+  "trigger": "positive_spike | negative_spike",
+  "detectedAt": "ISO8601",
+  "insight": "시청자들이 ~하고 있어요"
+}
+```
+
+> **스파이크 감지 기준**: `emaPositive > 0.55` → `positive_spike`, `emaNegative > 0.45` → `negative_spike`  
+> **유사도 임계값**: 환경변수 `GAK_V2_SIMILARITY_THRESHOLD` (기본값 `0.72`)  
+> **쿨다운**: `GAK_V2_SIMILARITY_ALERT_COOLDOWN_MINUTES` (기본값 `3`)  
+> **insight 생성**: Ollama `gemma:2b`로 현재 채팅 컨텍스트 + 과거 장면 정보를 조합해 자연어 해석 문장 생성
+
+---
 
 ### SSE 스트림 — `/api/v1/stream`
 

@@ -1,6 +1,6 @@
 # Project Gak (각) 실행 가이드
 
-최종 업데이트: 2026-05-16
+최종 업데이트: 2026-05-29
 
 이 문서는 현재 코드 기준 실행 순서를 정리한 문서입니다.
 예전 문서에 있던 `schema.sql` 수동 반영, 공개 대시보드 전제, 오래된 배치 설명은 모두 제외했습니다.
@@ -10,10 +10,11 @@
 - `frontend` : Next.js, 3000
 - `collector` : CHZZK 로그인/실시간 채팅/VOD 크롤링, 8081
 - `analyzer` : 채팅 분석 및 VOD 편집 후보 계산, 8082
-- `core-api` : 저장/조회/SSE, 8083
-- `postgres` : 분석 결과 저장
-- `redis` : 세션 및 일부 상태 저장
+- `core-api` : 저장/조회/SSE/V2 민심 스트림, 8083
+- `postgres` : 분석 결과 저장 (pgvector 확장 포함)
+- `redis` : 세션 및 일부 상태 저장 (V2 최신 프레임 캐시 포함)
 - `kafka` : 서비스 간 이벤트 전달
+- `ollama` : 로컬 LLM 서버 — 임베딩(`nomic-embed-text`) + 텍스트 생성(`gemma:2b`)
 
 ## 2. 사전 준비
 
@@ -21,6 +22,8 @@
 
 - Docker Desktop 실행 중
 - JDK 17 사용 가능
+- **Ollama 실행 중** (`ollama serve` 또는 앱 실행) — 임베딩·텍스트 생성에 필수
+  - 필요 모델: `ollama pull nomic-embed-text && ollama pull gemma:2b`
   - macOS의 `backend/gradlew`는 설치된 JDK 17이 있으면 그 경로를 우선 사용합니다.
   - Windows는 필요하면 `JAVA17_HOME` 또는 `JAVA_HOME`을 JDK 17로 맞춘 뒤 `gradlew.bat`를 실행합니다.
 - Node.js / npm 사용 가능
@@ -131,6 +134,29 @@ curl.exe -X POST "http://localhost:8081/api/v1/dev/mock-chat/채널ID?count=10"
 - core-api보다 먼저 collector를 띄워 상태 조회가 꼬이는 경우
 - analyzer가 늦게 떠서 completion 이벤트를 놓치는 경우
 - 브라우저가 backend를 직접 치는 구조라고 가정하고 디버깅하는 경우
+
+## 8-1. 유사 하이라이트 알림 테스트 (민심 탭)
+
+> VOD 분석이 완료된 데이터가 DB에 있어야 유사도 검색이 동작한다.
+
+1. 브라우저에서 민심 탭 진입 → **연결됨** 뱃지 확인
+2. 아래 명령으로 테스트 Kafka 메시지 주입
+
+```bash
+docker exec -it gak-kafka bash -c "echo '{"roomId":"채널ID","balance":0.85,"mentalBuffer":{"emaPositive":0.82,"emaNegative":0.08},"topicLabel":"감동 장면","keywords":["감동","울었다","역대급"],"anchors":[{"messageId":"m1","senderId":"u1","sender":"시청자","content":"진짜 울었다 ㅠㅠ","weight":20}],"briefing":{"summary":"긍정 반응 급증","confidence":0.9},"trustSummary":{"fanCount":20,"normalCount":25,"trollCount":2,"total":47}}' | /usr/bin/kafka-console-producer --broker-list localhost:9092 --topic v2-aggregate"
+```
+
+3. core-api 로그에서 `Similar highlight alert emitted` 확인
+4. 민심 탭 **하이라이트 감지 피드** 섹션에 알림 카드 표시 확인
+
+**임계값 조정** (데모/테스트용):
+```env
+# backend/.env
+GAK_V2_SIMILARITY_THRESHOLD=0.1       # 기본값 0.72
+GAK_V2_SIMILARITY_ALERT_COOLDOWN_MINUTES=0  # 기본값 3
+```
+
+---
 
 ## 9. 중지
 

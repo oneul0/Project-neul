@@ -33,6 +33,12 @@ public class HighlightEmbeddingService {
     @Value("${app.ollama.embed-model}")
     private String embedModel;
 
+    @Value("${app.ollama.generate-url}")
+    private String generateUrl;
+
+    @Value("${app.ollama.generate-model}")
+    private String generateModel;
+
     public HighlightEmbeddingService(WebClient.Builder webClientBuilder,
                                      DatabaseClient databaseClient,
                                      ObjectMapper objectMapper) {
@@ -80,6 +86,35 @@ public class HighlightEmbeddingService {
         return requestEmbedding(text);
     }
 
+    /**
+     * Ollama generative 모델로 현재 채팅 상황 해석 문장 생성.
+     * 실패하면 fallback 문장 반환.
+     */
+    @SuppressWarnings("unchecked")
+    public Mono<String> generateInsight(String prompt) {
+        Map<String, Object> body = Map.of(
+                "model", generateModel,
+                "prompt", prompt,
+                "stream", false
+        );
+
+        return webClient.post()
+                .uri(generateUrl)
+                .bodyValue(body)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .map(response -> {
+                    String raw = (String) response.get("response");
+                    if (raw == null || raw.isBlank()) return null;
+                    return sanitizeInsight(raw);
+                })
+                .onErrorResume(e -> {
+                    log.warn("[Embedding] generateInsight failed: {}", e.getMessage());
+                    return Mono.empty();
+                })
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
     @SuppressWarnings("unchecked")
     private Mono<float[]> requestEmbedding(String text) {
         Map<String, String> body = Map.of("model", embedModel, "prompt", text);
@@ -107,6 +142,36 @@ public class HighlightEmbeddingService {
                 .bind("vec", PgVectorUtils.toLiteral(vector))
                 .bind("id", highlightId)
                 .then();
+    }
+
+    /** LLM 출력에서 공문서 말투·불필요한 수식어 정리 */
+    private static String sanitizeInsight(String raw) {
+        String s = raw.strip()
+                .replaceAll("^\"|\"$", "")   // 앞뒤 따옴표
+                .replace("\n", " ")           // 줄바꿈
+                .strip();
+
+        // "출력:" 이후 내용만 추출
+        int outIdx = s.lastIndexOf("출력:");
+        if (outIdx >= 0) s = s.substring(outIdx + 3).strip();
+
+        // 가장 짧은 첫 줄만
+        String firstLine = s.split("\n")[0].strip();
+        if (!firstLine.isBlank()) s = firstLine;
+
+        // 공문서 말투 → 구어체 변환
+        s = s.replace("것으로 확인되었습니다", "고 있어요")
+             .replace("것으로 보입니다", "고 있어요")
+             .replace("것으로 판단됩니다", "고 있어요")
+             .replace("하고 있는 것으로", "하고 있어요")
+             .replace("있습니다", "있어요")
+             .replace("됩니다", "돼요")
+             .replace("합니다", "해요");
+
+        // 너무 길면 자르기 (30자)
+        if (s.length() > 30) s = s.substring(0, 30).strip() + "…";
+
+        return s.isBlank() ? null : s;
     }
 
     private static String safe(String value, String fallback) {
