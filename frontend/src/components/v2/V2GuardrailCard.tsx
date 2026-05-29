@@ -37,7 +37,7 @@ function GuardrailHeader({ connected, frame }: { connected: boolean; frame: V2Ag
       <div className="space-y-1">
         <div className="flex items-center gap-2">
           <Shield className="h-4 w-4 text-[#00FFA3]" />
-          <span className="text-[11px] font-black uppercase tracking-[0.28em] text-white/55">심리 가드레일 v2</span>
+          <span className="text-[11px] font-black uppercase tracking-[0.28em] text-white/55">민심</span>
         </div>
         <h2 className="text-xl font-black tracking-tight text-white">실시간 채팅 심리 분석</h2>
         <p className="text-sm text-white/55">
@@ -145,7 +145,7 @@ function AnchorSection({ frame }: { frame: V2AggregateFrame }) {
     <div className="rounded-[28px] border border-white/[0.08] bg-[#111111] p-6 space-y-4">
       <div className="flex items-center gap-2">
         <MessageSquare className="h-4 w-4 text-white/40" />
-        <span className="text-sm font-bold text-white/70">대표 채팅 (앵커)</span>
+        <span className="text-sm font-bold text-white/70">대표 채팅</span>
       </div>
       {anchors.length === 0 ? (
         <p className="text-xs text-white/30">아직 대표 채팅이 없습니다.</p>
@@ -244,7 +244,7 @@ function EmptyState({ connected }: { connected: boolean }) {
       <p className="mt-4 text-sm font-bold text-white/40">
         {connected ? "첫 번째 프레임을 기다리는 중..." : "라이브 스트리밍이 시작되면 분석이 시작됩니다."}
       </p>
-      <p className="mt-1 text-xs text-white/25">v2-raw-chat 토픽에 데이터가 유입되면 자동으로 표시됩니다.</p>
+      <p className="mt-1 text-xs text-white/25">채팅이 수집되면 분석 결과가 출력됩니다.</p>
     </div>
   );
 }

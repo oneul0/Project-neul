@@ -174,10 +174,10 @@ export default function ChannelDashboard({
         <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
           <div className="space-y-2">
             <div className="text-[11px] font-black uppercase tracking-[0.28em] text-white/55">
-              {activeTab === "poll" ? "투표 관리" : activeTab === "roulette" ? "룰렛 관리" : activeTab === "guardrail" ? "심리 가드레일" : "VOD 하이라이트"}
+              {activeTab === "poll" ? "투표 관리" : activeTab === "roulette" ? "룰렛 관리" : activeTab === "guardrail" ? "민심" : "VOD 하이라이트"}
             </div>
             <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">
-              {activeTab === "poll" ? "투표" : activeTab === "roulette" ? "도네이션 룰렛" : activeTab === "guardrail" ? "실시간 심리 분석" : "VOD 하이라이트 워크스페이스"}
+              {activeTab === "poll" ? "투표" : activeTab === "roulette" ? "도네이션 룰렛" : activeTab === "guardrail" ? "민심" : "VOD 하이라이트 워크스페이스"}
             </h1>
             <p className="text-sm leading-6 text-white/65">
               {activeTab === "poll"
@@ -234,7 +234,7 @@ export default function ChannelDashboard({
                 }`}
               >
                 <ShieldCheck className="h-4 w-4" />
-                가드레일
+                민심
               </button>
             </div>
 
