@@ -150,7 +150,7 @@ function AnchorSection({ frame }: { frame: V2AggregateFrame }) {
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-white/50">{a.sender ?? a.senderId}</span>
                 <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] text-white/30">
-                  가중치 {a.weight.toFixed(2)}
+                  비슷한 채팅 {Math.round(a.weight)}개
                 </span>
               </div>
               <p className="text-sm text-white/85 leading-5">{a.content}</p>
