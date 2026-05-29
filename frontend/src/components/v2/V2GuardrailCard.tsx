@@ -91,12 +91,6 @@ function MentalBufferSection({ frame }: { frame: V2AggregateFrame }) {
         </div>
       </div>
 
-      {mb && (
-        <div className="flex gap-4 border-t border-white/[0.06] pt-4 text-xs text-white/35">
-          <span>원시 긍정 {pct(mb.rawPositive)}</span>
-          <span>원시 부정 {pct(mb.rawNegative)}</span>
-        </div>
-      )}
     </div>
   );
 }
