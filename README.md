@@ -22,7 +22,7 @@
 
 |  🔐 로그인  |  🎬 VOD 하이라이트  |  🎯 투표  | 🎯 룰렛 |
 |:---:|:---:|:---:| :---:|
-| <img width="1470" height="799" alt="Image" src="https://github.com/user-attachments/assets/93436775-bca9-44ca-8dd3-f86d2bc91450" /> | <img width="1470" height="802" alt="Image" src="https://github.com/user-attachments/assets/0aba945c-7fb4-4454-a050-f1166f1e1051" /> | <img width="1458" height="733" alt="Image" src="https://github.com/user-attachments/assets/47ba8b2f-1a69-4e48-8675-2be4d41e7358" /> | <img width="1453" height="727" alt="Image" src="https://github.com/user-attachments/assets/661f9143-13f9-452b-ad56-458377303ff9" /> |
+| <img width="1470" height="799" alt="Image" src="https://github.com/user-attachments/assets/93436775-bca9-44ca-8dd3-f86d2bc91450" /> | <img width="1470" height="802" alt="Image" src="https://github.com/user-attachments/assets/0aba945c-7fb4-4454-a050-f1166f1e1051" /> | <img width="1442" height="737" alt="Image" src="https://github.com/user-attachments/assets/e1e7917a-281b-454e-a1e5-69bc3c2754aa" /> | <img width="1416" height="736" alt="Image" src="https://github.com/user-attachments/assets/4703d625-544d-4d58-a49c-737725ae4a20" /> |
 | CHZZK OAuth 로그인 | 편집 후보 구간 자동 선별 | 채팅 기반 투표 | 도네이션 룰렛 |
 
 ---
