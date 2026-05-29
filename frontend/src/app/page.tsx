@@ -71,23 +71,25 @@ export default function Home() {
         <div className="mx-auto max-w-2xl text-center">
           <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-[#00FFA3]/25 bg-[#00FFA3]/10 px-4 py-2 text-[11px] font-black tracking-[0.2em] text-[#00FFA3]">
             <ShieldCheck className="h-3.5 w-3.5" />
-            스트리머 전용 대시보드
+            스트리머 전용
           </div>
 
-          <h1 className="mt-6 text-4xl font-black tracking-tight text-white sm:text-5xl">
-            방송 중 시청자 흐름을
-            <br />
-            한눈에 보는 운영 화면
-          </h1>
-
-          <p className="mt-4 text-base leading-8 text-white/60">
-            실시간 투표·도네이션 룰렛으로 방송을 풍성하게 하고,
-            VOD 채팅 분석으로 편집 후보 구간을 빠르게 찾을 수 있는 스트리머 전용 운영 도구입니다.
-          </p>
+          <ul className="mt-6 space-y-2 text-base text-white/60">
+            <li className="flex items-center justify-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#00FFA3]" />
+              실시간 투표
+            </li>
+            <li className="flex items-center justify-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#00FFA3]" />
+              도네이션 룰렛
+            </li>
+            <li className="flex items-center justify-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#00FFA3]" />
+              VOD 하이라이트 추출
+            </li>
+          </ul>
 
           <div className="mt-10 rounded-[24px] border border-white/[0.08] bg-[#1A1A1A] p-6 text-left">
-            <div className="text-[11px] font-black tracking-[0.22em] text-white/40">현재 상태</div>
-
             {authLoading ? (
               <div className="mt-4 text-sm font-bold text-white/50">로그인 상태를 확인하고 있습니다...</div>
             ) : isAuthenticated ? (
@@ -101,10 +103,7 @@ export default function Home() {
               </>
             ) : (
               <>
-                <div className="mt-4 text-2xl font-black text-white">치지직 로그인 후 시작</div>
-                <div className="mt-2 text-sm text-white/60">
-                  {ownerProfile?.message || "본인 방송 소유자만 대시보드에 접근할 수 있습니다."}
-                </div>
+                <div className="mt-4 text-2xl font-black text-white">치지직 로그인이 필요합니다</div>
               </>
             )}
 

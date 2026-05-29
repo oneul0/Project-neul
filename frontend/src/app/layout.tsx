@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "각 Control",
+  title: "각",
   description: "Owner-only live operations dashboard for CHZZK stream analytics.",
 };
 
@@ -39,18 +39,15 @@ export default function RootLayout({
                   <Activity className="h-4.5 w-4.5 text-[#000000]" />
                 </div>
                 <div>
-                  <div className="text-[10px] font-black uppercase tracking-[0.28em] text-white/40">
-                    Stream Ops
-                  </div>
                   <div className="text-base font-black tracking-tight text-white">
-                    각 <span className="text-white/40">Control</span>
+                    각
                   </div>
                 </div>
               </Link>
 
               <div className="hidden items-center gap-2 rounded-full border border-[#00FFA3]/20 bg-[#00FFA3]/10 px-4 py-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-[#00FFA3] lg:inline-flex">
                 <span className="h-1.5 w-1.5 rounded-full bg-[#00FFA3]" />
-                CHZZK 전용 운영 도구
+                CHZZK 전용
               </div>
             </div>
           </header>
@@ -61,7 +58,7 @@ export default function RootLayout({
 
           <footer className="border-t border-white/[0.06] bg-[#000000]">
             <div className="mx-auto flex w-full max-w-[1560px] flex-col gap-2 px-5 py-6 text-xs text-white/30 sm:px-8 md:flex-row md:items-center md:justify-between">
-              <div>각 Control — CHZZK 스트리머 전용 실시간 운영 대시보드</div>
+              <div>각 — CHZZK 스트리머 전용 실시간 운영 대시보드</div>
               <div>Naver · CHZZK와 공식 제휴 관계가 아닙니다.</div>
             </div>
           </footer>
