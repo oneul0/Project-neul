@@ -73,14 +73,19 @@ VOD에서 추출한 임베딩은 다음 라이브 방송에서 재사용된다. 
 
 ```mermaid
 graph LR
-    Spike[라이브 감정 급등\nemaPositive > 0.55] --> Embed[현재 채팅 패턴\n비율 텍스트 → 768차원]
-    Embed --> Search[pgvector 코사인 검색\nvod_highlights.embedding]
-    Search --> A["전략 A 60%\n같은 카테고리 + 코사인 유사도"]
-    Search --> B["전략 B 20%\n다른 카테고리 + 높은 점수"]
-    Search --> C["전략 C 20%\n다른 채널 + 코사인 유사도"]
-    A & B & C --> Gate["코사인 ≥ 0.72\n쿨다운 3분"]
-    Gate --> Alert[SSE 알림\nv2_similar_highlight]
+    Spike["라이브 감정 급등\nemaPos > 0.55 또는 emaNeg > 0.45"]
+    --> Embed["buildLiveEmbeddingText()\n비율 기반 설명 텍스트\n(VOD 임베딩과 동일 포맷)"]
+    --> OllamaE["Ollama nomic-embed-text\n→ float[768]"]
+    --> Search["pgvector findMostSimilarLive()\ncosine kNN k=1\nvod_highlights.embedding"]
+    Search -->|"유사 없음"| Drop(["알림 없음"])
+    Search -->|"유사 발견"| Gate["코사인 ≥ 0.72\n쿨다운 3분 (인메모리)"]
+    Gate -->|"임계값 미달/쿨다운"| Drop
+    Gate -->|"통과"| LLM["Ollama gemma:2b\nbuildInsightPrompt → sanitizeInsight\n시청자들이 ~하고 있어요"]
+    LLM --> Alert["V2SimilarHighlightAlert\n.insight 포함\nSSE v2_similar_highlight"]
 ```
+
+> `findMostSimilarLive`는 VOD few-shot 검색의 3전략(A/B/C)과 다른 별도 메서드다.  
+> 라이브 실시간 감지는 단일 코사인 kNN(k=1)만 사용한다.
 
 ---
 
@@ -272,28 +277,30 @@ graph TB
 
     subgraph CO ["Collector :8081"]
         CO1["CHZZK OAuth\n로그인 · 콜백 · 세션 발급"]
-        CO2["WebSocket 수집\n실시간 채팅 구독"]
+        CO2["WebSocket 수집\n실시간 채팅 구독 (v1 + v2)"]
         CO3["VOD 크롤러\n채팅 페이지 cursor 순회"]
     end
 
     subgraph CA ["Core-API :8083"]
-        CA1["SSE 스트림\n실시간 감정 분석 결과"]
+        CA1["SSE 스트림 (v1)\n실시간 감정 분석 결과"]
         CA2["VOD API\n하이라이트 · 타임라인"]
         CA3["투표 · 도네이션 · 룰렛"]
         CA4["사용자 VOD 라이브러리"]
+        CA5["V2 민심 스트림\nV2StreamService\nv2_frame · v2_similar_highlight SSE"]
     end
 
     subgraph AZ ["Analyzer :8082  (REST 없음 — Kafka 전용)"]
-        AZ1["채팅 감정 분류\n휴리스틱 + Ollama gemma3"]
+        AZ1["채팅 감정 분류\n휴리스틱 + Ollama gemma3:4b"]
         AZ2["하이라이트 추출\n3축 채점 → LLM 리뷰 → 버킷 분산"]
         AZ3["임베딩 생성\nnomic-embed-text → 768차원"]
+        AZ4["V2 집계\nV2ContextAgent → EmaBufferService\n→ V2AggregatePublisher"]
     end
 
     subgraph INFRA ["인프라"]
-        KAFKA[["Kafka\nchat-topic\nvod-crawl-complete-topic\nvod-analyzed-topic\nvod-window-summary-topic\nvod-analysis-complete-topic"]]
-        REDIS[("Redis\n세션 · OAuth state · 슬롯 카운터 · 큐")]
+        KAFKA[["Kafka\nchat-topic · vod-crawl-complete-topic\nvod-analyzed-topic · vod-window-summary-topic\nvod-analysis-complete-topic\nv2-raw-chat · v2-aggregate"]]
+        REDIS[("Redis\n세션 · OAuth state · 슬롯 카운터\ngak:v2:state:{roomId} (최신 프레임 캐시)")]
         DB[("PostgreSQL + pgvector\nanalyzed_chats · vod_highlights\nvod_timeline_points · user_vod_*")]
-        OLLAMA["Ollama\ngemma3 — 감정 분석 · 하이라이트 판정\nnomic-embed-text — 768차원 임베딩"]
+        OLLAMA["Ollama\ngemma3:4b — 감정 분석 · 하이라이트 판정\ngemma:2b — V2 인사이트 생성\nnomic-embed-text — 768차원 임베딩"]
     end
 
     EXT(["치지직 API  (외부)"])
@@ -324,12 +331,21 @@ graph TB
     AZ2 --> AZ3
     AZ3 --- OLLAMA
 
+    KAFKA -- "v2-raw-chat" --> AZ4
+    AZ4 --> KAFKA
+    KAFKA -- "v2-aggregate" --> CA5
+    CA5 --- REDIS
+    CA5 --- DB
+    CA5 --- OLLAMA
+
     KAFKA -- "분석 완료 신호" --> CO3
     KAFKA -- "하이라이트 · 타임라인" --> CA2
     CA2 --> DB
     CA1 --- DB
     CA3 --- REDIS
     CA4 --- DB
+
+    PROXY -- "SSE (v2)" --> CA5
 ```
 
 ---
@@ -379,3 +395,94 @@ sequenceDiagram
     Kafka-->>CO: 분석 완료 신호 수신
     Note over CO: ANALYZING → COMPLETED 상태 전이
 ```
+
+---
+
+## 8. V2 실시간 채팅 분석 파이프라인
+
+> WebSocket 수집 → Kafka → 감정 집계 → EMA 스파이크 감지 → SSE → 대시보드
+
+```mermaid
+flowchart TD
+    WS["치지직 WebSocket\n실시간 채팅"]
+
+    subgraph COL ["Collector :8081"]
+        V2P["V2ChatProducer"]
+    end
+
+    KAFKA1[["Kafka\nv2-raw-chat"]]
+
+    subgraph ANA ["Analyzer :8082"]
+        CTX["V2ContextAgent\n감정 분류 · 키워드 · 신뢰도 점수"]
+        EMA["V2EmaBufferService\nEMA 지수이동평균\nemaPositive / emaNegative 누적"]
+        PUB["V2AggregatePublisher\n최종 프레임 발행"]
+    end
+
+    KAFKA2[["Kafka\nv2-aggregate"]]
+
+    subgraph CORE ["Core-API :8083"]
+        direction TB
+        CONS["consumeAggregate()\n매 프레임 수신 · Redis 캐시 갱신"]
+        SSE1(["SSE emit\nv2_frame\n민심 탭 실시간 지표 업데이트"])
+        SPIKE{"handleSpikeDetection()\nemaPos > 0.55\n또는 emaNeg > 0.45?"}
+        EMB["buildLiveEmbeddingText()\n비율 기반 텍스트 생성"]
+        OE["Ollama nomic-embed-text\n→ float[768]"]
+        PGV["pgvector findMostSimilarLive()\ncosine kNN k=1\nthreshold ≥ 0.72"]
+        INS["Ollama gemma:2b\nbuildInsightPrompt → sanitizeInsight\n시청자들이 ~하고 있어요"]
+        SSE2(["SSE emit\nv2_similar_highlight\n하이라이트 감지 피드 알림"])
+    end
+
+    FE["Next.js 민심 탭\n실시간 지표 · 알림 피드"]
+
+    WS --> COL --> KAFKA1 --> CTX --> EMA --> PUB --> KAFKA2
+    KAFKA2 --> CONS
+    CONS --> SSE1
+    CONS --> SPIKE
+    SPIKE -->|"감지 없음"| CONS
+    SPIKE -->|"스파이크 감지"| EMB --> OE --> PGV
+    PGV -->|"유사 없음 또는 쿨다운"| CONS
+    PGV -->|"유사 발견"| INS --> SSE2
+    SSE1 --> FE
+    SSE2 --> FE
+```
+
+> 스파이크 쿨다운은 인메모리 `ConcurrentHashMap`에 보관 — 재기동 시 초기화됨.  
+> `gak:v2:state:{roomId}` Redis 키로 최신 프레임을 캐시해 브라우저 초기 로드 시 즉시 반환.
+
+---
+
+## 9. AI 개발 워크플로우
+
+> CLAUDE.md 규칙 주입 → Researcher → Planner → Human Approval Gate → Reviewer → 코드 반영
+
+```mermaid
+flowchart LR
+    subgraph INPUT ["입력"]
+        CM["CLAUDE.md\n규칙 + 실행 조건 정의"]
+        TASK["작업 요청"]
+    end
+
+    subgraph PIPELINE ["3-에이전트 파이프라인  (scripts/run_workflow.py)"]
+        direction TB
+        R["Researcher\n코드베이스 탐색 (읽기 전용)\nread_file · grep · list_directory\n→ 파일 목록 + 의존 관계 보고서"]
+        P["Planner\n단계별 구현 계획 작성\n위험 요소 · 롤백 전략 포함\n→ 계획서 (파일명 · 순서 · 검증 방법)"]
+        REV["Reviewer\n계획서 ↔ 실제 코드 대조\n사실 오류 · 실행 가능성 검증\n→ ✅ 승인 / ⚠️ 조건부 / ❌ 반려"]
+    end
+
+    GATE(["Human Approval Gate\nEnterPlanMode → 계획 검토\n→ ExitPlanMode 승인 전 파일 수정 불가"])
+
+    IMPL["구현\n계획대로 파일 수정\n단계별 컴파일 확인"]
+
+    CM --> R
+    TASK --> R
+    R -->|"보고서"| P
+    P -->|"계획서"| GATE
+    GATE -->|"승인"| REV
+    GATE -->|"수정 요청"| P
+    REV -->|"✅ / ⚠️ 수정 후 진행"| IMPL
+    REV -->|"❌ 재정의 필요"| TASK
+    IMPL -->|"완료 후 detect_changes\n리스크 스코어 확인"| GATE
+```
+
+> 각 에이전트는 독립된 Claude API 호출로 실행 — 이전 에이전트의 편향이 다음 단계에 누적되지 않는다.  
+> `workflow_output/`에 실행 결과가 저장돼 어떤 판정이 내려졌는지 이력으로 남는다.
