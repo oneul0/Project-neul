@@ -73,7 +73,7 @@ public class OllamaAnalyzerService {
     // 향후 병렬 분석이 필요하면 Semaphore(N)으로 확장 가능.
     private final Semaphore llmSlot = new Semaphore(1);
 
-    @CircuitBreaker(name = "geminiApi", fallbackMethod = "fallbackAnalyzeBatch")
+    @CircuitBreaker(name = "llmApi", fallbackMethod = "fallbackAnalyzeBatch")
     public Mono<List<AnalyzedChatMessage>> analyzeBatch(List<CompressedChat> chats) {
         if (chats == null || chats.isEmpty()) {
             return Mono.just(List.of());

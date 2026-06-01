@@ -36,7 +36,7 @@ public class ChatAnalysisProcessor {
     /**
      * raw-chat-topic에서 배치로 메시지를 수신합니다.
      * <p>
-     * - CHAT 타입 → ChatOptimizer 최적화 → Gemini 감정 분석 → analyzed-chat-topic
+     * - CHAT 타입 → ChatOptimizer 최적화 → LLM 감정 분석 → analyzed-chat-topic
      * - DONATION 타입 → 분석 없이 패스스루 → analyzed-chat-topic
      * - SUBSCRIPTION 타입 → 분석 없이 패스스루 → analyzed-chat-topic
      */
@@ -194,7 +194,7 @@ public class ChatAnalysisProcessor {
         log.info("[Processor] Sending {} ambiguous chats (compressed to {}) to LLM", 
                 ambiguousMessages.size(), optimized.getCompressedChats().size());
 
-        // Gemini 감정 분석
+        // LLM 감정 분석
         analyzerService.analyzeBatch(optimized.getCompressedChats())
                 .subscribe(
                         analyzed -> analyzed.forEach(msg -> {

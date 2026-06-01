@@ -28,7 +28,7 @@ public class OptimizedBatch {
     /**
      * 압축률 (%).
      * {@code (1 - 최종 전달 수 / 원본 수) * 100}
-     * 값이 클수록 Gemini API 토큰 절감 효과가 큼.
+     * 값이 클수록 LLM 토큰 절감 효과가 큼.
      */
     private final double compressionRatio;
 }
