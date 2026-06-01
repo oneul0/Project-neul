@@ -70,11 +70,11 @@ public class ChatAnalysisProcessor {
         // Step 2: 메시지 타입별 분기
         List<RawChatMessage> chatMessages = parsed.stream()
                 .filter(m -> "CHAT".equals(m.getMessageType()))
-                .collect(Collectors.toList());
+                .toList();
 
         List<RawChatMessage> passthroughMessages = parsed.stream()
                 .filter(m -> !"CHAT".equals(m.getMessageType()))
-                .collect(Collectors.toList());
+                .toList();
 
         // Step 3: DONATION / SUBSCRIPTION 패스스루 즉시 발행
         passthroughMessages.forEach(this::publishPassthrough);

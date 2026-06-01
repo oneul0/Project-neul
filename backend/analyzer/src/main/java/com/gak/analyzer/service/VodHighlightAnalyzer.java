@@ -3,13 +3,10 @@ package com.gak.analyzer.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gak.common.dto.VodCrawlCompletedEvent;
-import com.gak.common.dto.VodAnalysisCompletedEvent;
-import com.gak.common.dto.VodAnalysisFailedEvent;
 import com.gak.common.dto.VodHighlightPoint;
 import com.gak.common.dto.VodTimelinePoint;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Service;
@@ -31,11 +28,13 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
 @Service
@@ -53,6 +52,7 @@ public class VodHighlightAnalyzer {
     private static final Duration FINALIZE_QUIET_PERIOD = Duration.ofMillis(1200);
     private static final Duration FINALIZE_RETRY_DELAY = Duration.ofMillis(600);
     private static final int MAX_FINALIZE_RETRIES = 12;
+    private static final int FINALIZATION_THREADS = 2;
     private static final int SPIKE_BUCKET_SECONDS = 5;
     private static final List<String> GACHA_TOKENS = List.of("가챠", "뽑", "뽑기", "단챠", "10연", "연차", "픽업", "전설", "ssr", "레전", "천장", "확률", "득템", "나왔다");
     private static final List<String> FLEX_TOKENS = List.of("비틱", "부럽", "원트", "한방", "개부럽", "쉽게", "미쳤다", "실화", "말이돼", "와");
@@ -72,12 +72,13 @@ public class VodHighlightAnalyzer {
     private static final Pattern TOKEN_SPLIT_PATTERN = Pattern.compile("[^0-9a-zA-Zㄱ-ㅎㅏ-ㅣ가-힣]+");
 
     private final ObjectMapper objectMapper;
-    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final VodAnalysisEventPublisher eventPublisher;
     private final OllamaAnalyzerService ollamaAnalyzerService;
     private final Map<String, VideoAggregate> aggregates = new ConcurrentHashMap<>();
     private final Map<String, VodCrawlCompletedEvent> pendingCompletions = new ConcurrentHashMap<>();
     private final Map<String, Long> finalizeGenerations = new ConcurrentHashMap<>();
     private final ScheduledExecutorService finalizeScheduler;
+    private final Executor finalizationExecutor;
     private final Duration finalizeQuietPeriod;
     private final Duration finalizeRetryDelay;
     private final int maxFinalizeRetries;
@@ -85,14 +86,15 @@ public class VodHighlightAnalyzer {
     @Autowired
     public VodHighlightAnalyzer(
             ObjectMapper objectMapper,
-            KafkaTemplate<String, String> kafkaTemplate,
+            VodAnalysisEventPublisher eventPublisher,
             OllamaAnalyzerService ollamaAnalyzerService
     ) {
         this(
                 objectMapper,
-                kafkaTemplate,
+                eventPublisher,
                 ollamaAnalyzerService,
                 Executors.newSingleThreadScheduledExecutor(new FinalizeThreadFactory()),
+                Executors.newFixedThreadPool(FINALIZATION_THREADS, new FinalizationThreadFactory()),
                 FINALIZE_QUIET_PERIOD,
                 FINALIZE_RETRY_DELAY,
                 MAX_FINALIZE_RETRIES
@@ -101,17 +103,40 @@ public class VodHighlightAnalyzer {
 
     VodHighlightAnalyzer(
             ObjectMapper objectMapper,
-            KafkaTemplate<String, String> kafkaTemplate,
+            VodAnalysisEventPublisher eventPublisher,
             OllamaAnalyzerService ollamaAnalyzerService,
             ScheduledExecutorService finalizeScheduler,
             Duration finalizeQuietPeriod,
             Duration finalizeRetryDelay,
             int maxFinalizeRetries
     ) {
+        this(
+                objectMapper,
+                eventPublisher,
+                ollamaAnalyzerService,
+                finalizeScheduler,
+                Runnable::run,
+                finalizeQuietPeriod,
+                finalizeRetryDelay,
+                maxFinalizeRetries
+        );
+    }
+
+    VodHighlightAnalyzer(
+            ObjectMapper objectMapper,
+            VodAnalysisEventPublisher eventPublisher,
+            OllamaAnalyzerService ollamaAnalyzerService,
+            ScheduledExecutorService finalizeScheduler,
+            Executor finalizationExecutor,
+            Duration finalizeQuietPeriod,
+            Duration finalizeRetryDelay,
+            int maxFinalizeRetries
+    ) {
         this.objectMapper = objectMapper;
-        this.kafkaTemplate = kafkaTemplate;
+        this.eventPublisher = eventPublisher;
         this.ollamaAnalyzerService = ollamaAnalyzerService;
         this.finalizeScheduler = finalizeScheduler;
+        this.finalizationExecutor = finalizationExecutor;
         this.finalizeQuietPeriod = finalizeQuietPeriod;
         this.finalizeRetryDelay = finalizeRetryDelay;
         this.maxFinalizeRetries = maxFinalizeRetries;
@@ -181,10 +206,10 @@ public class VodHighlightAnalyzer {
                 finalizeGenerations.remove(videoNo);
                 try {
                     if (event.getChatsCollected() <= 0) {
-                        publishCompletion(videoNo, 0, 0);
+                        eventPublisher.publishCompletion(videoNo, 0, 0);
                         log.warn("[Vod-Analyzer] Finalized empty VOD analysis for videoNo={} because no chats were collected.", videoNo);
                     } else {
-                        publishFailure(event, "채팅 수집은 완료됐지만 분석용 집계가 준비되지 않아 하이라이트 계산을 종료했습니다.");
+                        eventPublisher.publishFailure(event, "채팅 수집은 완료됐지만 분석용 집계가 준비되지 않아 하이라이트 계산을 종료했습니다.");
                     }
                 } catch (Exception error) {
                     log.error("[Vod-Analyzer] Failed to publish terminal event for videoNo={}", videoNo, error);
@@ -220,9 +245,9 @@ public class VodHighlightAnalyzer {
                 finalizeGenerations.remove(videoNo);
                 try {
                     if (event.getChatsCollected() <= 0) {
-                        publishCompletion(videoNo, 0, 0);
+                        eventPublisher.publishCompletion(videoNo, 0, 0);
                     } else {
-                        publishFailure(event, "채팅 집계 결과가 비어 있어 하이라이트 계산을 완료하지 못했습니다.");
+                        eventPublisher.publishFailure(event, "채팅 집계 결과가 비어 있어 하이라이트 계산을 완료하지 못했습니다.");
                     }
                 } catch (Exception error) {
                     log.error("[Vod-Analyzer] Failed to publish terminal event for videoNo={}", videoNo, error);
@@ -242,12 +267,16 @@ public class VodHighlightAnalyzer {
         }
         aggregates.remove(videoNo, aggregate);
         finalizeGenerations.remove(videoNo);
+        finalizationExecutor.execute(() -> finalizeReadyVideo(event, windows));
+    }
 
+    private void finalizeReadyVideo(VodCrawlCompletedEvent event, List<WindowStats> windows) {
+        String videoNo = event.getVideoNo();
         try {
             List<WindowScore> highlights = rankWindows(event, windows);
             publishTimeline(event.getVideoNo(), windows);
             publishHighlights(event.getVideoNo(), highlights);
-            publishCompletion(event.getVideoNo(), windows.size(), highlights.size());
+            eventPublisher.publishCompletion(event.getVideoNo(), windows.size(), highlights.size());
 
             log.info(
                     "[Vod-Analyzer] Finalized videoNo={}, pages={}, chats={}, windows={}, highlights={}, title={}, category={}",
@@ -262,7 +291,7 @@ public class VodHighlightAnalyzer {
         } catch (Exception error) {
             log.error("[Vod-Analyzer] Failed to publish finalized VOD result for videoNo={}", videoNo, error);
             try {
-                publishFailure(event, "하이라이트 결과를 저장 가능한 이벤트로 발행하지 못했습니다.");
+                eventPublisher.publishFailure(event, "하이라이트 결과를 저장 가능한 이벤트로 발행하지 못했습니다.");
             } catch (Exception publishError) {
                 log.error("[Vod-Analyzer] Failed to publish failure event for videoNo={}", videoNo, publishError);
             }
@@ -282,7 +311,7 @@ public class VodHighlightAnalyzer {
                     .topMessage(window.representativeMessage())
                     .build();
 
-            kafkaTemplate.send("vod-window-summary-topic", videoNo, objectMapper.writeValueAsString(point));
+            eventPublisher.publishTimelinePoint(videoNo, point);
         }
     }
 
@@ -312,29 +341,8 @@ public class VodHighlightAnalyzer {
                     .keywordSummary(ranked.keywordSummary())
                     .build();
 
-            kafkaTemplate.send("vod-analyzed-topic", videoNo, objectMapper.writeValueAsString(point));
+            eventPublisher.publishHighlightPoint(videoNo, point);
         }
-    }
-
-    private void publishCompletion(String videoNo, int timelinePointsCount, int highlightsCount) throws Exception {
-        VodAnalysisCompletedEvent event = VodAnalysisCompletedEvent.builder()
-                .videoNo(videoNo)
-                .timelinePointsCount(timelinePointsCount)
-                .highlightsCount(highlightsCount)
-                .build();
-
-        kafkaTemplate.send("vod-analysis-complete-topic", videoNo, objectMapper.writeValueAsString(event));
-    }
-
-    private void publishFailure(VodCrawlCompletedEvent sourceEvent, String reason) throws Exception {
-        VodAnalysisFailedEvent failedEvent = VodAnalysisFailedEvent.builder()
-                .videoNo(sourceEvent.getVideoNo())
-                .pagesProcessed(sourceEvent.getPagesProcessed())
-                .chatsCollected(sourceEvent.getChatsCollected())
-                .reason(reason)
-                .build();
-
-        kafkaTemplate.send("vod-analysis-failed-topic", sourceEvent.getVideoNo(), objectMapper.writeValueAsString(failedEvent));
     }
 
     private List<WindowScore> rankWindows(VodCrawlCompletedEvent event, List<WindowStats> windows) {
@@ -1402,6 +1410,17 @@ public class VodHighlightAnalyzer {
         @Override
         public Thread newThread(Runnable runnable) {
             Thread thread = new Thread(runnable, "vod-highlight-finalizer");
+            thread.setDaemon(true);
+            return thread;
+        }
+    }
+
+    private static final class FinalizationThreadFactory implements ThreadFactory {
+        private final AtomicInteger sequence = new AtomicInteger();
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable, "vod-highlight-finalization-" + sequence.incrementAndGet());
             thread.setDaemon(true);
             return thread;
         }

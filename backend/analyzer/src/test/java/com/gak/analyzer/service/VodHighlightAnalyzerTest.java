@@ -43,16 +43,18 @@ class VodHighlightAnalyzerTest {
     private OllamaAnalyzerService ollamaAnalyzerService;
 
     private VodHighlightAnalyzer vodHighlightAnalyzer;
+    private VodAnalysisEventPublisher eventPublisher;
     private ScheduledExecutorService finalizeScheduler;
 
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
         objectMapper.registerModule(new JavaTimeModule());
+        eventPublisher = new VodAnalysisEventPublisher(objectMapper, kafkaTemplate);
         finalizeScheduler = Executors.newSingleThreadScheduledExecutor();
         vodHighlightAnalyzer = new VodHighlightAnalyzer(
                 objectMapper,
-                kafkaTemplate,
+                eventPublisher,
                 ollamaAnalyzerService,
                 finalizeScheduler,
                 Duration.ofMillis(40),
