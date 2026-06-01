@@ -24,7 +24,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
@@ -32,7 +31,6 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
@@ -75,13 +73,7 @@ public class VodHighlightAnalyzer {
     private final VodAnalysisEventPublisher eventPublisher;
     private final OllamaAnalyzerService ollamaAnalyzerService;
     private final Map<String, VideoAggregate> aggregates = new ConcurrentHashMap<>();
-    private final Map<String, VodCrawlCompletedEvent> pendingCompletions = new ConcurrentHashMap<>();
-    private final Map<String, Long> finalizeGenerations = new ConcurrentHashMap<>();
-    private final ScheduledExecutorService finalizeScheduler;
-    private final Executor finalizationExecutor;
-    private final Duration finalizeQuietPeriod;
-    private final Duration finalizeRetryDelay;
-    private final int maxFinalizeRetries;
+    private final VodAnalysisFinalizer finalizer;
 
     @Autowired
     public VodHighlightAnalyzer(
@@ -135,11 +127,16 @@ public class VodHighlightAnalyzer {
         this.objectMapper = objectMapper;
         this.eventPublisher = eventPublisher;
         this.ollamaAnalyzerService = ollamaAnalyzerService;
-        this.finalizeScheduler = finalizeScheduler;
-        this.finalizationExecutor = finalizationExecutor;
-        this.finalizeQuietPeriod = finalizeQuietPeriod;
-        this.finalizeRetryDelay = finalizeRetryDelay;
-        this.maxFinalizeRetries = maxFinalizeRetries;
+        this.finalizer = new VodAnalysisFinalizer(
+                eventPublisher,
+                aggregates,
+                finalizeScheduler,
+                finalizationExecutor,
+                finalizeQuietPeriod,
+                finalizeRetryDelay,
+                maxFinalizeRetries,
+                this::finalizeReadyVideo
+        );
     }
 
     @KafkaListener(
@@ -160,9 +157,7 @@ public class VodHighlightAnalyzer {
                     aggregate.addChat(chat);
                 }
             }
-            if (pendingCompletions.containsKey(videoNo)) {
-                scheduleFinalize(videoNo);
-            }
+            finalizer.onChunkReceived(videoNo);
         } catch (Exception e) {
             log.error("[Vod-Analyzer] Failed to consume VOD chunk for videoNo={}", videoNo, e);
         }
@@ -172,102 +167,10 @@ public class VodHighlightAnalyzer {
     public void consumeCompletion(String json, @Header(KafkaHeaders.RECEIVED_KEY) String videoNo) {
         try {
             VodCrawlCompletedEvent event = objectMapper.readValue(json, VodCrawlCompletedEvent.class);
-            pendingCompletions.put(event.getVideoNo(), event);
-            scheduleFinalize(event.getVideoNo());
+            finalizer.complete(event);
         } catch (Exception e) {
             log.error("[Vod-Analyzer] Failed to finalize VOD highlights for videoNo={}", videoNo, e);
         }
-    }
-
-    private void scheduleFinalize(String videoNo) {
-        long generation = finalizeGenerations.merge(videoNo, 1L, Long::sum);
-        finalizeScheduler.schedule(
-                () -> attemptFinalize(videoNo, generation, 0),
-                finalizeRetryDelay.toMillis(),
-                TimeUnit.MILLISECONDS
-        );
-    }
-
-    private void attemptFinalize(String videoNo, long generation, int retryCount) {
-        if (!Objects.equals(finalizeGenerations.get(videoNo), generation)) {
-            return;
-        }
-
-        VodCrawlCompletedEvent event = pendingCompletions.get(videoNo);
-        if (event == null) {
-            finalizeGenerations.remove(videoNo);
-            return;
-        }
-
-        VideoAggregate aggregate = aggregates.get(videoNo);
-        if (aggregate == null || aggregate.windows().isEmpty()) {
-            if (event.getChatsCollected() <= 0 || retryCount >= maxFinalizeRetries) {
-                pendingCompletions.remove(videoNo);
-                finalizeGenerations.remove(videoNo);
-                try {
-                    if (event.getChatsCollected() <= 0) {
-                        eventPublisher.publishCompletion(videoNo, 0, 0);
-                        log.warn("[Vod-Analyzer] Finalized empty VOD analysis for videoNo={} because no chats were collected.", videoNo);
-                    } else {
-                        eventPublisher.publishFailure(event, "채팅 수집은 완료됐지만 분석용 집계가 준비되지 않아 하이라이트 계산을 종료했습니다.");
-                    }
-                } catch (Exception error) {
-                    log.error("[Vod-Analyzer] Failed to publish terminal event for videoNo={}", videoNo, error);
-                }
-                return;
-            }
-
-            finalizeScheduler.schedule(
-                    () -> attemptFinalize(videoNo, generation, retryCount + 1),
-                    finalizeRetryDelay.toMillis(),
-                    TimeUnit.MILLISECONDS
-            );
-            return;
-        }
-
-        if (!aggregate.isQuietFor(finalizeQuietPeriod)) {
-            finalizeScheduler.schedule(
-                    () -> attemptFinalize(videoNo, generation, retryCount + 1),
-                    finalizeRetryDelay.toMillis(),
-                    TimeUnit.MILLISECONDS
-            );
-            return;
-        }
-
-        List<WindowStats> windows;
-        synchronized (aggregate) {
-            windows = new ArrayList<>(aggregate.windows().values());
-        }
-
-        if (windows.isEmpty()) {
-            if (retryCount >= maxFinalizeRetries) {
-                pendingCompletions.remove(videoNo);
-                finalizeGenerations.remove(videoNo);
-                try {
-                    if (event.getChatsCollected() <= 0) {
-                        eventPublisher.publishCompletion(videoNo, 0, 0);
-                    } else {
-                        eventPublisher.publishFailure(event, "채팅 집계 결과가 비어 있어 하이라이트 계산을 완료하지 못했습니다.");
-                    }
-                } catch (Exception error) {
-                    log.error("[Vod-Analyzer] Failed to publish terminal event for videoNo={}", videoNo, error);
-                }
-                return;
-            }
-            finalizeScheduler.schedule(
-                    () -> attemptFinalize(videoNo, generation, retryCount + 1),
-                    finalizeRetryDelay.toMillis(),
-                    TimeUnit.MILLISECONDS
-            );
-            return;
-        }
-
-        if (!pendingCompletions.remove(videoNo, event)) {
-            return;
-        }
-        aggregates.remove(videoNo, aggregate);
-        finalizeGenerations.remove(videoNo);
-        finalizationExecutor.execute(() -> finalizeReadyVideo(event, windows));
     }
 
     private void finalizeReadyVideo(VodCrawlCompletedEvent event, List<WindowStats> windows) {
@@ -1060,7 +963,7 @@ public class VodHighlightAnalyzer {
         return "";
     }
 
-    private static final class VideoAggregate {
+    static final class VideoAggregate {
         private final Map<Integer, WindowStats> windows = new TreeMap<>();
         private volatile long lastUpdatedAt = System.nanoTime();
 
@@ -1081,7 +984,7 @@ public class VodHighlightAnalyzer {
         }
     }
 
-    private static final class WindowStats {
+    static final class WindowStats {
         private final int startSeconds;
         private int messageCount;
         private int uniqueUsers;
