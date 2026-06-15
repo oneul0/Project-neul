@@ -35,7 +35,9 @@ public class VodAnalysisStatusService {
                 Instant.now(),
                 null,
                 0,
-                0
+                0,
+                null,
+                null
         ));
     }
 
@@ -48,7 +50,9 @@ public class VodAnalysisStatusService {
                 current.startedAt() == null ? Instant.now() : current.startedAt(),
                 null,
                 pagesProcessed,
-                chatsCollected
+                chatsCollected,
+                null,
+                null
         ));
     }
 
@@ -61,7 +65,9 @@ public class VodAnalysisStatusService {
                 current.startedAt() == null ? Instant.now() : current.startedAt(),
                 null,
                 pagesProcessed,
-                chatsCollected
+                chatsCollected,
+                null,
+                null
         ));
     }
 
@@ -74,11 +80,23 @@ public class VodAnalysisStatusService {
                 current.startedAt() == null ? Instant.now() : current.startedAt(),
                 null,
                 pagesProcessed,
-                chatsCollected
+                chatsCollected,
+                null,
+                null
         ));
     }
 
     public void markCompleted(String videoNo, int pagesProcessed, int chatsCollected) {
+        markCompleted(videoNo, pagesProcessed, chatsCollected, null, null);
+    }
+
+    public void markCompleted(
+            String videoNo,
+            int pagesProcessed,
+            int chatsCollected,
+            Integer timelinePointsCount,
+            Integer highlightsCount
+    ) {
         VodAnalysisStatusResponse current = getStatus(videoNo);
         statuses.put(videoNo, new VodAnalysisStatusResponse(
                 videoNo,
@@ -87,7 +105,9 @@ public class VodAnalysisStatusService {
                 current.startedAt(),
                 Instant.now(),
                 pagesProcessed,
-                chatsCollected
+                chatsCollected,
+                timelinePointsCount,
+                highlightsCount
         ));
     }
 
@@ -100,7 +120,9 @@ public class VodAnalysisStatusService {
                 current.startedAt(),
                 Instant.now(),
                 current.pagesProcessed(),
-                current.chatsCollected()
+                current.chatsCollected(),
+                current.timelinePointsCount(),
+                current.highlightsCount()
         ));
     }
 }

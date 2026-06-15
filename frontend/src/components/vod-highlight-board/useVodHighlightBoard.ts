@@ -18,6 +18,7 @@ import {
   buildMarkerClusters,
   buildResultsEmptyState,
   buildSelectedVodState,
+  calculateChartHeight,
   copyText,
   deriveTimeline,
   formatSeconds,
@@ -141,6 +142,7 @@ export function useVodHighlightBoard(
   const [hoveredChartBar, setHoveredChartBar] = useState<ChartHoverCard | null>(null);
   const [inlineNotice, setInlineNotice] = useState<InlineNotice | null>(null);
   const [copiedHighlightId, setCopiedHighlightId] = useState<number | null>(null);
+  const [completionSyncAttempts, setCompletionSyncAttempts] = useState(0);
 
   const cardRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const chartViewportRef = useRef<HTMLDivElement | null>(null);
@@ -299,19 +301,57 @@ export function useVodHighlightBoard(
 
   useEffect(() => {
     if (!selectedVideoNo) return;
-    if (!ACTIVE_STATUSES.includes(status.status)) return;
 
-    const pollInterval =
-      status.status === "REQUESTED" ? 3000
-      : status.status === "ANALYZING" ? 8000
-      : 5000;
+    const isActive = ACTIVE_STATUSES.includes(status.status);
+    const completionCountsUnknown =
+      status.timelinePointsCount == null || status.highlightsCount == null;
+    const expectedTimelinePoints = status.timelinePointsCount ?? 0;
+    const expectedHighlights = status.highlightsCount ?? 0;
+    const isCompletedButPending =
+      status.status === "COMPLETED" &&
+      completionSyncAttempts < 10 &&
+      (completionCountsUnknown ||
+        timeline.length < expectedTimelinePoints ||
+        highlights.length < expectedHighlights);
 
-    const intervalId = window.setInterval(() => {
+    if (!isActive && !isCompletedButPending) return;
+
+    const pollInterval = isCompletedButPending
+      ? 1500
+      : status.status === "REQUESTED"
+        ? 3000
+        : status.status === "ANALYZING"
+          ? 8000
+          : 5000;
+
+    const timeoutId = window.setTimeout(() => {
+      if (isCompletedButPending) {
+        setCompletionSyncAttempts((current) => current + 1);
+      }
       void syncData(selectedVideoNo);
     }, pollInterval);
 
-    return () => window.clearInterval(intervalId);
-  }, [selectedVideoNo, status.status, syncData]);
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    completionSyncAttempts,
+    highlights.length,
+    selectedVideoNo,
+    status.highlightsCount,
+    status.status,
+    status.timelinePointsCount,
+    syncData,
+    timeline.length,
+  ]);
+
+  useEffect(() => {
+    setCompletionSyncAttempts(0);
+  }, [selectedVideoNo]);
+
+  useEffect(() => {
+    if (ACTIVE_STATUSES.includes(status.status)) {
+      setCompletionSyncAttempts(0);
+    }
+  }, [status.status]);
 
   useEffect(() => {
     return () => {
@@ -380,16 +420,13 @@ export function useVodHighlightBoard(
   }, [chartMode, responsiveMaxBars, timelineSource]);
 
   const chartBars = useMemo(() => {
-    const maxMessages = Math.max(...chartTimeline.map((item) => item.messageCount), 1);
-    const maxParticipants = Math.max(
-      ...chartTimeline.map((item) => item.participantCount),
-      1,
-    );
+    const messageCounts = chartTimeline.map((item) => item.messageCount);
+    const participantCounts = chartTimeline.map((item) => item.participantCount);
 
     return chartTimeline.map((item) => ({
       ...item,
-      messageHeight: Math.max((item.messageCount / maxMessages) * 100, 4),
-      participantHeight: Math.max((item.participantCount / maxParticipants) * 100, 4),
+      messageHeight: calculateChartHeight(item.messageCount, messageCounts),
+      participantHeight: calculateChartHeight(item.participantCount, participantCounts),
     }));
   }, [chartTimeline]);
 
