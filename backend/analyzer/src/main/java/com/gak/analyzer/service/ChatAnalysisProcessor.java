@@ -16,7 +16,10 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -36,7 +39,7 @@ public class ChatAnalysisProcessor {
     /**
      * raw-chat-topic에서 배치로 메시지를 수신합니다.
      * <p>
-     * - CHAT 타입 → ChatOptimizer 최적화 → Gemini 감정 분석 → analyzed-chat-topic
+     * - CHAT 타입 → ChatOptimizer 최적화 → LLM 감정 분석 → analyzed-chat-topic
      * - DONATION 타입 → 분석 없이 패스스루 → analyzed-chat-topic
      * - SUBSCRIPTION 타입 → 분석 없이 패스스루 → analyzed-chat-topic
      */
@@ -67,11 +70,11 @@ public class ChatAnalysisProcessor {
         // Step 2: 메시지 타입별 분기
         List<RawChatMessage> chatMessages = parsed.stream()
                 .filter(m -> "CHAT".equals(m.getMessageType()))
-                .collect(Collectors.toList());
+                .toList();
 
         List<RawChatMessage> passthroughMessages = parsed.stream()
                 .filter(m -> !"CHAT".equals(m.getMessageType()))
-                .collect(Collectors.toList());
+                .toList();
 
         // Step 3: DONATION / SUBSCRIPTION 패스스루 즉시 발행
         passthroughMessages.forEach(this::publishPassthrough);
@@ -164,18 +167,21 @@ public class ChatAnalysisProcessor {
     private void analyzeAndPublish(List<RawChatMessage> chatMessages) {
         // Step 1: Fast-Path (Heuristic)
         List<RawChatMessage> ambiguousMessages = new ArrayList<>();
+        Map<String, AnalyzedChatMessage> fallbackByMessageId = new LinkedHashMap<>();
 
         chatMessages.forEach(msg -> {
             AnalyzedChatMessage fastResult = heuristicAnalyzer.analyze(msg);
             
-            // 즉각적인 피드백 발행
-            publishToTopic(fastResult, "[Processor] Sent Fast-Path CHAT");
-            meterRegistry.counter("gak.chat.analyzed", "path", "fast").increment();
-
             // 모호한 채팅만 Slow-Path 후보로 선정
             if (fastResult.isAmbiguous()) {
                 ambiguousMessages.add(msg);
+                fallbackByMessageId.put(msg.getMessageId(), fastResult);
+                return;
             }
+
+            // 확정 가능한 채팅만 즉시 발행하고, 모호한 채팅은 LLM 또는 fallback 중 한 번만 발행한다.
+            publishToTopic(fastResult, "[Processor] Sent Fast-Path CHAT");
+            meterRegistry.counter("gak.chat.analyzed", "path", "fast").increment();
         });
 
         // Step 2: Slow-Path (LLM Deep Analysis) - Only for Ambiguous chats
@@ -187,21 +193,41 @@ public class ChatAnalysisProcessor {
         // 최적화 (필터링 + 압축)
         OptimizedBatch optimized = chatOptimizer.optimize(ambiguousMessages);
         if (optimized.getCompressedChats().isEmpty()) {
-            log.info("[Processor] Ambiguous chats filtered out. Skipping LLM analysis.");
+            log.info("[Processor] Ambiguous chats filtered out. Publishing heuristic fallbacks.");
+            publishFallbackMessages(fallbackByMessageId, Set.of());
             return;
         }
 
         log.info("[Processor] Sending {} ambiguous chats (compressed to {}) to LLM", 
                 ambiguousMessages.size(), optimized.getCompressedChats().size());
 
-        // Gemini 감정 분석
+        // LLM 감정 분석
         analyzerService.analyzeBatch(optimized.getCompressedChats())
                 .subscribe(
-                        analyzed -> analyzed.forEach(msg -> {
-                            publishToTopic(msg, "[Processor] Sent Slow-Path (LLM) CHAT");
-                            meterRegistry.counter("gak.chat.analyzed", "path", "slow").increment();
-                        }),
-                        error -> log.error("[Processor] LLM Analysis failed for batch", error));
+                        analyzed -> {
+                            Set<String> llmMessageIds = analyzed.stream()
+                                    .map(AnalyzedChatMessage::getMessageId)
+                                    .collect(Collectors.toSet());
+                            analyzed.forEach(msg -> {
+                                publishToTopic(msg, "[Processor] Sent Slow-Path (LLM) CHAT");
+                                meterRegistry.counter("gak.chat.analyzed", "path", "slow").increment();
+                            });
+                            publishFallbackMessages(fallbackByMessageId, llmMessageIds);
+                        },
+                        error -> {
+                            log.error("[Processor] LLM Analysis failed for batch", error);
+                            publishFallbackMessages(fallbackByMessageId, Set.of());
+                        });
+    }
+
+    private void publishFallbackMessages(Map<String, AnalyzedChatMessage> fallbackByMessageId, Set<String> alreadyPublishedIds) {
+        fallbackByMessageId.forEach((messageId, fallback) -> {
+            if (alreadyPublishedIds.contains(messageId)) {
+                return;
+            }
+            publishToTopic(fallback, "[Processor] Sent Fast-Path fallback CHAT");
+            meterRegistry.counter("gak.chat.analyzed", "path", "fast_fallback").increment();
+        });
     }
 
     private void publishToTopic(AnalyzedChatMessage msg, String logPrefix) {

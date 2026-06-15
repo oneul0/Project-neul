@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
  * <p>
  * 동일하거나 유사한 내용의 채팅 N건을 1개로 묶어 표현합니다.
  * {@code count} 필드를 통해 원래 메시지 수를 추적하며,
- * Gemini API 프롬프트 구성 시 "내용 (N건)" 형태로 활용됩니다.
+ * LLM 프롬프트 구성 시 "내용 (N건)" 형태로 활용됩니다.
  */
 @Getter
 @Builder

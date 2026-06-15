@@ -31,8 +31,8 @@ import java.util.stream.Collectors;
 @Slf4j
 public class JavaChatOptimizer implements ChatOptimizer {
 
-    /** 기술적 노이즈(UUID, 긴 헥사코드 등)를 감지하는 패턴 */
-    private static final Pattern TECHNICAL_NOISE_PATTERN = Pattern.compile(".*[a-fA-F0-0]{8}-[a-fA-F0-0]{4}-[a-fA-F0-0]{4}.*|.*[a-fA-F0-9]{32}.*");
+    /** Detects technical noise such as UUIDs and long hex identifiers. */
+    private static final Pattern TECHNICAL_NOISE_PATTERN = Pattern.compile(".*[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}.*|.*[a-fA-F0-9]{32}.*");
 
     /** 필터링 기준: 이 길이 미만의 메시지는 제거 */
     private static final int MIN_CONTENT_LENGTH = 1; // 1글자(이모지 등) 허용

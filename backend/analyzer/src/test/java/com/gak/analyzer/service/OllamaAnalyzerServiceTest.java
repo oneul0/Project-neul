@@ -3,11 +3,11 @@ package com.gak.analyzer.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.gak.analyzer.config.OllamaPromptProperties;
-import com.gak.common.dto.AnalyzedChatMessage;
-import com.gak.analyzer.dto.ollama.OllamaMessage;
-import com.gak.analyzer.dto.ollama.OllamaRequest;
-import com.gak.analyzer.dto.ollama.OllamaResponse;
+import com.gak.analyzer.llm.ChatLlmClient;
 import com.gak.analyzer.optimization.CompressedChat;
+import com.gak.common.dto.AnalyzedChatMessage;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -15,26 +15,34 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
-import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import org.springframework.core.io.DefaultResourceLoader;
 
 import java.util.List;
-import java.util.Map;
+import java.util.concurrent.Semaphore;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class OllamaAnalyzerServiceTest {
 
-    private OllamaAnalyzerService geminiAnalyzerService;
+    private OllamaAnalyzerService analyzerService;
+
+    @Mock
+    private ChatLlmClient chatClient;
 
     @Mock
     private WebClient webClient;
@@ -51,196 +59,112 @@ class OllamaAnalyzerServiceTest {
 
     @Mock
     private WebClient.ResponseSpec responseSpec;
- 
-    private MeterRegistry meterRegistry;
 
     private ObjectMapper objectMapper;
+    private MeterRegistry meterRegistry;
+    private PromptTemplateService promptTemplateService;
+    private OllamaPromptProperties promptProperties;
 
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
         objectMapper.registerModule(new JavaTimeModule());
-        
-        // Real SimpleMeterRegistry for testing
         meterRegistry = new SimpleMeterRegistry();
+        promptTemplateService = new PromptTemplateService(new DefaultResourceLoader());
+        promptProperties = new OllamaPromptProperties();
 
-        PromptTemplateService promptTemplateService = new PromptTemplateService(new DefaultResourceLoader());
-        OllamaPromptProperties promptProperties = new OllamaPromptProperties();
-        
-        geminiAnalyzerService = new OllamaAnalyzerService(webClient, objectMapper, meterRegistry, promptTemplateService, promptProperties);
-        
-        ReflectionTestUtils.setField(geminiAnalyzerService, "ollamaApiUrl", "http://localhost:11434/api/chat");
-        ReflectionTestUtils.setField(geminiAnalyzerService, "ollamaModel", "gemma:2b");
+        analyzerService = new OllamaAnalyzerService(
+                chatClient,
+                webClient,
+                objectMapper,
+                meterRegistry,
+                promptTemplateService,
+                promptProperties
+        );
+        setCoreApiFields(analyzerService);
     }
 
     @Test
-    @DisplayName("Ollama API를 통해 채팅 배치를 정상으로 분석하고 결과를 파싱한다")
+    @DisplayName("analyzeBatch parses structured LLM results")
     void analyzeBatch_Success() {
-        // given
         List<CompressedChat> chats = List.of(
-                CompressedChat.builder().representativeId("msg-1").roomId("room-1").content("좋은 아침이에요").count(5).build(),
-                CompressedChat.builder().representativeId("msg-2").roomId("room-1").content("졸려요").count(3).build()
+                compressed("msg-1", "room-1", "nice play", 5),
+                compressed("msg-2", "room-1", "too bad", 3)
         );
-
-        String mockJsonResponse = "{" +
+        String response = "{" +
                 "\"keywords\": [], \"results\": [" +
                 "{\"messageId\": \"1\", \"scores\": {\"JOY\": 0.8, \"NEUTRAL\": 0.2}}," +
                 "{\"messageId\": \"2\", \"scores\": {\"ANGER\": 0.5, \"SADNESS\": 0.5}}" +
                 "]}";
+        when(chatClient.chat(anyString(), anyString(), anyDouble(), anyInt()))
+                .thenReturn(Mono.just(response));
 
-        OllamaResponse mockResponse = OllamaResponse.builder()
-                .model("gemma:2b")
-                .message(OllamaMessage.builder().role("assistant").content(mockJsonResponse).build())
-                .done(true)
-                .build();
-
-        // WebClient Mocking
-        when(webClient.post()).thenReturn(requestBodyUriSpec);
-        when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
-        doReturn(requestHeadersSpec).when(requestBodySpec).bodyValue(any());
-        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
-        when(responseSpec.bodyToMono(OllamaResponse.class)).thenReturn(Mono.just(mockResponse));
-
-        // when
-        Mono<List<AnalyzedChatMessage>> resultMono = geminiAnalyzerService.analyzeBatch(chats);
-
-        // then
-        StepVerifier.create(resultMono)
+        StepVerifier.create(analyzerService.analyzeBatch(chats))
                 .assertNext(results -> {
                     assertThat(results).hasSize(2);
-                    
-                    AnalyzedChatMessage msg1 = results.stream().filter(r -> r.getMessageId().equals("msg-1")).findFirst().get();
+
+                    AnalyzedChatMessage msg1 = findById(results, "msg-1");
                     assertThat(msg1.getEmotionScores().get("JOY")).isEqualTo(0.8);
                     assertThat(msg1.getEmotionScores().get("NEUTRAL")).isEqualTo(0.2);
-                    assertThat(msg1.getContent()).isEqualTo("좋은 아침이에요");
+                    assertThat(msg1.getContent()).isEqualTo("nice play");
 
-                    AnalyzedChatMessage msg2 = results.stream().filter(r -> r.getMessageId().equals("msg-2")).findFirst().get();
+                    AnalyzedChatMessage msg2 = findById(results, "msg-2");
                     assertThat(msg2.getEmotionScores().get("ANGER")).isEqualTo(0.5);
                     assertThat(msg2.getEmotionScores().get("SADNESS")).isEqualTo(0.5);
                 })
                 .verifyComplete();
 
-        // Verify request DTO
-        ArgumentCaptor<OllamaRequest> captor = ArgumentCaptor.forClass(OllamaRequest.class);
-        verify(requestBodySpec).bodyValue(captor.capture());
-        OllamaRequest capturedRequest = captor.getValue();
-        assertThat(capturedRequest.getModel()).isEqualTo("gemma:2b");
-        assertThat(capturedRequest.getMessages()).hasSize(2); // system + user
+        ArgumentCaptor<String> userPrompt = ArgumentCaptor.forClass(String.class);
+        verify(chatClient).chat(anyString(), userPrompt.capture(), anyDouble(), anyInt());
+        assertThat(userPrompt.getValue()).contains("[1] nice play (5 occurrences)");
+        assertThat(userPrompt.getValue()).contains("[2] too bad (3 occurrences)");
     }
 
     @Test
-    @DisplayName("API 응답에 일부 메시지가 누락된 경우 NEUTRAL로 폴백 처리한다")
+    @DisplayName("analyzeBatch fills missing message results with NEUTRAL")
     void analyzeBatch_PartialMissingResponse() {
-        // given
         List<CompressedChat> chats = List.of(
-                CompressedChat.builder().representativeId("msg-1").roomId("room-1").content("테스트1").count(1).build(),
-                CompressedChat.builder().representativeId("msg-2").roomId("room-1").content("테스트2").count(1).build()
+                compressed("msg-1", "room-1", "first", 1),
+                compressed("msg-2", "room-1", "second", 1)
         );
+        when(chatClient.chat(anyString(), anyString(), anyDouble(), anyInt()))
+                .thenReturn(Mono.just("{\"keywords\": [], \"results\": [{\"messageId\": \"1\", \"scores\": {\"JOY\": 1.0}}]}"));
 
-        // msg-2에 대한 분석 정보가 JSON에 없는 경우
-        String mockJsonResponse = "{\"keywords\": [], \"results\": [{\"messageId\": \"1\", \"scores\": {\"JOY\": 1.0}}]}";
-
-        OllamaResponse mockResponse = OllamaResponse.builder()
-                .message(OllamaMessage.builder().content(mockJsonResponse).build())
-                .build();
-
-        when(webClient.post()).thenReturn(requestBodyUriSpec);
-        when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
-        doReturn(requestHeadersSpec).when(requestBodySpec).bodyValue(any());
-        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
-        when(responseSpec.bodyToMono(OllamaResponse.class)).thenReturn(Mono.just(mockResponse));
-
-        // when & then
-        StepVerifier.create(geminiAnalyzerService.analyzeBatch(chats))
+        StepVerifier.create(analyzerService.analyzeBatch(chats))
                 .assertNext(results -> {
                     assertThat(results).hasSize(2);
-                    AnalyzedChatMessage msg2 = results.stream().filter(r -> r.getMessageId().equals("msg-2")).findFirst().get();
-                    assertThat(msg2.getEmotionScores().get("NEUTRAL")).isEqualTo(1.0);
+                    assertThat(findById(results, "msg-2").getEmotionScores().get("NEUTRAL")).isEqualTo(1.0);
                 })
                 .verifyComplete();
     }
 
     @Test
-    @DisplayName("JSON 응답에 Markdown 코드 블록이 포함되어 있어도 정상 파싱한다")
-    void analyzeBatch_WithMarkdownCodeBlock() {
-        // given
-        List<CompressedChat> chats = List.of(
-                CompressedChat.builder().representativeId("msg-1").roomId("room-1").content("테스트").count(1).build()
-        );
+    @DisplayName("analyzeBatch extracts JSON from markdown or surrounding text")
+    void analyzeBatch_ExtractsJsonText() {
+        List<CompressedChat> chats = List.of(compressed("msg-1", "room-1", "hello", 1));
+        when(chatClient.chat(anyString(), anyString(), anyDouble(), anyInt()))
+                .thenReturn(Mono.just("```json\n{\"keywords\": [], \"results\": [{\"messageId\": \"1\", \"scores\": {\"NEUTRAL\": 1.0}}]}\n```"));
 
-        String mockJsonResponse = "```json\n{\"keywords\": [], \"results\": [{\"messageId\": \"1\", \"scores\": {\"NEUTRAL\": 1.0}}]}\n```";
+        StepVerifier.create(analyzerService.analyzeBatch(chats))
+                .assertNext(results -> assertThat(results.get(0).getEmotionScores().get("NEUTRAL")).isEqualTo(1.0))
+                .verifyComplete();
 
-        OllamaResponse mockResponse = OllamaResponse.builder()
-                .message(OllamaMessage.builder().content(mockJsonResponse).build())
-                .build();
+        when(chatClient.chat(anyString(), anyString(), anyDouble(), anyInt()))
+                .thenReturn(Mono.just("Analysis:\n{\"keywords\": [], \"results\": [{\"messageId\": \"1\", \"scores\": {\"JOY\": 0.9}}]}\nDone."));
 
-        when(webClient.post()).thenReturn(requestBodyUriSpec);
-        when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
-        doReturn(requestHeadersSpec).when(requestBodySpec).bodyValue(any());
-        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
-        when(responseSpec.bodyToMono(OllamaResponse.class)).thenReturn(Mono.just(mockResponse));
-
-        // when & then
-        StepVerifier.create(geminiAnalyzerService.analyzeBatch(chats))
-                .assertNext(results -> {
-                    assertThat(results.get(0).getEmotionScores().get("NEUTRAL")).isEqualTo(1.0);
-                })
+        StepVerifier.create(analyzerService.analyzeBatch(chats))
+                .assertNext(results -> assertThat(results.get(0).getEmotionScores().get("JOY")).isEqualTo(0.9))
                 .verifyComplete();
     }
 
     @Test
-    @DisplayName("응답에 JSON 외에 불필요한 텍스트가 섞여 있어도 대괄호를 기준으로 JSON만 추출하여 파싱한다")
-    void analyzeBatch_WithExtraText() {
-        // given
-        List<CompressedChat> chats = List.of(
-                CompressedChat.builder().representativeId("msg-1").roomId("room-1").content("테스트").count(1).build()
-        );
-
-        String mockResponseContent = "Here is your analysis result:\n" +
-                "{\"keywords\": [], \"results\": [{\"messageId\": \"1\", \"scores\": {\"JOY\": 0.9}}]}\n" +
-                "I hope this helps!";
-
-        OllamaResponse mockResponse = OllamaResponse.builder()
-                .message(OllamaMessage.builder().content(mockResponseContent).build())
-                .build();
-
-        when(webClient.post()).thenReturn(requestBodyUriSpec);
-        when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
-        doReturn(requestHeadersSpec).when(requestBodySpec).bodyValue(any());
-        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
-        when(responseSpec.bodyToMono(OllamaResponse.class)).thenReturn(Mono.just(mockResponse));
-
-        // when & then
-        StepVerifier.create(geminiAnalyzerService.analyzeBatch(chats))
-                .assertNext(results -> {
-                    assertThat(results).hasSize(1);
-                    assertThat(results.get(0).getEmotionScores().get("JOY")).isEqualTo(0.9);
-                })
-                .verifyComplete();
-    }
-
-    @Test
-    @DisplayName("응답 JSON이 완전히 깨진 경우 전체를 NEUTRAL로 폴백 처리한다")
+    @DisplayName("analyzeBatch falls back to NEUTRAL on malformed JSON")
     void analyzeBatch_MalformedJson_Fallback() {
-        // given
-        List<CompressedChat> chats = List.of(
-                CompressedChat.builder().representativeId("msg-1").roomId("room-1").content("테스트").count(1).build()
-        );
+        List<CompressedChat> chats = List.of(compressed("msg-1", "room-1", "hello", 1));
+        when(chatClient.chat(anyString(), anyString(), anyDouble(), anyInt()))
+                .thenReturn(Mono.just("[{\"messageId\": \"1\", \"type\": \"POSITIVE\" ... (broken) ]"));
 
-        String malformedJson = "[{\"messageId\": \"msg-1\", \"type\": \"POSITIVE\" ... (broken) ]";
-
-        OllamaResponse mockResponse = OllamaResponse.builder()
-                .message(OllamaMessage.builder().content(malformedJson).build())
-                .build();
-
-        when(webClient.post()).thenReturn(requestBodyUriSpec);
-        when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
-        doReturn(requestHeadersSpec).when(requestBodySpec).bodyValue(any());
-        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
-        when(responseSpec.bodyToMono(OllamaResponse.class)).thenReturn(Mono.just(mockResponse));
-
-        // when & then
-        StepVerifier.create(geminiAnalyzerService.analyzeBatch(chats))
+        StepVerifier.create(analyzerService.analyzeBatch(chats))
                 .assertNext(results -> {
                     assertThat(results).hasSize(1);
                     assertThat(results.get(0).getEmotionScores().get("NEUTRAL")).isEqualTo(1.0);
@@ -249,12 +173,186 @@ class OllamaAnalyzerServiceTest {
     }
 
     @Test
-    @DisplayName("하이라이트 분석 응답을 정상 파싱하고 프롬프트 값을 요청에 담는다")
+    @DisplayName("analyzeBatch acquires the LLM slot only when subscribed")
+    void analyzeBatch_DefersSlotAcquisitionUntilSubscription() {
+        List<CompressedChat> chats = List.of(compressed("msg-1", "room-1", "hello", 1));
+        when(chatClient.chat(anyString(), anyString(), anyDouble(), anyInt()))
+                .thenReturn(Mono.just("{\"results\":[{\"messageId\":\"1\",\"scores\":{\"NEUTRAL\":1.0}}]}"));
+
+        Mono<List<AnalyzedChatMessage>> result = analyzerService.analyzeBatch(chats);
+        Semaphore llmSlot = (Semaphore) ReflectionTestUtils.getField(analyzerService, "llmSlot");
+
+        assertThat(llmSlot).isNotNull();
+        assertThat(llmSlot.availablePermits()).isEqualTo(1);
+        verifyNoInteractions(chatClient);
+
+        StepVerifier.create(result)
+                .expectNextCount(1)
+                .verifyComplete();
+
+        assertThat(llmSlot.availablePermits()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("analyzeBatch balances the LLM slot for every subscription")
+    void analyzeBatch_BalancesSlotAcrossMultipleSubscriptions() {
+        List<CompressedChat> chats = List.of(compressed("msg-1", "room-1", "hello", 1));
+        when(chatClient.chat(anyString(), anyString(), anyDouble(), anyInt()))
+                .thenReturn(Mono.just("{\"results\":[{\"messageId\":\"1\",\"scores\":{\"NEUTRAL\":1.0}}]}"));
+
+        Mono<List<AnalyzedChatMessage>> result = analyzerService.analyzeBatch(chats);
+
+        StepVerifier.create(result)
+                .expectNextCount(1)
+                .verifyComplete();
+        StepVerifier.create(result)
+                .expectNextCount(1)
+                .verifyComplete();
+
+        Semaphore llmSlot = (Semaphore) ReflectionTestUtils.getField(analyzerService, "llmSlot");
+        assertThat(llmSlot).isNotNull();
+        assertThat(llmSlot.availablePermits()).isEqualTo(1);
+        verify(chatClient, times(2)).chat(anyString(), anyString(), anyDouble(), anyInt());
+    }
+
+    @Test
+    @DisplayName("analyzeHighlight fetches few-shot examples and parses decision")
     void analyzeHighlight_Success() {
-        HighlightPromptPayload payload = new HighlightPromptPayload(
+        HighlightPromptPayload payload = highlightPayload();
+        mockFewShotExamples("- similar highlight");
+        when(chatClient.chat(anyString(), anyString(), anyDouble(), anyInt()))
+                .thenReturn(Mono.just("{" +
+                        "\"is_highlight\": true," +
+                        "\"category\": \"SUPER_PLAY\"," +
+                        "\"scene_label\": \"Clutch moment\"," +
+                        "\"summary\": \"Great turnaround\"," +
+                        "\"intensity\": 9," +
+                        "\"reasoning\": \"chat density and hype are high\"" +
+                        "}"));
+
+        StepVerifier.create(analyzerService.analyzeHighlight(payload))
+                .assertNext(result -> {
+                    assertThat(result.isHighlight()).isTrue();
+                    assertThat(result.category()).isEqualTo("SUPER_PLAY");
+                    assertThat(result.sceneLabel()).isEqualTo("Clutch moment");
+                    assertThat(result.summary()).isEqualTo("Great turnaround");
+                    assertThat(result.intensity()).isEqualTo(9);
+                    assertThat(result.reasoning()).isEqualTo("chat density and hype are high");
+                })
+                .verifyComplete();
+
+        verify(responseSpec).bodyToMono(String.class);
+        ArgumentCaptor<String> userPrompt = ArgumentCaptor.forClass(String.class);
+        verify(chatClient).chat(anyString(), userPrompt.capture(), anyDouble(), anyInt());
+        assertThat(userPrompt.getValue()).contains("Sample VOD");
+        assertThat(userPrompt.getValue()).contains("hype=0.55");
+        assertThat(userPrompt.getValue()).contains("- similar highlight");
+    }
+
+    @Test
+    @DisplayName("analyzeHighlight clamps intensity and supplies defaults")
+    void analyzeHighlight_DefaultsAndClamp() {
+        mockFewShotExamples("");
+        when(chatClient.chat(anyString(), anyString(), anyDouble(), anyInt()))
+                .thenReturn(Mono.just("{\"is_highlight\": true, \"intensity\": 99}"));
+
+        StepVerifier.create(analyzerService.analyzeHighlight(highlightPayload()))
+                .assertNext(result -> {
+                    assertThat(result.isHighlight()).isTrue();
+                    assertThat(result.intensity()).isEqualTo(10);
+                    assertThat(result.reasoning()).isEqualTo("LLM reasoning not provided.");
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    @DisplayName("analyzeHighlight falls back on blank or malformed responses")
+    void analyzeHighlight_BlankOrMalformed_Fallback() {
+        mockFewShotExamples("");
+        when(chatClient.chat(anyString(), anyString(), anyDouble(), anyInt()))
+                .thenReturn(Mono.just("   "));
+
+        StepVerifier.create(analyzerService.analyzeHighlight(highlightPayload()))
+                .assertNext(result -> {
+                    assertThat(result.isHighlight()).isFalse();
+                    assertThat(result.reasoning()).contains("empty highlight decision");
+                })
+                .verifyComplete();
+
+        when(chatClient.chat(anyString(), anyString(), anyDouble(), anyInt()))
+                .thenReturn(Mono.just("not-json"));
+
+        StepVerifier.create(analyzerService.analyzeHighlight(highlightPayload()))
+                .assertNext(result -> {
+                    assertThat(result.isHighlight()).isFalse();
+                    assertThat(result.reasoning()).contains("Failed to parse structured highlight decision");
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    @DisplayName("analyzeHighlight falls back when prompt rendering fails")
+    void analyzeHighlight_PromptLoadFailure_Fallback() {
+        OllamaPromptProperties brokenPromptProperties = new OllamaPromptProperties();
+        brokenPromptProperties.setHighlightSystem("classpath:prompts/missing-system.txt");
+        brokenPromptProperties.setHighlightUser("classpath:prompts/missing-user.txt");
+        OllamaAnalyzerService brokenService = new OllamaAnalyzerService(
+                chatClient,
+                webClient,
+                objectMapper,
+                meterRegistry,
+                promptTemplateService,
+                brokenPromptProperties
+        );
+        setCoreApiFields(brokenService);
+        mockFewShotExamples("");
+
+        StepVerifier.create(brokenService.analyzeHighlight(highlightPayload()))
+                .assertNext(result -> {
+                    assertThat(result.isHighlight()).isFalse();
+                    assertThat(result.reasoning()).contains("prompt preparation failed");
+                })
+                .verifyComplete();
+
+        verify(chatClient, never()).chat(anyString(), anyString(), anyDouble(), anyInt());
+    }
+
+    private void mockFewShotExamples(String response) {
+        when(webClient.post()).thenReturn(requestBodyUriSpec);
+        when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
+        doReturn(requestBodySpec).when(requestBodySpec).header(anyString(), any(String[].class));
+        doReturn(requestHeadersSpec).when(requestBodySpec).bodyValue(any());
+        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.bodyToMono(String.class)).thenReturn(Mono.just(response));
+    }
+
+    private void setCoreApiFields(OllamaAnalyzerService service) {
+        ReflectionTestUtils.setField(service, "coreApiBaseUrl", "http://core-api");
+        ReflectionTestUtils.setField(service, "internalApiSecret", "test-secret");
+    }
+
+    private CompressedChat compressed(String messageId, String roomId, String content, int count) {
+        return CompressedChat.builder()
+                .representativeId(messageId)
+                .representativeSenderId("sender-" + messageId)
+                .roomId(roomId)
+                .content(content)
+                .count(count)
+                .build();
+    }
+
+    private AnalyzedChatMessage findById(List<AnalyzedChatMessage> results, String messageId) {
+        return results.stream()
+                .filter(result -> messageId.equals(result.getMessageId()))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private HighlightPromptPayload highlightPayload() {
+        return new HighlightPromptPayload(
                 "video-1",
-                "테스트 VOD",
-                "게임",
+                "Sample VOD",
+                "Game",
                 3600,
                 0.25,
                 30,
@@ -270,181 +368,16 @@ class OllamaAnalyzerServiceTest {
                 0.12,
                 0.21,
                 0.00,
-                "- '한타' (3회)",
-                "- 대표 채팅: 미쳤다",
-                "- 미쳤다 (x3)",
-                "",       // fewShotExamples — analyzeHighlight() 내에서 주입
-                0.15,     // laughRatio
-                0.55,     // hypeRatio
-                0.20,     // surpriseRatio
-                0.10,     // tensionRatio
-                0.50,     // uniqueUserRatio
-                "hype"    // emotionDominance
+                "- clutch (3)",
+                "- none",
+                "- amazing play (x3)",
+                "",
+                0.15,
+                0.55,
+                0.20,
+                0.10,
+                0.50,
+                "hype"
         );
-
-        String mockJsonResponse = "{" +
-                "\"is_highlight\": true," +
-                "\"category\": \"슈퍼플레이\"," +
-                "\"scene_label\": \"클러치\"," +
-                "\"summary\": \"한 줄 요약\"," +
-                "\"intensity\": 9," +
-                "\"reasoning\": \"근거 설명\"" +
-                "}";
-
-        OllamaResponse mockResponse = OllamaResponse.builder()
-                .message(OllamaMessage.builder().content(mockJsonResponse).build())
-                .build();
-
-        mockOllamaResponse(Mono.just(mockResponse));
-
-        StepVerifier.create(geminiAnalyzerService.analyzeHighlight(payload))
-                .assertNext(result -> {
-                    assertThat(result.isHighlight()).isTrue();
-                    assertThat(result.category()).isEqualTo("슈퍼플레이");
-                    assertThat(result.sceneLabel()).isEqualTo("클러치");
-                    assertThat(result.summary()).isEqualTo("한 줄 요약");
-                    assertThat(result.intensity()).isEqualTo(9);
-                    assertThat(result.reasoning()).isEqualTo("근거 설명");
-                })
-                .verifyComplete();
-
-        // fetchFewShotExamples(1회) + doAnalyzeHighlight(1회) = 총 2회 bodyValue 호출
-        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(requestBodySpec, times(2)).bodyValue(captor.capture());
-        // 두 번째 호출이 Ollama LLM 요청 (첫 번째는 few-shot Map)
-        OllamaRequest capturedRequest = (OllamaRequest) captor.getAllValues().get(1);
-        assertThat(capturedRequest.getMessages()).hasSize(2);
-        assertThat(capturedRequest.getMessages().get(0).getContent()).contains("전문 편집자");
-        assertThat(capturedRequest.getMessages().get(1).getContent())
-                // videoNo는 프롬프트 템플릿에 포함되지 않음 (few-shot 요청 body에만 사용)
-                .contains("테스트 VOD")
-                .contains("게임")
-                .contains("30초 ~ 60초")
-                .contains("평소 대비 2.35배")
-                .contains("hype=0.55")      // 신호 비율 기반 포맷 검증
-                .contains("한타")
-                .contains("미쳤다");
-    }
-
-    @Test
-    @DisplayName("하이라이트 응답 필드가 비어 있으면 기본값을 채우고 intensity를 보정한다")
-    void analyzeHighlight_DefaultsAndClamp() {
-        HighlightPromptPayload payload = new HighlightPromptPayload(
-                "video-2", "제목 없음", "카테고리 없음", 1800, 0.0,
-                0, 30, 10, 5, 1.0, 0.4, 1.2, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
-                "- 없음", "- 없음", "- 없음",
-                "", 0.0, 0.0, 0.0, 0.0, 0.0, "neutral"
-        );
-
-        String mockJsonResponse = "{" +
-                "\"is_highlight\": true," +
-                "\"intensity\": 99" +
-                "}";
-
-        OllamaResponse mockResponse = OllamaResponse.builder()
-                .message(OllamaMessage.builder().content(mockJsonResponse).build())
-                .build();
-
-        mockOllamaResponse(Mono.just(mockResponse));
-
-        StepVerifier.create(geminiAnalyzerService.analyzeHighlight(payload))
-                .assertNext(result -> {
-                    assertThat(result.isHighlight()).isTrue();
-                    assertThat(result.category()).isEqualTo("소통");
-                    assertThat(result.sceneLabel()).isEqualTo("소통");
-                    assertThat(result.summary()).isEqualTo("하이라이트 후보 구간입니다.");
-                    assertThat(result.intensity()).isEqualTo(10);
-                    assertThat(result.reasoning()).isEqualTo("LLM reasoning not provided.");
-                })
-                .verifyComplete();
-    }
-
-    @Test
-    @DisplayName("하이라이트 응답이 비었거나 손상되면 fallback 결정을 반환한다")
-    void analyzeHighlight_BlankOrMalformed_Fallback() {
-        HighlightPromptPayload payload = new HighlightPromptPayload(
-                "video-3", "제목 없음", "카테고리 없음", 1800, 0.05,
-                60, 90, 15, 8, 1.4, 0.9, 2.1, 0.2, 1.8, 0.2, 0.2, 0.1, 0.0,
-                "- 없음", "- 없음", "- 없음",
-                "", 0.3, 0.3, 0.2, 0.2, 0.5, "laugh"
-        );
-
-        OllamaResponse blankResponse = OllamaResponse.builder()
-                .message(OllamaMessage.builder().content("   ").build())
-                .build();
-
-        mockOllamaResponse(Mono.just(blankResponse));
-
-        StepVerifier.create(geminiAnalyzerService.analyzeHighlight(payload))
-                .assertNext(result -> {
-                    assertThat(result.isHighlight()).isFalse();
-                    assertThat(result.category()).isEqualTo("판단보류");
-                    assertThat(result.sceneLabel()).isEqualTo("판단보류");
-                    assertThat(result.summary()).isEqualTo("하이라이트 근거가 부족합니다.");
-                })
-                .verifyComplete();
-
-        OllamaResponse malformedResponse = OllamaResponse.builder()
-                .message(OllamaMessage.builder().content("not-json").build())
-                .build();
-
-        reset(webClient, requestBodyUriSpec, requestBodySpec, requestHeadersSpec, responseSpec);
-        mockOllamaResponse(Mono.just(malformedResponse));
-
-        StepVerifier.create(geminiAnalyzerService.analyzeHighlight(payload))
-                .assertNext(result -> {
-                    assertThat(result.isHighlight()).isFalse();
-                    assertThat(result.reasoning()).contains("Failed to parse structured highlight decision");
-                })
-                .verifyComplete();
-    }
-
-    @Test
-    @DisplayName("하이라이트 프롬프트 로딩이 실패해도 휴리스틱 fallback으로 안전하게 복귀한다")
-    void analyzeHighlight_PromptLoadFailure_Fallback() {
-        HighlightPromptPayload payload = new HighlightPromptPayload(
-                "video-4", "제목 없음", "카테고리 없음", 1800, 0.08,
-                90, 120, 18, 11, 1.9, 1.2, 2.8, 0.05, 1.4, 0.25, 0.05, 0.08, 0.0,
-                "- 없음", "- 없음", "- 없음",
-                "", 0.1, 0.4, 0.3, 0.2, 0.6, "hype"
-        );
-
-        OllamaPromptProperties brokenPromptProperties = new OllamaPromptProperties();
-        brokenPromptProperties.setHighlightSystem("classpath:prompts/missing-system.txt");
-        brokenPromptProperties.setHighlightUser("classpath:prompts/missing-user.txt");
-        PromptTemplateService promptTemplateService = new PromptTemplateService(new DefaultResourceLoader());
-        OllamaAnalyzerService brokenService = new OllamaAnalyzerService(webClient, objectMapper, meterRegistry, promptTemplateService, brokenPromptProperties);
-        ReflectionTestUtils.setField(brokenService, "ollamaApiUrl", "http://localhost:11434/api/chat");
-        ReflectionTestUtils.setField(brokenService, "ollamaModel", "gemma:2b");
-
-        // fetchFewShotExamples()가 webClient를 사용하므로 few-shot 경로 stub 필요
-        when(webClient.post()).thenReturn(requestBodyUriSpec);
-        when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
-        doReturn(requestBodySpec).when(requestBodySpec).header(anyString(), any(String[].class));
-        doReturn(requestHeadersSpec).when(requestBodySpec).bodyValue(any());
-        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
-        doReturn(Mono.just("")).when(responseSpec).bodyToMono(String.class);
-
-        StepVerifier.create(brokenService.analyzeHighlight(payload))
-                .assertNext(result -> {
-                    assertThat(result.isHighlight()).isFalse();
-                    assertThat(result.reasoning()).contains("prompt preparation failed");
-                })
-                .verifyComplete();
-        // fetchFewShotExamples()가 webClient를 먼저 호출하므로 NoInteractions 검증 제거
-        // 프롬프트 로딩 실패 시 Ollama LLM은 호출되지 않음(doAnalyzeHighlight 진입 전 예외)
-    }
-
-    @SuppressWarnings("unchecked")
-    private void mockOllamaResponse(Mono<OllamaResponse> responseMono) {
-        when(webClient.post()).thenReturn(requestBodyUriSpec);
-        when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
-        // fetchFewShotExamples()가 .header("X-Internal-Secret", ...) 체이닝을 사용하므로 stub 필요
-        doReturn(requestBodySpec).when(requestBodySpec).header(anyString(), any(String[].class));
-        doReturn(requestHeadersSpec).when(requestBodySpec).bodyValue(any());
-        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
-        // few-shot 호출은 bodyToMono(String.class), Ollama 호출은 bodyToMono(OllamaResponse.class)
-        doReturn(Mono.just("")).when(responseSpec).bodyToMono(String.class);
-        when(responseSpec.bodyToMono(OllamaResponse.class)).thenReturn(responseMono);
     }
 }

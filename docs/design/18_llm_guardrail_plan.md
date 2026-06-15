@@ -107,15 +107,44 @@ if (isProcessing.get()) return Mono.just(List.of()); // 조용한 손실
 
 // 변경 후
 private final Semaphore llmSlot = new Semaphore(1);
-if (!llmSlot.tryAcquire()) {
-    recordCount("gak.llm.batch.skipped"); // 관측 가능한 이벤트로 전환
-    return Mono.just(List.of());
-}
-return doAnalyzeBatch(capped).doFinally(ignored -> llmSlot.release());
+return Mono.defer(() -> {
+    if (!llmSlot.tryAcquire()) {
+        recordCount("gak.llm.batch.skipped"); // 관측 가능한 이벤트로 전환
+        return Mono.just(List.of());
+    }
+    return Mono.defer(() -> doAnalyzeBatch(capped))
+        .doFinally(ignored -> llmSlot.release());
+});
 ```
 
 - `doFinally`로 성공·실패·취소 모든 경우에서 슬롯 반납 보장
 - `Semaphore(N)`으로 확장 시 다중 슬롯 지원 가능
+
+#### 구독 생명주기 기준 슬롯 관리 보강 (2026-06-15)
+
+초기 `Semaphore(1)` 구현은 `analyzeBatch()` 메서드가 호출되는 즉시 `tryAcquire()`를 수행했다.
+하지만 Reactor의 `Mono`는 구독되어야 실행되므로, 메서드 호출과 실제 작업 시작 사이에 다음 불일치가 있었다.
+
+- 반환된 `Mono`가 구독되지 않으면 슬롯은 획득됐지만 `doFinally`가 실행되지 않아 permit이 반납되지 않는다.
+- 동일한 `Mono`를 여러 번 구독하면 최초 획득 1회에 대해 `doFinally`가 여러 번 실행되어 permit 수가 증가할 수 있다.
+- Circuit Breaker가 OPEN 상태에서 원본 publisher 구독을 차단하면, 메서드 호출 시 선점한 permit을 반납할 기회가 없다.
+- `doAnalyzeBatch()`가 publisher 조립 중 동기 예외를 던지면 `doFinally` 연결 전에 permit이 누수될 수 있다.
+
+따라서 입력 정제, `tryAcquire()`, LLM publisher 생성을 `Mono.defer()` 안으로 이동했다.
+이제 슬롯 획득과 반납이 구독마다 1:1로 대응한다.
+
+| 상황 | 변경 전 | 변경 후 |
+|---|---|---|
+| 구독하지 않은 Mono | permit 선점 및 누수 가능 | permit을 획득하지 않음 |
+| 동일 Mono 재구독 | permit 과다 반납 가능 | 구독마다 획득·반납 1회 |
+| Circuit Breaker OPEN | 원본 미구독 시 permit 누수 가능 | 원본 미구독이므로 permit 미획득 |
+| 취소·오류·정상 완료 | `doFinally` 실행 시 반납 | 동일하게 반납 |
+| publisher 조립 중 동기 예외 | `doFinally` 연결 전 누수 가능 | 안쪽 `Mono.defer`가 `onError`로 변환 후 반납 |
+
+검증 테스트:
+
+- `analyzeBatch_DefersSlotAcquisitionUntilSubscription`: 구독 전 LLM 호출 및 permit 선점이 없는지 확인
+- `analyzeBatch_BalancesSlotAcrossMultipleSubscriptions`: 동일 Mono를 두 번 구독해도 permit이 1로 유지되는지 확인
 
 ### 3-5. VOD 분석 동시성 제한
 

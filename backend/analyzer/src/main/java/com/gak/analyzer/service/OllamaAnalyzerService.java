@@ -73,26 +73,28 @@ public class OllamaAnalyzerService {
     // 향후 병렬 분석이 필요하면 Semaphore(N)으로 확장 가능.
     private final Semaphore llmSlot = new Semaphore(1);
 
-    @CircuitBreaker(name = "geminiApi", fallbackMethod = "fallbackAnalyzeBatch")
+    @CircuitBreaker(name = "llmApi", fallbackMethod = "fallbackAnalyzeBatch")
     public Mono<List<AnalyzedChatMessage>> analyzeBatch(List<CompressedChat> chats) {
-        if (chats == null || chats.isEmpty()) {
-            return Mono.just(List.of());
-        }
+        return Mono.defer(() -> {
+            if (chats == null || chats.isEmpty()) {
+                return Mono.just(List.of());
+            }
 
-        // [가드레일 입력] 배치 크기 및 총 문자 수 상한 적용
-        List<CompressedChat> capped = applyInputGuardrails(chats);
-        if (capped.isEmpty()) {
-            return Mono.just(List.of());
-        }
+            // [가드레일 입력] 배치 크기 및 총 문자 수 상한 적용
+            List<CompressedChat> capped = applyInputGuardrails(chats);
+            if (capped.isEmpty()) {
+                return Mono.just(List.of());
+            }
 
-        if (!llmSlot.tryAcquire()) {
-            log.warn("[Ollama] LLM slot busy. Skipping batch of {} chats.", chats.size());
-            recordCount("gak.llm.batch.skipped");
-            return Mono.just(List.of());
-        }
+            if (!llmSlot.tryAcquire()) {
+                log.warn("[Ollama] LLM slot busy. Skipping batch of {} chats.", chats.size());
+                recordCount("gak.llm.batch.skipped");
+                return Mono.just(List.of());
+            }
 
-        return doAnalyzeBatch(capped)
-                .doFinally(ignored -> llmSlot.release());
+            return Mono.defer(() -> doAnalyzeBatch(capped))
+                    .doFinally(ignored -> llmSlot.release());
+        });
     }
 
     private Mono<List<AnalyzedChatMessage>> doAnalyzeBatch(List<CompressedChat> chats) {
