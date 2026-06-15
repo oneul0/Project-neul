@@ -22,6 +22,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.util.List;
+import java.util.concurrent.Semaphore;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -30,7 +31,9 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -167,6 +170,49 @@ class OllamaAnalyzerServiceTest {
                     assertThat(results.get(0).getEmotionScores().get("NEUTRAL")).isEqualTo(1.0);
                 })
                 .verifyComplete();
+    }
+
+    @Test
+    @DisplayName("analyzeBatch acquires the LLM slot only when subscribed")
+    void analyzeBatch_DefersSlotAcquisitionUntilSubscription() {
+        List<CompressedChat> chats = List.of(compressed("msg-1", "room-1", "hello", 1));
+        when(chatClient.chat(anyString(), anyString(), anyDouble(), anyInt()))
+                .thenReturn(Mono.just("{\"results\":[{\"messageId\":\"1\",\"scores\":{\"NEUTRAL\":1.0}}]}"));
+
+        Mono<List<AnalyzedChatMessage>> result = analyzerService.analyzeBatch(chats);
+        Semaphore llmSlot = (Semaphore) ReflectionTestUtils.getField(analyzerService, "llmSlot");
+
+        assertThat(llmSlot).isNotNull();
+        assertThat(llmSlot.availablePermits()).isEqualTo(1);
+        verifyNoInteractions(chatClient);
+
+        StepVerifier.create(result)
+                .expectNextCount(1)
+                .verifyComplete();
+
+        assertThat(llmSlot.availablePermits()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("analyzeBatch balances the LLM slot for every subscription")
+    void analyzeBatch_BalancesSlotAcrossMultipleSubscriptions() {
+        List<CompressedChat> chats = List.of(compressed("msg-1", "room-1", "hello", 1));
+        when(chatClient.chat(anyString(), anyString(), anyDouble(), anyInt()))
+                .thenReturn(Mono.just("{\"results\":[{\"messageId\":\"1\",\"scores\":{\"NEUTRAL\":1.0}}]}"));
+
+        Mono<List<AnalyzedChatMessage>> result = analyzerService.analyzeBatch(chats);
+
+        StepVerifier.create(result)
+                .expectNextCount(1)
+                .verifyComplete();
+        StepVerifier.create(result)
+                .expectNextCount(1)
+                .verifyComplete();
+
+        Semaphore llmSlot = (Semaphore) ReflectionTestUtils.getField(analyzerService, "llmSlot");
+        assertThat(llmSlot).isNotNull();
+        assertThat(llmSlot.availablePermits()).isEqualTo(1);
+        verify(chatClient, times(2)).chat(anyString(), anyString(), anyDouble(), anyInt());
     }
 
     @Test
