@@ -9,7 +9,9 @@ public record VodAnalysisStatusResponse(
         Instant startedAt,
         Instant completedAt,
         Integer pagesProcessed,
-        Integer chatsCollected
+        Integer chatsCollected,
+        Integer timelinePointsCount,
+        Integer highlightsCount
 ) {
     public static VodAnalysisStatusResponse idle(String videoNo) {
         return new VodAnalysisStatusResponse(
@@ -19,7 +21,9 @@ public record VodAnalysisStatusResponse(
                 null,
                 null,
                 0,
-                0
+                0,
+                null,
+                null
         );
     }
 }

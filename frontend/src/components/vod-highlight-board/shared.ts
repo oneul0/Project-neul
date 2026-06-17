@@ -56,6 +56,8 @@ export interface VodAnalysisStatus {
   completedAt?: string | null;
   pagesProcessed?: number | null;
   chatsCollected?: number | null;
+  timelinePointsCount?: number | null;
+  highlightsCount?: number | null;
 }
 
 export interface UserVodLibraryEntry {
@@ -272,6 +274,22 @@ export function aggregateTimelineForChart(
   }
 
   return buckets;
+}
+
+export function calculateChartHeight(value: number, values: number[]) {
+  if (value <= 0) return 0;
+
+  const sorted = values
+    .filter((item) => Number.isFinite(item) && item > 0)
+    .sort((left, right) => left - right);
+  if (sorted.length === 0) return 0;
+
+  const ceiling =
+    sorted.length >= 20
+      ? sorted[Math.floor((sorted.length - 1) * 0.95)]
+      : sorted[sorted.length - 1];
+
+  return Math.min(100, Math.max((value / Math.max(ceiling, 1)) * 100, 4));
 }
 
 export function toReadablePoints(...values: Array<string | null | undefined>) {

@@ -23,7 +23,9 @@ public class VodAnalysisCompletionConsumer {
             vodAnalysisStatusService.markCompleted(
                     event.getVideoNo(),
                     current.pagesProcessed(),
-                    current.chatsCollected()
+                    current.chatsCollected(),
+                    event.getTimelinePointsCount(),
+                    event.getHighlightsCount()
             );
             log.info(
                     "[VOD-Crawler] Analysis completed for videoNo={}, timelinePoints={}, highlights={}",
