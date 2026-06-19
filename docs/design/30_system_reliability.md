@@ -627,7 +627,7 @@ GET http://localhost:8082/actuator/metrics
 **개별 메트릭 조회**
 
 ```bash
-# LLM 총 호출 수 (분모 기준값)
+# LLM 총 호출 수
 GET http://localhost:8082/actuator/metrics/gak.llm.api.calls.total
 
 # 감정 분석 — 오류가 있었는지
