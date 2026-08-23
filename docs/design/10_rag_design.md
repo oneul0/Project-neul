@@ -1,46 +1,16 @@
----
-marp: true
-theme: default
-paginate: true
-style: |
-  section {
-    font-family: 'Pretendard', 'Apple SD Gothic Neo', sans-serif;
-    background: #0a0a0a;
-    color: #ffffff;
-    padding: 44px 52px;
-  }
-  h1 { color: #00FFA3; font-size: 1.9rem; margin-bottom: 0.3em; }
-  h2 { color: #00FFA3; font-size: 1.4rem; border-bottom: 1px solid #222; padding-bottom: 0.3em; margin-bottom: 0.5em; }
-  h3 { color: #aaaaaa; font-size: 0.9rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
-  code { background: #1a1a1a; color: #00FFA3; padding: 2px 6px; border-radius: 4px; font-size: 0.82em; }
-  pre { background: #111; border: 1px solid #222; border-radius: 8px; padding: 0.75em 1em; margin: 0.4em 0; }
-  pre code { background: none; padding: 0; color: #e0e0e0; font-size: 0.76em; line-height: 1.5; }
-  table { width: 100%; border-collapse: collapse; font-size: 0.82em; }
-  th { background: #1a1a1a; color: #00FFA3; padding: 7px 12px; text-align: left; }
-  td { padding: 7px 12px; border-bottom: 1px solid #1e1e1e; }
-  strong { color: #00FFA3; }
-  blockquote { border-left: 3px solid #333; padding-left: 1em; color: #888; font-size: 0.82em; margin: 0.6em 0 0; }
----
 
-<!-- 1. 표지 -->
 
-# RAG 기반 하이라이트 판정 보강
+# 10. RAG 기반 하이라이트 판정 보강
 ## LLM에게 과거 사례를 보여주는 방식과 그 이유
-
-<br>
 
 LLM은 하이라이트 후보를 볼 때마다 **처음 보는 것처럼 판단한다.**  
 이 채널에서 3.5배 밀도가 많은 건지 적은 건지, 기준이 없다.
 
-<br>
-
-이 슬라이드는 그 한계를 어떻게 발견했고,  
+이 문서는 그 한계를 어떻게 발견했고,  
 **왜 단순 유사도 검색으로는 부족했는지,**  
 그리고 3전략 혼합 검색에 어떻게 도달했는지를 다룬다.
 
 ---
-
-<!-- 2. 주요 용어 정의 -->
 
 ## 주요 용어
 
@@ -52,14 +22,10 @@ LLM은 하이라이트 후보를 볼 때마다 **처음 보는 것처럼 판단�
 | `density_ratio` | 3.5x | 이 구간의 채팅 수 ÷ 채널 평균 채팅 수 |
 | `highlight_score` | 0.0 ~ 1.0 | 구간 전체 점수 (intensity · transition · editability 합산) |
 
-<br>
-
 > `scene_label`은 LLM이 판정한다 — 사전 정의 키워드 매칭이 아니다.  
 > `density_ratio`는 절대 수가 아닌 **채널 평균 대비 배율** — 채널 규모와 무관하게 비교 가능.
 
 ---
-
-<!-- 3. Hook — LLM은 판단 기준이 없다 -->
 
 ## LLM의 채널 기준 부재
 
@@ -83,8 +49,6 @@ LLM은 하이라이트 후보를 볼 때마다 **처음 보는 것처럼 판단�
 
 ---
 
-<!-- 4. 단순 유사도 검색은 왜 부족한가 -->
-
 ## 단순 유사도 검색의 한계
 
 ```
@@ -99,15 +63,11 @@ LLM은 하이라이트 후보를 볼 때마다 **처음 보는 것처럼 판단�
   LLM: "유사한 사례가 모두 하이라이트 아님 → 이것도 아님"
 ```
 
-<br>
-
 > 하이라이트는 전체 구간의 5~10%다.  
 > 유사도가 높은 사례 대부분은 **평범한 구간**이다.  
 > 비슷한 사례만 주면 LLM의 기준이 낮은 쪽으로 고착된다.
 
 ---
-
-<!-- 5. 인사이트 — 대비가 필요하다 -->
 
 ## 3전략 설계 원칙 — 기준·대비·일반화
 
@@ -131,8 +91,6 @@ LLM은 하이라이트 후보를 볼 때마다 **처음 보는 것처럼 판단�
 > C가 있으면 채널 편향을 희석한다.
 
 ---
-
-<!-- 6. 3전략 병렬 검색 구조 -->
 
 ## 3전략 병렬 검색 — Mono.zip
 
@@ -159,8 +117,6 @@ LLM은 하이라이트 후보를 볼 때마다 **처음 보는 것처럼 판단�
 
 ---
 
-<!-- 7. 임베딩 설계 — 채널 규모 무관 -->
-
 ## buildEmbeddingText() — 채널 규모와 무관한 벡터 공간
 
 ```
@@ -185,8 +141,6 @@ LLM은 하이라이트 후보를 볼 때마다 **처음 보는 것처럼 판단�
 > 저장(`embedAndStore`)과 검색(`retrieve`) 모두 이 메서드를 재사용 (DRY).
 
 ---
-
-<!-- 8. 컴포넌트 관계도 -->
 
 ## 컴포넌트 관계도 — RAG 두 가지 경로
 
@@ -216,8 +170,6 @@ LLM은 하이라이트 후보를 볼 때마다 **처음 보는 것처럼 판단�
 
 ---
 
-<!-- 9. few-shot 주입 흐름 -->
-
 ## few-shot 주입 — 전체 흐름
 
 ```
@@ -246,8 +198,6 @@ LLM은 하이라이트 후보를 볼 때마다 **처음 보는 것처럼 판단�
 ```
 
 ---
-
-<!-- 10. 두 번째 RAG 사용처: 라이브 유사도 감지 -->
 
 ## RAG 사용처 ② — 실시간 유사 하이라이트 감지
 
@@ -281,8 +231,6 @@ LLM은 하이라이트 후보를 볼 때마다 **처음 보는 것처럼 판단�
 
 ---
 
-<!-- 11. 임베딩 포맷 정렬 — 같은 벡터 공간 -->
-
 ## 임베딩 포맷 정렬 — 같은 텍스트 구조 = 같은 벡터 공간
 
 ```
@@ -309,8 +257,6 @@ LLM은 하이라이트 후보를 볼 때마다 **처음 보는 것처럼 판단�
 > 두 벡터가 **같은 의미 공간**에서 비교 가능해진다.
 
 ---
-
-<!-- 12. LLM 인사이트 생성 — gemma:2b -->
 
 ## LLM 인사이트 생성 — gemma:2b
 

@@ -1,4 +1,4 @@
-# API 명세
+# 06. API 명세
 
 > 기준: 2026-05-29
 > 서비스: collector (8081) · core-api (8083) · analyzer (8082, REST 없음)

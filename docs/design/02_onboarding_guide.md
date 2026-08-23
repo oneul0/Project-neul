@@ -1,4 +1,4 @@
-# 29. 온보딩 가이드
+# 02. 온보딩 가이드
 
 > 이 문서는 프로젝트를 처음 보는 사람이 구조를 빠르게 파악할 수 있도록 작성된 종합 온보딩 문서다.  
 > 상세 내용은 각 링크 문서를 참조한다.
@@ -45,7 +45,7 @@ Browser
   └─ Next.js (3000)
        ├─ /api/chzzk/* → collector (8081)  ← OAuth 로그인, 채팅 수집, VOD 크롤링
        ├─ /api/v1/*    → core-api  (8083)  ← 분석 결과 저장/조회, SSE
-       └─ /api/v2/*    → core-api  (8083)  ← (확장용)
+       └─ /api/v2/*    → core-api  (8083)  ← V2 민심 분석·SSE 스트림
 
 collector ──(Kafka)──► analyzer
 analyzer  ──(Kafka)──► core-api
@@ -88,7 +88,7 @@ core-api  ──────────── PostgreSQL + Redis
 | 내부 API 직접 접근 | `InternalAccessFilter` — 불일치 시 404 (경로 존재 숨김) |
 | IDOR | 헤더 폴백 없이 쿠키·Redis·channelId 3중 검증 |
 
-상세: [`22_security_hardening.md`](22_security_hardening.md), [`24_session_theft_defense.md`](24_session_theft_defense.md)
+상세: [`01_ADR.md`](01_ADR.md), [`11_system_reliability.md`](11_system_reliability.md)
 
 ---
 
@@ -122,7 +122,7 @@ Chzzk NID WebSocket (치지직 내부 프로토콜)
 
 ## 7. VOD 하이라이트 추출 흐름
 
-전체 6단계 시퀀스 다이어그램: [`26_vod_highlight_sequence_diagrams.md`](26_vod_highlight_sequence_diagrams.md)
+전체 6단계 시퀀스 다이어그램: [`08_vod_highlight_sequence_diagrams.md`](08_vod_highlight_sequence_diagrams.md)
 
 ### 핵심 설계 포인트
 
@@ -147,8 +147,7 @@ Chzzk NID WebSocket (치지직 내부 프로토콜)
 
 ## 8. 데이터베이스 스키마
 
-ERD: [`27_erd.md`](27_erd.md)  
-정규화 분석: [`28_normalization_analysis.md`](28_normalization_analysis.md)
+ERD와 정규화 판단: [`07_erd.md`](07_erd.md)
 
 ### 테이블 목록
 
@@ -161,7 +160,7 @@ ERD: [`27_erd.md`](27_erd.md)
 | `user_vod_library` | 스트리머 VOD 목록 |
 | `user_vod_activity` | 하이라이트 상호작용 로그 |
 
-스키마 관리: Flyway (`V1~V7__*.sql`). `gak_admin` 계정이 DDL 수행, `gak_app`이 DML 수행.
+스키마 관리: Flyway (`V1~V9__*.sql`). `gak_admin` 계정이 DDL 수행, `gak_app`이 DML 수행.
 
 ---
 
@@ -190,7 +189,7 @@ LLM은 신뢰할 수 없는 외부 시스템 경계로 취급한다. 입력 제�
 | CORS처럼 보이는 preflight 차단 | OwnerAccessFilter가 OPTIONS 차단 | Next.js proxy 경유 강제 |
 | 하이라이트 앞쪽 쏠림 | 초반 채팅 밀도가 점수 독점 | 버킷 대표 우선 확보 후 전역 상위 채우는 2단계 선별 |
 
-상세: [`02_troubleshooting.md`](02_troubleshooting.md)
+상세: [`04_troubleshooting.md`](04_troubleshooting.md)
 
 ---
 
@@ -254,23 +253,19 @@ core-api/
 |------|--------|------|
 | `GAK_POSTGRES_APP_USER` | core-api | DML 계정 (기본: gak_app) |
 | `GAK_POSTGRES_ADMIN_USER` | core-api | DDL·Flyway 계정 (기본: gak_admin) |
-| `GAK_COOKIE_SECRET` | collector | HMAC-SHA256 서명 키 |
+| `GAK_OWNER_TOKEN_SECRET` | collector, core-api | HMAC-SHA256 서명 키 |
 | `GAK_CHZZK_CLIENT_ID` | collector | OAuth 앱 Client ID |
 | `GAK_CHZZK_CLIENT_SECRET` | collector | OAuth 앱 Client Secret |
-| `gak.cookie.secure` | collector | prod=true, dev=false |
+| `GAK_COOKIE_SECURE` | collector | 프로덕션 `true`, 로컬 `false` |
 
 ---
 
-## 13. 문서 목록
+## 13. 다음에 볼 문서
 
-| 문서 | 내용 |
-|------|------|
-| [00_PROJECT_MASTER_HISTORY.md](00_PROJECT_MASTER_HISTORY.md) | 문서 인덱스·변경 이력 |
-| [01_ADR.md](01_ADR.md) | 아키텍처 결정 기록 |
-| [02_troubleshooting.md](02_troubleshooting.md) | 트러블슈팅 통합 가이드 |
-| [03_run_guide.md](03_run_guide.md) | 실행 순서·운영 체크 |
-| [05_developer_handover.md](05_developer_handover.md) | 핸드오버 문서 |
-| [22_security_hardening.md](22_security_hardening.md) | 보안 강화 작업 기록 |
-| [26_vod_highlight_sequence_diagrams.md](26_vod_highlight_sequence_diagrams.md) | VOD 단계별 시퀀스 다이어그램 |
-| [27_erd.md](27_erd.md) | ERD |
-| [28_normalization_analysis.md](28_normalization_analysis.md) | 정규화 분석 |
+1. 로컬 실행: [`03_run_guide.md`](03_run_guide.md)
+2. 장애 대응: [`04_troubleshooting.md`](04_troubleshooting.md)
+3. 데이터 흐름: [`08_vod_highlight_sequence_diagrams.md`](08_vod_highlight_sequence_diagrams.md)
+4. 설계 근거: [`01_ADR.md`](01_ADR.md)
+5. API·데이터: [`06_api_spec.md`](06_api_spec.md), [`07_erd.md`](07_erd.md)
+
+현재 운영상 주의점은 세 가지다. VOD 상태는 완료 이벤트와 조회 시점 보정에 의존하고, 정확한 타임라인은 `vod_timeline_points` 저장 경로가 정상이어야 하며, Redis 기반 VOD 슬롯은 사용자별 1건·전체 3건으로 제한된다.

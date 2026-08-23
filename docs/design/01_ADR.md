@@ -362,3 +362,53 @@ analyzer/service/OllamaAnalyzerService.java ← 수정 (chatClient 주입, HTTP 
 가드레일(입력 정제·출력 검증·Semaphore·동적 타임아웃)은 `OllamaAnalyzerService`에 그대로 유지된다. 인터페이스 교체 시에도 가드레일은 재사용된다.
 
 **트레이드오프**: 프로바이더별 추가 옵션(JSON mode 강제, tool use 등)이 필요하면 `chat()` 시그니처를 확장하거나 별도 메서드를 추가해야 한다.
+
+---
+
+## ADR-011. Owner 인증을 HMAC 쿠키와 Redis 세션으로 결합
+
+**날짜**: 2026-05-06
+
+### 배경
+
+서명된 쿠키만 사용하는 stateless 인증은 로그아웃 후 토큰을 즉시 폐기할 수 없고, 헤더·쿼리 폴백은 ownerId 위조와 IDOR을 허용했다.
+
+### 결정 및 근거
+
+`GAK_OWNER_ASSERTION`에는 `channelId.sessionId.expiresAt`을 HMAC-SHA256으로 서명하고, 요청마다 Redis의 `gak:owner-session:{channelId}`와 sessionId를 비교한다. 로그아웃은 Redis 키를 삭제해 기존 토큰을 즉시 무효화하며, ownerId는 검증된 쿠키와 filter attribute에서만 읽는다.
+
+**트레이드오프**: Redis 장애 시 모든 owner 인증이 401로 실패한다. 데이터 보호가 가용성보다 중요하므로 의도적으로 fail-secure를 선택했다. 동일 채널의 재로그인은 이전 세션을 무효화한다.
+
+---
+
+## ADR-012. 내부 API에 공유 시크릿과 404 응답 적용
+
+**날짜**: 2026-05-06
+
+### 배경
+
+`/internal/**`는 analyzer와 core-api 사이의 RAG 호출용이지만 로컬·개발 환경에서는 백엔드 포트가 노출될 수 있다.
+
+### 결정 및 근거
+
+`InternalAccessFilter`가 `X-Internal-Secret`을 검증하고 불일치 시 403 대신 404를 반환한다. 프로덕션에서는 이 코드 방어와 함께 백엔드 포트를 내부 네트워크에만 둔다.
+
+**트레이드오프**: 공유 시크릿 회전 시 호출·수신 서비스를 함께 재시작해야 한다. 서비스별 인증 체계는 현재 규모에서 운영 복잡도가 더 크므로 도입하지 않았다.
+
+---
+
+## ADR-013. V2 파이프라인을 V1과 분리하고 SSE로 먼저 제공
+
+**날짜**: 2026-05-18
+
+### 배경
+
+실시간 Trust Score·Anchor Chat·EMA Mental Buffer·브리핑 기능을 기존 감정 분석 경로에 섞으면 독립 배포와 장애 격리가 어려워진다.
+
+### 결정 및 근거
+
+V2 코드는 `com.gak.v2`, Kafka 토픽은 `v2-` 접두어로 분리한다. collector가 V1과 V2 raw 이벤트를 함께 발행하고, V2 agent 결과는 `V2Aggregator`가 부분 결과만으로도 프레임을 만든다. 전달 계층은 브라우저 지원과 기존 인프라 재사용을 위해 SSE를 채택했다.
+
+브리핑과 유사 하이라이트 알림은 실패 시 `Mono.empty()`로 끝나는 보조 경로로 두어 기본 `v2_frame` 전송에 영향을 주지 않는다.
+
+**트레이드오프**: 토픽과 DTO가 늘고 V1·V2의 일부 기능이 중복된다. RSocket 전환은 SSE의 측정된 한계가 확인될 때만 검토한다.

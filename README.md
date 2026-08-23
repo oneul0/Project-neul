@@ -261,14 +261,20 @@ curl -X POST "http://localhost:8083/dev/seed/{channelId}"
 
 ---
 
-## 🏷️ 바로가기
+## 🏷️ 문서 바로가기
 
-| 문서 | 설명 |
-|------|------|
-| [프로젝트 개요](docs/design/00_project_overview.md) | VOD 하이라이트 추출 목적·AI 통합 방식·POC 검증·기술 스택 선택 근거 |
-| [아키텍처 결정 기록 (ADR)](docs/design/01_ADR.md) | Kafka·WebFlux·pgvector 등 주요 기술 결정과 트레이드오프 |
-| [LLM 가드레일 설계](docs/design/18_llm_guardrail_plan.md) | 입출력 가드레일·동시성 제어·VOD 슬롯 제한 구현 기록 |
-| [VOD 하이라이트 흐름도](docs/design/26_vod_highlight_sequence_diagrams.md) | 분석 요청부터 결과 저장까지 6단계 Mermaid 시퀀스 다이어그램 |
-| [ERD](docs/design/27_erd.md) | 전체 테이블 구조 및 pgvector 임베딩 컬럼 설명 |
-| [시스템 신뢰성 설계](docs/design/30_system_reliability.md) | 재시도·Circuit Breaker·fail-open/secure 전략 |
-| [온보딩 가이드](docs/design/29_onboarding_guide.md) | 로컬 실행·인증 흐름·코드 탐색 가이드 |
+| 번호 | 문서 | 설명 |
+|------|------|------|
+| 00 | [프로젝트 개요](docs/design/00_project_overview.md) | 제품 목적, 전체 아키텍처, 데이터 흐름 |
+| 01 | [아키텍처 결정 기록](docs/design/01_ADR.md) | 주요 기술 선택과 트레이드오프 |
+| 02 | [온보딩 가이드](docs/design/02_onboarding_guide.md) | 서비스 구성, 인증 흐름, 코드 탐색 순서 |
+| 03 | [실행 가이드](docs/design/03_run_guide.md) | 로컬 실행과 기능 확인 절차 |
+| 04 | [트러블슈팅](docs/design/04_troubleshooting.md) | 증상별 원인, 복구, 로그 확인 지점 |
+| 05 | [테스트 전략](docs/design/05_testing_strategy.md) | 현재 테스트 범위와 실행 명령 |
+| 06 | [API 명세](docs/design/06_api_spec.md) | 인증 방식과 서비스별 엔드포인트 |
+| 07 | [ERD](docs/design/07_erd.md) | 테이블, FK, 인덱스, 비정규화 판단 |
+| 08 | [VOD 하이라이트 흐름도](docs/design/08_vod_highlight_sequence_diagrams.md) | 분석 요청부터 결과 저장까지의 시퀀스 |
+| 09 | [LLM 가드레일 설계](docs/design/09_llm_guardrail_design.md) | 입출력 검증, 동시성, VOD 슬롯 제한 |
+| 10 | [RAG 설계](docs/design/10_rag_design.md) | 임베딩, 검색 전략, few-shot 주입 |
+| 11 | [시스템 신뢰성](docs/design/11_system_reliability.md) | 재시도, 보안, 정합성, 관측성 |
+| 12 | [프로덕션 배포 체크리스트](docs/design/12_production_deploy_checklist.md) | 시크릿, 네트워크, 배포 후 검증 |

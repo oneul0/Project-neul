@@ -1,4 +1,4 @@
-# 26. VOD 하이라이트 추출 단계별 시퀀스 다이어그램
+# 08. VOD 하이라이트 추출 단계별 시퀀스 다이어그램
 
 > 구현 기준: 2026-05-17  
 > 대상 파일: `VodController`, `VodAnalysisSlotService`, `VodCollectorController`, `VodChatCrawlerService`, `VodAnalysisStatusService`, `VodHighlightAnalyzer`, `OllamaAnalyzerService`, `VodHighlightConsumer`, `VodTimelinePointConsumer`, `VodAnalysisEventConsumer`, `HighlightEmbeddingService`

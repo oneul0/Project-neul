@@ -1,4 +1,4 @@
-# ERD
+# 07. ERD
 
 > 구현 기준: 2026-05-29
 > 스키마 소스: `backend/core-api/src/main/resources/db/migration/V1~V9__*.sql`
@@ -212,6 +212,20 @@ highlight_score   = (intensity×0.55 + transition×0.20 + editability×0.25)
 | `user_vod_library` | UNIQUE(`owner_id`, `video_no`) | 1사용자 1VOD 제한 |
 | `user_vod_library` | `(owner_id, updated_at DESC)` | 라이브러리 목록 최신순 조회 |
 | `user_vod_activity` | `(owner_id, created_at DESC)` | 행동 로그 최신순 조회 |
+
+---
+
+## 정규화와 의도적 비정규화
+
+기본 테이블은 3NF를 유지하되, 읽기 성능과 재현성을 위해 다음 파생값은 저장한다.
+
+| 컬럼 | 결정 이유 |
+|------|-----------|
+| `vod_highlights.emotion_dominance` | RAG 입력과 조회에서 네 개 감정 비율을 반복 계산하지 않음 |
+| `vod_highlights.embedding_text` | 임베딩 모델 변경 시 원본 입력을 감사·재생성할 수 있음 |
+| `vod_timeline_points.activity_score` | 쓰기 1회·읽기 다수인 타임라인에서 집계 재계산을 피함 |
+
+`user_vod_activity.action_type`은 값 종류가 작고 애플리케이션에서 정규화하므로 별도 코드 테이블을 두지 않는다. 내부 참조는 V8·V9의 FK로 보호하고, `video_no`·`room_id`·`owner_id`처럼 CHZZK가 권위 소스인 외부 식별자는 애플리케이션에서 관리한다.
 
 ---
 

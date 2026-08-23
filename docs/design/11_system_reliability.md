@@ -1,4 +1,4 @@
-# 30. 시스템 신뢰성 설계
+# 11. 시스템 신뢰성 설계
 
 > 재시도·보안·DB 정합성·운영 관측성 관점에서 이 시스템이 어떻게 안정성을 확보했는지를 기술한다.  
 > 흐름은 시퀀스 다이어그램, 구조는 클래스·상태 다이어그램으로 표현한다.  
@@ -225,7 +225,7 @@ classDiagram
     class GAK_OWNER_ASSERTION {
         <<Cookie HttpOnly Secure>>
         +header base64url(channelId.sessionId.expiresAt)
-        +signature HMAC-SHA256(header, GAK_COOKIE_SECRET)
+        +signature HMAC-SHA256(header, GAK_OWNER_TOKEN_SECRET)
         +format header.signature
     }
 
@@ -812,7 +812,7 @@ flowchart TD
 ```mermaid
 flowchart LR
     subgraph Before [이전]
-        B_App[애플리케이션] -->|DDL+DML| B_User[단일 계정\ngak_user / neul_user]
+        B_App[애플리케이션] -->|DDL+DML| B_User[단일 DB 계정]
         B_User --> DB1[(PostgreSQL)]
     end
 

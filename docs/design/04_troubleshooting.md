@@ -1,9 +1,8 @@
-# 통합 트러블슈팅 가이드
+# 04. 트러블슈팅
 
-최종 업데이트: 2026-04-01
+최종 업데이트: 2026-08-23
 
-이 문서는 기존 `02_troubleshooting.md`와 `02_troubleshooting_log.md`를 합친 통합본입니다.
-현재 구조에서 자주 부딪히는 문제를 우선순위별로 정리했고, 과거 이력도 아래에 남겨두었습니다.
+현재 구조에서 자주 발생하는 증상과 복구 순서를 정리한다. 설계 수준의 장애 전략은 [`11_system_reliability.md`](11_system_reliability.md)를 참고한다.
 
 ## 1. 가장 먼저 볼 것
 
@@ -100,6 +99,10 @@ docker ps
 - collector가 완료 이벤트를 받아 `COMPLETED`로 변경
 - 추가 fallback:
   - status 조회 시 현재 상태가 `ANALYZING`인데 core-api에 highlights가 이미 있으면 collector가 `COMPLETED`로 보정
+  - 30분 이상 결과가 없으면 `FAILED`로 전환
+  - collector 재기동으로 `IDLE`이 되어도 highlight가 있으면 `COMPLETED`로 복구
+
+프론트 폴링 간격은 `REQUESTED=3초`, `ANALYZING=8초`, 그 외 활성 상태는 `5초`다. `COMPLETED`인데 timeline·highlight 저장이 아직 따라오지 못한 경우에는 1.5초 간격으로 최대 10회 동기화한다.
 
 ### 2-6. VOD 하이라이트가 특정 시점까지만 몰릴 때
 
@@ -167,9 +170,31 @@ docker ps
 - `[VOD-Highlight-Consumer]`
 - `[VOD-Timeline-Consumer]`
 
-## 5. 현재 구조 기준으로 outdated 처리한 항목
+## 5. 기동 순서와 복구
 
-아래 내용은 더 이상 현재 기준 문서로 보면 안 됩니다.
+권장 순서는 `PostgreSQL·Redis·Kafka → Ollama → core-api → collector → analyzer → frontend`다.
+
+| 증상 | 복구 |
+|------|------|
+| core-api가 Flyway 오류로 종료 | PostgreSQL 기동 확인 후 core-api 재시작 |
+| Redis 오류로 VOD 슬롯 카운팅 실패 | Redis 기동 후 자동 재연결. 분석은 fail-open으로 계속됨 |
+| Kafka topic metadata 오류 | Kafka 기동 후 consumer 재연결 확인. 재시도가 소진됐으면 해당 서비스 재시작 |
+| Ollama 연결 실패·Circuit Breaker OPEN | `ollama serve`, 모델 확인 후 HALF_OPEN 자동 복구 대기 또는 analyzer 재시작 |
+| collector 재기동 후 VOD 상태가 IDLE | status 조회 시 저장된 highlight를 확인해 COMPLETED로 자동 보정 |
+
+빠른 점검:
+
+```bash
+docker compose -f backend/docker-compose.yml ps
+curl -s http://localhost:8083/actuator/health
+curl -s http://localhost:8081/api/v1/vod/{videoNo}/status
+curl -s http://localhost:8082/actuator/metrics/gak.llm.api.calls.total
+ollama list
+```
+
+## 6. 폐기된 전제
+
+아래 내용은 현재 구조에 적용하지 않는다.
 
 - `schema.sql` 수동 동기화 전제
 - 공개 방송 탐색형 대시보드 전제

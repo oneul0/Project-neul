@@ -1,4 +1,4 @@
-# LLM 가드레일 및 VOD 동시성 제한 구현 기록
+# 09. LLM 가드레일 및 VOD 동시성 설계
 
 작성일: 2026-05-02
 
@@ -35,7 +35,7 @@ LLM이 반환한 JSON의 감정 점수를 파싱 성공만 하면 그대로 사�
 - 한 사용자가 먼저 점유한 LLM으로 인해 다른 사용자의 분석 시간이 예측 불가
 - collector 메모리와 Kafka lag이 선형적으로 증가
 
-관련 설계 문서: `14_vod_concurrency_plan.md`
+VOD 동시성의 상태 머신과 알려진 한계도 이 문서에서 함께 관리한다.
 
 ---
 
@@ -207,7 +207,6 @@ Redis 없이 분석이 막히는 것보다 분석이 진행되는 편이 낫다�
 | `gak.llm.output.empty` | 감정 분석 응답이 빈 문자열 | 질문에 직접 답했는지 |
 | `gak.llm.output.parse_failed` | 감정 분석 JSON 파싱 실패 | 오류가 있었는지 |
 | `gak.llm.output.message_missing` | 요청한 messageId 결과 누락 | 핵심 내용 빠뜨리지 않았는지 |
-| `gak.llm.highlight.empty` | 하이라이트 판정 응답이 빈 문자열 | 질문에 직접 답했는지 |
 | `gak.llm.highlight.parse_failed` | 하이라이트 JSON 파싱 실패 | 오류가 있었는지 |
 | `gak.llm.highlight.field_missing` | `is_highlight` · `reasoning` 키 누락 | 핵심 내용 빠뜨리지 않았는지 |
 
@@ -227,15 +226,13 @@ Redis 없이 분석이 막히는 것보다 분석이 진행되는 편이 낫다�
 
 ---
 
-## 6. 체크리스트 업데이트
-
-`09_evolution_roadmap.md` 섹션 D 항목:
+## 6. 현재 상태
 
 - [x] 사용자별 동시 분석 제한 추가 (`VodAnalysisSlotService.MAX_PER_USER = 1`)
 - [x] 시스템 전체 동시 분석 제한 추가 (`VodAnalysisSlotService.MAX_GLOBAL = 3`)
-- [ ] 실제 인프라 기준 동시 분석 가능량 측정 후 MAX_GLOBAL 조정
-- [ ] `QUEUED` 상태 도입 검토 (현재는 즉시 거절)
-- [ ] 슬롯 반납 실패 시 알림 또는 자동 복구 전략
+- 실제 인프라 기준 동시 분석 가능량은 아직 측정이 필요하다.
+- 제한 초과 요청은 대기열 없이 즉시 거절한다.
+- 슬롯 키는 30분 TTL로 비정상 종료 시 자동 만료된다.
 
 ---
 
@@ -244,10 +241,12 @@ Redis 없이 분석이 막히는 것보다 분석이 진행되는 편이 낫다�
 - **MAX_GLOBAL 조정**: 현재 보수적으로 3으로 설정. Ollama 서버 스펙과 실측 데이터를 기반으로 조정 필요.
 - **QUEUED 상태**: `REJECTED_*` 대신 대기열에 등록하고 순차 처리하는 방식. 프론트엔드 상태 표시와 함께 고려.
 - **Semaphore 슬롯 수**: 실시간 분석과 VOD 분석이 같은 Ollama 인스턴스를 공유하므로, LLM 부하 실측 후 조정.
+- **대기열**: 현재는 제한 초과 요청을 즉시 거절한다. 실제 트래픽에서 대기 요구가 확인될 때만 `QUEUED` 상태를 도입한다.
+- **상태 영속화**: collector의 VOD 상태는 인메모리다. 재기동 빈도가 높아져 조회 보정으로 부족해질 때 Redis 이전을 검토한다.
 
 ---
 
-## 9. LLM 클라이언트 추상화 (2026-05-18)
+## 8. LLM 클라이언트 추상화
 
 > 관련 ADR: `01_ADR.md` ADR-010
 
@@ -294,7 +293,7 @@ public class OpenAiChatClient implements ChatLlmClient {
 
 ---
 
-## 8. 단위 테스트 검증 결과 (2026-05-18)
+## 9. 검증 포인트
 
 ### OllamaAnalyzerServiceTest — 9개 전체 통과
 

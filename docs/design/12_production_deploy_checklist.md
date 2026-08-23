@@ -1,4 +1,4 @@
-# 23. 프로덕션 배포 체크리스트
+# 12. 프로덕션 배포 체크리스트
 
 > 이 문서는 배포 전 반드시 확인해야 할 보안·환경 설정 항목을 정리합니다.
 > 로컬 개발 실행은 `03_run_guide.md`를 참고하세요.
@@ -7,7 +7,7 @@
 
 ## Step 1. 시크릿 생성
 
-아래 명령어를 **각각 한 번씩** 실행해 서로 다른 값 5개를 생성합니다.
+아래 명령어를 **각각 한 번씩** 실행해 서로 다른 값 4개를 생성합니다.
 
 ```bash
 openssl rand -hex 32   # GAK_OWNER_TOKEN_SECRET
@@ -177,4 +177,4 @@ curl -s -H "Origin: https://evil.com" https://실제도메인.com/api/v1/lives
 ## 관련 문서
 
 - [03_run_guide.md](03_run_guide.md) — 로컬 개발 실행 순서
-- [22_security_hardening.md](22_security_hardening.md) — 보안 취약점 수정 내역 및 보안 모델
+- [11_system_reliability.md](11_system_reliability.md) — 현재 보안 경계와 장애 전략
