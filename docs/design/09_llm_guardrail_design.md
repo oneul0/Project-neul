@@ -126,7 +126,7 @@ return Mono.defer(() -> {
 하지만 Reactor의 `Mono`는 구독되어야 실행되므로, 메서드 호출과 실제 작업 시작 사이에 다음 불일치가 있었다.
 
 - 반환된 `Mono`가 구독되지 않으면 슬롯은 획득됐지만 `doFinally`가 실행되지 않아 permit이 반납되지 않는다.
-- 동일한 `Mono`를 여러 번 구독하면 최초 획득 1회에 대해 `doFinally`가 여러 번 실행되어 permit 수가 증가할 수 있다.
+- 동일한 `Mono`를 여러 번 구독하면 최초 획득은 1회인데도 `doFinally`가 여러 번 실행되어 permit 수가 증가할 수 있다.
 - Circuit Breaker가 OPEN 상태에서 원본 publisher 구독을 차단하면, 메서드 호출 시 선점한 permit을 반납할 기회가 없다.
 - `doAnalyzeBatch()`가 publisher 조립 중 동기 예외를 던지면 `doFinally` 연결 전에 permit이 누수될 수 있다.
 
