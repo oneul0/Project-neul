@@ -1,6 +1,6 @@
 # 01. 아키텍처 결정 기록 (ADR)
 
-> 이 문서는 Project Gak(각)의 핵심 아키텍처 결정을 기술적 의사결정 단계에 따라 기록한다.  
+> 이 문서는 Project Gak(각)의 핵심 아키텍처 결정을 기술적 의사결정 단계에 따라 기록한다.
 > 구성: **배경 → 문제 → 고려한 선택지 → 결정 및 근거 → 영향 범위**
 
 ---
@@ -74,7 +74,7 @@ analyzer/   ← Mono<List<EmotionResult>> 반환, 리액티브 체인
 collector/  ← WebClient로 외부 API 호출
 ```
 
-**트레이드오프**: 리액티브 코드는 디버깅이 어렵고, 블로킹 라이브러리(JDBC 등) 혼용 시 `Schedulers.boundedElastic()`을 명시해야 한다. 실제로 DB 저장 경로에서 `.subscribeOn(Schedulers.boundedElastic())`을 별도 적용했다.
+**트레이드오프**: 리액티브 코드는 디버깅이 어렵고 블로킹 라이브러리(JDBC 등) 혼용 시 `Schedulers.boundedElastic()`을 명시해야 한다. 실제로 DB 저장 경로에서 `.subscribeOn(Schedulers.boundedElastic())`을 별도 적용했다.
 
 ---
 
@@ -84,7 +84,7 @@ collector/  ← WebClient로 외부 API 호출
 
 ### 배경
 
-Ollama는 로컬에서 실행되는 LLM 서버다. 응답 지연·크래시가 발생하면 Kafka consumer가 대기 상태로 쌓이고, SSE 파이프라인 전체가 블로킹될 수 있다.
+Ollama는 로컬에서 실행되는 LLM 서버다. 응답 지연·크래시가 발생하면 Kafka consumer가 대기 상태로 쌓이고 SSE 파이프라인 전체가 블로킹될 수 있다.
 
 ### 문제
 
@@ -179,7 +179,7 @@ LLM 입력 전처리(중복 제거·압축)를 담당하는 `ChatOptimizer`를 �
 
 ### 결정 및 근거
 
-**Port & Adapter 채택**. `ChatOptimizer` 인터페이스(Port)를 정의하고, Java 구현체(`JavaChatOptimizer`)와 Rust JNI 구현체(`RustChatOptimizer`)를 각각 Adapter로 둔다. `application.yaml` 설정만 바꾸면 교체된다.
+**Port & Adapter 채택**. `ChatOptimizer` 인터페이스(Port)를 정의하고 Java 구현체(`JavaChatOptimizer`)와 Rust JNI 구현체(`RustChatOptimizer`)를 각각 Adapter로 둔다. `application.yaml` 설정만 바꾸면 교체된다.
 
 ```java
 // ChatOptimizerConfig.java
@@ -212,7 +212,7 @@ analyzer/config/ChatOptimizerConfig.java           ← 조건부 빈 등록
 
 ### 문제
 
-사용자마다 토큰을 발급·갱신·저장하면 collector 서비스가 사용자 토큰 저장소 역할까지 담당해야 하고, 토큰 만료 처리가 복잡해진다.
+사용자마다 토큰을 발급·갱신·저장하면 collector 서비스가 사용자 토큰 저장소 역할까지 담당해야 하고 토큰 만료 처리가 복잡해진다.
 
 ### 결정 및 근거
 
@@ -238,7 +238,7 @@ collector/config/ChzzkProperties.java     ← CLIENT_ID, CLIENT_SECRET
 
 ### 문제
 
-공식 REST API 폴링은 확장성이 없고, 실시간 채팅 흐름을 재현하지 못한다.
+공식 REST API 폴링은 확장성이 없고 실시간 채팅 흐름을 재현하지 못한다.
 
 ### 결정 및 근거
 
@@ -261,7 +261,7 @@ collector/service/ChatProducer.java       ← 2초 배치로 묶어 Kafka 발행
 
 ### 배경
 
-NID WebSocket으로 수신한 채팅을 건당 Kafka에 발행하면 Kafka 메시지 수가 매우 많아지고, LLM이 채팅 1개씩 분석하는 비효율이 생긴다.
+NID WebSocket으로 수신한 채팅을 건당 Kafka에 발행하면 Kafka 메시지 수가 매우 많아지고 LLM이 채팅 1개씩 분석하는 비효율이 생긴다.
 
 ### 문제
 
@@ -295,7 +295,7 @@ common/dto/RawChatBatch.java                 ← 배치 DTO
 
 ### 결정 및 근거
 
-**`backend/common` 모듈 생성**. 모든 서비스 간 공유 DTO(`RawChatBatch`, `RawChatMessage`, `AnalyzedChatMessage` 등)를 common에 통합하고, 각 서비스는 `implementation project(':common')`으로 의존한다.
+**`backend/common` 모듈 생성**. 모든 서비스 간 공유 DTO(`RawChatBatch`, `RawChatMessage`, `AnalyzedChatMessage` 등)를 common에 통합하고 각 서비스는 `implementation project(':common')`으로 의존한다.
 
 ### 영향 범위
 
@@ -333,7 +333,7 @@ common/dto/AnalyzedChatMessage.java
 
 ### 결정 및 근거
 
-**`ChatLlmClient` 인터페이스 도입**. `chat(system, user, temperature, numPredict) → Mono<String>` 시그니처로 HTTP 세부 사항을 캡슐화한다. `OllamaChatClient`가 유일한 구현체로 Ollama 전용 코드를 담당하고, `OllamaAnalyzerService`는 인터페이스에만 의존한다.
+**`ChatLlmClient` 인터페이스 도입**. `chat(system, user, temperature, numPredict) → Mono<String>` 시그니처로 HTTP 세부 사항을 캡슐화한다. `OllamaChatClient`가 유일한 구현체로 Ollama 전용 코드를 담당하고 `OllamaAnalyzerService`는 인터페이스에만 의존한다.
 
 ```java
 // ChatLlmClient.java (Port)
@@ -371,11 +371,11 @@ analyzer/service/OllamaAnalyzerService.java ← 수정 (chatClient 주입, HTTP 
 
 ### 배경
 
-서명된 쿠키만 사용하는 stateless 인증은 로그아웃 후 토큰을 즉시 폐기할 수 없고, 헤더·쿼리 폴백은 ownerId 위조와 IDOR을 허용했다.
+서명된 쿠키만 사용하는 stateless 인증은 로그아웃 후 토큰을 즉시 폐기할 수 없고 헤더·쿼리 폴백은 ownerId 위조와 IDOR을 허용했다.
 
 ### 결정 및 근거
 
-`GAK_OWNER_ASSERTION`에는 `channelId.sessionId.expiresAt`을 HMAC-SHA256으로 서명하고, 요청마다 Redis의 `gak:owner-session:{channelId}`와 sessionId를 비교한다. 로그아웃은 Redis 키를 삭제해 기존 토큰을 즉시 무효화하며, ownerId는 검증된 쿠키와 filter attribute에서만 읽는다.
+`GAK_OWNER_ASSERTION`에는 `channelId.sessionId.expiresAt`을 HMAC-SHA256으로 서명하고 요청마다 Redis의 `gak:owner-session:{channelId}`와 sessionId를 비교한다. 로그아웃은 Redis 키를 삭제해 기존 토큰을 즉시 무효화하며 ownerId는 검증된 쿠키와 filter attribute에서만 읽는다.
 
 **트레이드오프**: Redis 장애 시 모든 owner 인증이 401로 실패한다. 데이터 보호가 가용성보다 중요하므로 의도적으로 fail-secure를 선택했다. 동일 채널의 재로그인은 이전 세션을 무효화한다.
 
@@ -407,7 +407,7 @@ analyzer/service/OllamaAnalyzerService.java ← 수정 (chatClient 주입, HTTP 
 
 ### 결정 및 근거
 
-V2 코드는 `com.gak.v2`, Kafka 토픽은 `v2-` 접두어로 분리한다. collector가 V1과 V2 raw 이벤트를 함께 발행하고, V2 agent 결과는 `V2Aggregator`가 부분 결과만으로도 프레임을 만든다. 전달 계층은 브라우저 지원과 기존 인프라 재사용을 위해 SSE를 채택했다.
+V2 코드는 `com.gak.v2`, Kafka 토픽은 `v2-` 접두어로 분리한다. collector가 V1과 V2 raw 이벤트를 함께 발행하고 V2 agent 결과는 `V2Aggregator`가 부분 결과만으로도 프레임을 만든다. 전달 계층은 브라우저 지원과 기존 인프라 재사용을 위해 SSE를 채택했다.
 
 브리핑과 유사 하이라이트 알림은 실패 시 `Mono.empty()`로 끝나는 보조 경로로 두어 기본 `v2_frame` 전송에 영향을 주지 않는다.
 
